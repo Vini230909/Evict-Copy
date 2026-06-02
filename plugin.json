@@ -1,0 +1,8 @@
+{
+  "name": "EvictMapGenerator",
+  "author": "Vini2309",
+  "main": "vini.evictmap.EvictMapPlugin",
+  "description": "Server-side Evict-style hex terrain generator prototype.",
+  "version": "0.1.0",
+  "minGameVersion": "157.4"
+}

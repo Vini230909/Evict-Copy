@@ -1,0 +1,45 @@
+apply plugin: "java"
+
+sourceSets.main.java.srcDirs = ["src"]
+
+repositories {
+    mavenCentral()
+
+    // Official Mindustry plugin-template dependency layout.
+    ivy {
+        url = "https://github.com/"
+        patternLayout {
+            artifact "/[organisation]/[module]/releases/download/[revision]/dependencies.jar"
+        }
+        metadataSources {
+            artifact()
+        }
+    }
+}
+
+java {
+    targetCompatibility = JavaVersion.VERSION_17
+    sourceCompatibility = JavaVersion.VERSION_17
+}
+
+ext {
+    mindustryVersion = "v157.4"
+}
+
+dependencies {
+    compileOnly "Anuken:Mindustry:$mindustryVersion"
+}
+
+jar {
+    archiveFileName = "${project.name}.jar"
+
+    from {
+        configurations.runtimeClasspath.collect {
+            it.isDirectory() ? it : zipTree(it)
+        }
+    }
+
+    from(rootDir) {
+        include "plugin.json"
+    }
+}
