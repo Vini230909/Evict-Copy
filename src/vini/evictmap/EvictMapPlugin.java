@@ -55,7 +55,7 @@ public class EvictMapPlugin extends Plugin {
     private static final int LONG_ROW_COLS = 8;
     private static final int ROWS = 9;
 
-    private static final int OUTER_RADIUS = 38;
+    private static final int OUTER_RADIUS = 39;
 
     // Important: "75 tiles from center to center" was counted inclusively
     // in the editor. Tile coordinates differ by 74. Using 75 puts the
@@ -67,7 +67,11 @@ public class EvictMapPlugin extends Plugin {
     private static final int DIAGONAL_DX = 37;
     private static final int DIAGONAL_DY = 64;
 
-    private static final int PASSAGE_WIDTH = 5;
+    // Width of the open doorway cut across PASSAGE walls.
+    // This is independent from the wall thickness. The wall thickness itself
+    // is derived automatically from circle radius, core spacing and polygon.
+    private static final int PASSAGE_WIDTH = 7;
+
     private static final double THIN_WALL_HALF_WIDTH = 0.5;
     private static final int OUTER_BUFFER = 10;
 
@@ -75,25 +79,28 @@ public class EvictMapPlugin extends Plugin {
      * Mirrored inner guaranteed-floor polygon.
      *
      * Reference center: (739, 168)
-     * Supplied points:
-     * - middle left:          (706, 168) -> (-33,  0)
-     * - upper-left side:      (706, 187) -> (-33, 19)
-     * - upper-left top:       (736, 205) -> ( -3, 37)
-     * - middle top:           (739, 205) -> (  0, 37)
+     * Updated points:
+     * - middle left:          (-34,  0)
+     * - upper-left side:      (-34, 20)
+     * - upper-left top:       ( -4, 38)
+     * - middle top:           (  0, 38)
+     *
+     * These are the former polygon points shifted one tile farther
+     * away from the center on each applicable axis.
      */
     private static final Point[] INNER_POLYGON = new Point[]{
-        new Point(-33,   0),
-        new Point(-33,  19),
-        new Point( -3,  37),
-        new Point(  0,  37),
-        new Point(  3,  37),
-        new Point( 33,  19),
-        new Point( 33,   0),
-        new Point( 33, -19),
-        new Point(  3, -37),
-        new Point(  0, -37),
-        new Point( -3, -37),
-        new Point(-33, -19)
+        new Point(-34,   0),
+        new Point(-34,  20),
+        new Point( -4,  38),
+        new Point(  0,  38),
+        new Point(  4,  38),
+        new Point( 34,  20),
+        new Point( 34,   0),
+        new Point( 34, -20),
+        new Point(  4, -38),
+        new Point(  0, -38),
+        new Point( -4, -38),
+        new Point(-34, -20)
     };
 
     // ---------------------------------------------------------------------
@@ -138,7 +145,7 @@ public class EvictMapPlugin extends Plugin {
             }
         });
 
-        Log.info("[EvictMapGenerator] Loaded. Code revision 0.2.1. Use 'evictstatus' for commands and current settings.");
+        Log.info("[EvictMapGenerator] Loaded. Code revision 0.3.0. Use 'evictstatus' for commands and current settings.");
     }
 
     @Override
@@ -225,6 +232,18 @@ public class EvictMapPlugin extends Plugin {
                     LONG_ROW_COLS
                 );
                 Log.info("[EvictMapGenerator] required map size: at least @x@ tiles", minimumWorldWidth(), minimumWorldHeight());
+                Log.info(
+                    "[EvictMapGenerator] geometry: outerRadius=@, outerDiameter=@, horizontalCenterDistance=@ coordinates / @ tiles counted inclusively",
+                    OUTER_RADIUS,
+                    OUTER_RADIUS * 2 + 1,
+                    HORIZONTAL_DX,
+                    HORIZONTAL_DX + 1
+                );
+                Log.info(
+                    "[EvictMapGenerator] geometry: horizontal grey connection band derives to @ tiles, passage opening width=@",
+                    horizontalGreyBandWidth(),
+                    PASSAGE_WIDTH
+                );
                 Log.info("[EvictMapGenerator] edge weights: full=@%, thin=@%, open=@%, passage=@%",
                     percent(FULL_WEIGHT),
                     percent(THIN_WEIGHT),
@@ -1376,6 +1395,23 @@ public class EvictMapPlugin extends Plugin {
 
     private long randomSeed() {
         return new Random().nextLong();
+    }
+
+    private int horizontalGreyBandWidth() {
+        /**
+         * The horizontal variable zone is everything strictly between the
+         * guaranteed-floor polygons of two neighbouring cores.
+         *
+         * With the current values:
+         *   coordinate distance = 74
+         *   inner polygon reaches 34 tiles toward its neighbour on each side
+         *   grey band = 74 - 34 - 34 - 1 = 5 tiles
+         *
+         * The -1 accounts for inclusive tile coordinates.
+         */
+        return HORIZONTAL_DX - 2 * supportDistance(1.0, 0.0) < 1.0
+            ? 0
+            : (int)Math.round(HORIZONTAL_DX - 2 * supportDistance(1.0, 0.0) - 1.0);
     }
 
     private String percent(double value) {
