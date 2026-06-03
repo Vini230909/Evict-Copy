@@ -5,6 +5,7 @@ import arc.util.CommandHandler;
 import arc.util.Log;
 import mindustry.Vars;
 import mindustry.content.Blocks;
+import mindustry.game.EventType.PlayerJoin;
 import mindustry.game.EventType.WorldLoadEvent;
 import mindustry.game.Team;
 import mindustry.gen.Groups;
@@ -38,10 +39,14 @@ import java.util.Set;
  * - only the minimum number of edges is repaired if a seed would split the map
  * - four wall / connection templates
  * - first-test resource generator: ores, shallow water and tar/oil
+ * - Fallen team (#18) neutral cores
+ * - first-join personal team assignment with safe spawn spacing
+ * - reconnect to the same personal team during the current round
  *
  * Deliberately not included yet:
- * - separate teams for each core
- * - team assignment
+ * - starting items and starting schematic
+ * - core capture and elimination
+ * - automatic round reset
  * - final resource balancing
  */
 public class EvictMapPlugin extends Plugin {
@@ -138,6 +143,8 @@ public class EvictMapPlugin extends Plugin {
     private Long nextSeed = null;
     private Long lastSeed = null;
 
+    private final TeamManager teamManager = new TeamManager();
+
     @Override
     public void init() {
         Events.on(WorldLoadEvent.class, event -> {
@@ -155,7 +162,9 @@ public class EvictMapPlugin extends Plugin {
             }
         });
 
-        Log.info("[EvictMapGenerator] Loaded. Code revision 0.4.4. Use 'evictstatus' for commands and current settings.");
+        Events.on(PlayerJoin.class, event -> teamManager.handlePlayerJoin(event.player));
+
+        Log.info("[EvictMapGenerator] Loaded. Code revision 0.5.0. Use 'evictstatus' for commands and current settings.");
     }
 
     @Override
@@ -269,6 +278,12 @@ public class EvictMapPlugin extends Plugin {
                 );
             }
         );
+        handler.register(
+            "evictteamstatus",
+            "Show Fallen-team spawn assignment status for the current round.",
+            args -> teamManager.logStatus()
+        );
+
     }
 
     private void generate(long seed) {
@@ -319,16 +334,23 @@ public class EvictMapPlugin extends Plugin {
 
         placeNucleusCores(centers, normalCells);
 
+        teamManager.beginRound(
+            startHexSlots(centers, normalCells, filledCells),
+            seed
+        );
+        teamManager.assignConnectedPlayers();
+
         lastSeed = seed;
 
         Log.info(
-            "[EvictMapGenerator] Done. seed=@ normalHexes=@ filledHexes=@ nucleusCores=@ repairedConnectivityEdges=@ resources=@",
+            "[EvictMapGenerator] Done. seed=@ normalHexes=@ filledHexes=@ nucleusCores=@ repairedConnectivityEdges=@ resources=@ teams=@",
             seed,
             normalCells.size(),
             filledCells.size(),
             normalCells.size(),
             repairedConnectivityEdges.size(),
-            resourceSummary.compact()
+            resourceSummary.compact(),
+            teamManager.compactStatus()
         );
     }
 
@@ -920,11 +942,9 @@ public class EvictMapPlugin extends Plugin {
         List<Cell> normalCells
     ) {
         /**
-         * First core prototype:
-         * place one large Nucleus exactly in the middle of every normal hex.
-         *
-         * All of them temporarily use Team.sharded. Separate PvP teams and
-         * player assignment will be implemented later.
+         * Every unclaimed Nucleus starts as Fallen team #18.
+         * A first-time player later claims one safe random start hex and
+         * receives a unique personal team.
          */
         for (Cell cell : normalCells) {
             Point center = centers.get(cell);
@@ -937,8 +957,45 @@ public class EvictMapPlugin extends Plugin {
                 );
             }
 
-            tile.setBlock(Blocks.coreNucleus, Team.sharded);
+            tile.setBlock(Blocks.coreNucleus, TeamManager.FALLEN_TEAM);
         }
+    }
+
+    private List<TeamManager.HexSlot> startHexSlots(
+        Map<Cell, Point> centers,
+        List<Cell> normalCells,
+        Set<Cell> filledCells
+    ) {
+        List<TeamManager.HexSlot> slots = new ArrayList<>();
+
+        for (Cell cell : normalCells) {
+            Point center = centers.get(cell);
+            int protectedSides = protectedStartSides(cell, filledCells);
+
+            slots.add(
+                new TeamManager.HexSlot(
+                    cell.col,
+                    cell.row,
+                    center.x,
+                    center.y,
+                    protectedSides
+                )
+            );
+        }
+
+        return slots;
+    }
+
+    private int protectedStartSides(Cell cell, Set<Cell> filledCells) {
+        int protectedSides = 0;
+
+        for (Cell neighbour : neighbourSlots(cell)) {
+            if (!validCell(neighbour) || filledCells.contains(neighbour)) {
+                protectedSides++;
+            }
+        }
+
+        return protectedSides;
     }
 
     private Point rawGridCenter(List<Cell> cells) {
