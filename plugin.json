@@ -2,7 +2,7 @@
   "name": "EvictMapGenerator",
   "author": "Vini2309",
   "main": "vini.evictmap.EvictMapPlugin",
-  "description": "Server-side Evict-style hex generator with walls, centered Nucleus cores and a global coherent-noise resource generator.",
-  "version": "0.4.1",
+  "description": "Server-side Evict-style hex generator with walls, centered Nucleus cores and tuned global coherent-noise resources: rarer, larger patches.",
+  "version": "0.4.2",
   "minGameVersion": "157.4"
 }
