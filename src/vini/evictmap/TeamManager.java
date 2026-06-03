@@ -2,7 +2,6 @@ package vini.evictmap;
 
 import arc.util.Log;
 import mindustry.Vars;
-import mindustry.content.Blocks;
 import mindustry.game.Team;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
@@ -31,9 +30,11 @@ import java.util.Set;
  * - reconnecting during the same round returns to the same team
  * - if no safe start hex exists, the player remains playable in Fallen team
  *
+ * Implemented in the current phase:
+ * - exact one-time starting resources on personal-core claim
+ * - the Evict start schematic, anchored to the centered Nucleus
+ *
  * Not implemented yet:
- * - starting resources
- * - starting schematic
  * - captures, eliminations and round victory
  */
 final class TeamManager {
@@ -285,11 +286,14 @@ final class TeamManager {
         }
 
         /**
-         * Re-create the empty neutral Nucleus with the personal team.
-         * Starting resources and the starting schematic are intentionally
-         * added only in the next phase.
+         * The schematic includes its own centered Nucleus. StartLoadout
+         * anchors that Nucleus exactly onto the neutral core tile, places all
+         * buildings as the new personal team and fills the core once.
+         *
+         * Reconnects never reach this method, so the package cannot be claimed
+         * twice by the same player.
          */
-        tile.setNet(Blocks.coreNucleus, personalTeam, 0);
+        StartLoadout.place(slot.x, slot.y, personalTeam);
         slot.ownerTeamId = personalTeam.id;
     }
 

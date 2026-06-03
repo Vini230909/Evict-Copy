@@ -43,9 +43,9 @@ import java.util.Set;
  * - Fallen team (#18) neutral cores
  * - first-join personal team assignment with safe spawn spacing
  * - reconnect to the same personal team during the current round
+ * - one-time starting items and starting schematic on personal-core claim
  *
  * Deliberately not included yet:
- * - starting items and starting schematic
  * - core capture and elimination
  * - automatic round reset
  * - final resource balancing
@@ -179,7 +179,7 @@ public class EvictMapPlugin extends Plugin {
 
         Events.on(PlayerJoin.class, event -> teamManager.handlePlayerJoin(event.player));
 
-        Log.info("[EvictMapGenerator] Loaded. Code revision 0.5.2. Use 'evictstatus' for commands and current settings.");
+        Log.info("[EvictMapGenerator] Loaded. Code revision 0.6.0. Use 'evictstatus' for commands and current settings.");
     }
 
     @Override
@@ -395,6 +395,14 @@ public class EvictMapPlugin extends Plugin {
         Vars.state.rules.coreCapture = false;
 
         Vars.state.rules.defaultTeam = TeamManager.FALLEN_TEAM;
+
+        /**
+         * The server's normal logic.play() fills one core per active team from
+         * rules.loadout. Fallen owns every neutral core at round start, so that
+         * vanilla loadout must be disabled. Personal start resources are added
+         * exactly once by StartLoadout when a player claims a hex.
+         */
+        Vars.state.rules.loadout.clear();
 
         Log.info(
             "[EvictMapGenerator] Applied Evict rules: pvp=ON, pvpAutoPause=OFF, waves=OFF, vanillaGameOver=OFF, defaultTeam=Fallen #@.",
