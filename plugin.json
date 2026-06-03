@@ -2,7 +2,7 @@
   "name": "EvictMapGenerator",
   "author": "Vini2309",
   "main": "vini.evictmap.EvictMapPlugin",
-  "description": "Server-side Evict-style hex generator with hard-locked red wall zones, derived grey connection zones, centred Nucleus cores and controlled centre-biased filled hexes.",
-  "version": "0.3.2",
+  "description": "Server-side Evict-style hex generator with walls, centred Nucleus cores and a first-test resource generator for ores, shallow water and tar.",
+  "version": "0.4.0",
   "minGameVersion": "157.4"
 }
