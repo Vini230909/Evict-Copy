@@ -193,7 +193,7 @@ public class EvictMapPlugin extends Plugin {
         Events.on(PlayerJoin.class, event -> teamManager.handlePlayerJoin(event.player));
         Events.on(CoreChangeEvent.class, event -> teamManager.handleCoreChange(event.core));
 
-        Log.info("[EvictMapGenerator] Loaded. Code revision 0.7.1. Use 'evictstatus' for commands and current settings.");
+        Log.info("[EvictMapGenerator] Loaded. Code revision 0.7.2. Use 'evictstatus' for commands and current settings.");
     }
 
     @Override

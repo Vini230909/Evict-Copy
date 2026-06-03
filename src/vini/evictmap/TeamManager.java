@@ -40,7 +40,9 @@ import java.util.Set;
  * Implemented in the current phase:
  * - destroyed registered cores leave an empty hex center for seven seconds
  * - every synthetic building in the captured hex is removed
- * - the attacker receives a centered 3x3 Core Shard with an empty inventory
+ * - the attacker receives a centered 3x3 Core Shard without bonus items
+ * - existing attacker resources remain untouched because Mindustry cores
+ *   intentionally share one team inventory
  *
  * Not implemented yet:
  * - elimination announcements and round victory
@@ -454,10 +456,16 @@ final class TeamManager {
 
         centerTile.setNet(Blocks.coreShard, attackerTeam, 0);
 
-        if (centerTile.build instanceof CoreBuild capturedCore) {
-            capturedCore.items.clear();
-        }
-
+        /**
+         * Do not clear capturedCore.items here.
+         *
+         * Mindustry intentionally shares one ItemModule between every core of
+         * the same team. Clearing the new Core Shard would therefore erase the
+         * attacker's resources from all existing cores as well.
+         *
+         * A captured shard adds no bonus resources; it simply joins the
+         * attacker's already shared core inventory.
+         */
         slot.ownerTeamId = attackerTeam.id;
         slot.pendingCaptureTeamId = attackerTeam.id;
         slot.capturing = false;
