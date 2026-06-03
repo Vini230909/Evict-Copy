@@ -67,7 +67,7 @@ public class EvictMapPlugin extends Plugin {
     private static final int DIAGONAL_DX = 37;
     private static final int DIAGONAL_DY = 64;
 
-    private static final int PASSAGE_WIDTH = 7;
+    private static final int PASSAGE_WIDTH = 5;
     private static final double THIN_WALL_HALF_WIDTH = 0.5;
     private static final int OUTER_BUFFER = 10;
 
@@ -138,7 +138,7 @@ public class EvictMapPlugin extends Plugin {
             }
         });
 
-        Log.info("[EvictMapGenerator] Loaded. Code revision 0.2.0. Use 'evictstatus' for commands and current settings.");
+        Log.info("[EvictMapGenerator] Loaded. Code revision 0.2.1. Use 'evictstatus' for commands and current settings.");
     }
 
     @Override
