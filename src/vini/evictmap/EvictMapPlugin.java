@@ -5,6 +5,7 @@ import arc.util.CommandHandler;
 import arc.util.Log;
 import mindustry.Vars;
 import mindustry.content.Blocks;
+import mindustry.game.EventType.PlayEvent;
 import mindustry.game.EventType.PlayerJoin;
 import mindustry.game.EventType.WorldLoadEvent;
 import mindustry.game.Team;
@@ -162,9 +163,23 @@ public class EvictMapPlugin extends Plugin {
             }
         });
 
+        Events.on(PlayEvent.class, event -> {
+            if (!autoGenerate) {
+                return;
+            }
+
+            /**
+             * Dedicated-server hosting applies the selected map / gamemode
+             * rules again after WorldLoadEvent. Re-apply the Evict rules here,
+             * after that overwrite and before the first game-state check.
+             */
+            applyEvictRules();
+            Log.info("[EvictMapGenerator] Re-applied Evict rules after host-mode initialization.");
+        });
+
         Events.on(PlayerJoin.class, event -> teamManager.handlePlayerJoin(event.player));
 
-        Log.info("[EvictMapGenerator] Loaded. Code revision 0.5.1. Use 'evictstatus' for commands and current settings.");
+        Log.info("[EvictMapGenerator] Loaded. Code revision 0.5.2. Use 'evictstatus' for commands and current settings.");
     }
 
     @Override
