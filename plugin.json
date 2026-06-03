@@ -2,7 +2,7 @@
   "name": "EvictMapGenerator",
   "author": "Vini2309",
   "main": "vini.evictmap.EvictMapPlugin",
-  "description": "Server-side Evict-style PvP generator with always-running custom rules, Fallen-team neutral cores, safe personal team assignment, one-time start loadouts and a post-generation vanilla world-index rebuild.",
-  "version": "0.6.1",
+  "description": "Server-side Evict-style PvP generator with always-running custom rules, Fallen-team neutral cores, safe personal team assignment, one-time start loadouts, rebuilt world indexes and delayed Core Shard captures using the exact 40-tile capture cleanup radius.",
+  "version": "0.7.1",
   "minGameVersion": "157.4"
 }
