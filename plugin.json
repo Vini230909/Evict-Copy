@@ -3,6 +3,6 @@
   "author": "Vini2309",
   "main": "vini.evictmap.EvictMapPlugin",
   "description": "Server-side Evict-style hex terrain generator prototype with centered Nucleus cores.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "minGameVersion": "157.4"
 }
