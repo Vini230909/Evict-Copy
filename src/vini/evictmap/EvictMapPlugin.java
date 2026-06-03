@@ -116,6 +116,17 @@ public class EvictMapPlugin extends Plugin {
     private static final double FILLED_HEX_SECOND_RING_CHANCE = 0.035;
     private static final double FILLED_HEX_INNER_CHANCE = 0.010;
 
+    // Small extra chance near the map centre.
+    // It fades smoothly to zero before reaching the outer rows.
+    // Squared distance is used so no square root is needed.
+    private static final double CENTER_FILLED_HEX_BONUS = 0.08;
+    private static final int CENTER_BONUS_RADIUS = 180;
+    private static final int CENTER_BONUS_RADIUS_SQUARED =
+        CENTER_BONUS_RADIUS * CENTER_BONUS_RADIUS;
+
+    // Prevent unusually unlucky seeds from removing too many rooms.
+    private static final int MAX_FILLED_HEXES = 8;
+
     private static final double CHAIN_START_CHANCE = 0.22;
     private static final double CHAIN_CONTINUE_CHANCE = 0.48;
     private static final int CHAIN_MAX_LENGTH = 3;
@@ -145,7 +156,7 @@ public class EvictMapPlugin extends Plugin {
             }
         });
 
-        Log.info("[EvictMapGenerator] Loaded. Code revision 0.3.1. Use 'evictstatus' for commands and current settings.");
+        Log.info("[EvictMapGenerator] Loaded. Code revision 0.3.2. Use 'evictstatus' for commands and current settings.");
     }
 
     @Override
@@ -244,6 +255,12 @@ public class EvictMapPlugin extends Plugin {
                     horizontalGreyBandWidth(),
                     PASSAGE_WIDTH
                 );
+                Log.info(
+                    "[EvictMapGenerator] filled hexes: max=@, centre bonus up to @% within @ tiles",
+                    MAX_FILLED_HEXES,
+                    percent(CENTER_FILLED_HEX_BONUS),
+                    CENTER_BONUS_RADIUS
+                );
                 Log.info("[EvictMapGenerator] edge weights: full=@%, thin=@%, open=@%, passage=@%",
                     percent(FULL_WEIGHT),
                     percent(THIN_WEIGHT),
@@ -273,7 +290,7 @@ public class EvictMapPlugin extends Plugin {
         Random random = new Random(seed);
 
         List<Cell> cells = allCells();
-        Set<Cell> filledCells = chooseFilledCells(random, cells);
+        Set<Cell> filledCells = chooseFilledCells(random, cells, rawGridCenter(cells));
 
         List<Cell> normalCells = new ArrayList<>();
         for (Cell cell : cells) {
@@ -905,7 +922,41 @@ public class EvictMapPlugin extends Plugin {
         }
     }
 
-    private Set<Cell> chooseFilledCells(Random random, List<Cell> cells) {
+    private Point rawGridCenter(List<Cell> cells) {
+        int sumX = 0;
+        int sumY = 0;
+
+        for (Cell cell : cells) {
+            Point point = rawCenter(cell);
+            sumX += point.x;
+            sumY += point.y;
+        }
+
+        return new Point(sumX / cells.size(), sumY / cells.size());
+    }
+
+    private double centreFilledHexBonus(Cell cell, Point gridCenter) {
+        Point point = rawCenter(cell);
+
+        int deltaX = point.x - gridCenter.x;
+        int deltaY = point.y - gridCenter.y;
+        int distanceSquared = deltaX * deltaX + deltaY * deltaY;
+
+        if (distanceSquared >= CENTER_BONUS_RADIUS_SQUARED) {
+            return 0.0;
+        }
+
+        double centreFactor =
+            1.0 - distanceSquared / (double)CENTER_BONUS_RADIUS_SQUARED;
+
+        return CENTER_FILLED_HEX_BONUS * centreFactor;
+    }
+
+    private Set<Cell> chooseFilledCells(
+        Random random,
+        List<Cell> cells,
+        Point gridCenter
+    ) {
         Set<Cell> filled = new HashSet<>();
 
         List<Cell> candidates = new ArrayList<>(cells);
@@ -919,6 +970,8 @@ public class EvictMapPlugin extends Plugin {
                 : ring == 1
                     ? FILLED_HEX_SECOND_RING_CHANCE
                     : FILLED_HEX_INNER_CHANCE;
+
+            chance += centreFilledHexBonus(cell, gridCenter);
 
             if (random.nextDouble() < chance) {
                 tryAddFilledCell(filled, cell, cells);
@@ -981,6 +1034,10 @@ public class EvictMapPlugin extends Plugin {
     private boolean tryAddFilledCell(Set<Cell> filled, Cell candidate, List<Cell> cells) {
         if (filled.contains(candidate)) {
             return true;
+        }
+
+        if (filled.size() >= MAX_FILLED_HEXES) {
+            return false;
         }
 
         Set<Cell> proposed = new HashSet<>(filled);
