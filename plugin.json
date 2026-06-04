@@ -2,7 +2,7 @@
   "name": "EvictMapGenerator",
   "author": "Vini2309",
   "main": "vini.evictmap.EvictMapPlugin",
-  "description": "Server-side Evict-style PvP generator with custom always-running rules, Fallen-team neutral cores, safe personal starts, one-time loadouts, five-second Core Shard captures, elimination messages, guarded victory detection, automatic random-seed round resets, normal 1x unit-factory speed and automatic start-core assignment for players who stay connected between rounds.",
-  "version": "0.8.2",
+  "description": "Server-side Evict-style PvP generator with custom always-running rules, Fallen-team neutral cores, safe personal starts, one-time loadouts, five-second Core Shard captures, elimination messages, guarded victory detection, automatic random-seed round resets, normal 1x unit-factory speed and a bounded post-reload connected-player assignment scan.",
+  "version": "0.8.3",
   "minGameVersion": "157.4"
 }
