@@ -27,9 +27,9 @@ final class AttritionManager {
     private static final float RANGE_ATTRITION_INTERVAL_TICKS = 5f * 60f;
     private static final int CAPTURE_ATTRITION_RADIUS_TILES = 40;
 
-    private static final double TIER_1_TO_3_DEATH_CHANCE = 0.50;
-    private static final double TIER_4_DEATH_CHANCE = 0.25;
-    private static final double TIER_5_DEATH_CHANCE = 0.125;
+    private static final double TIER_1_TO_3_DEATH_CHANCE = 0.30;
+    private static final double TIER_4_DEATH_CHANCE = 0.20;
+    private static final double TIER_5_DEATH_CHANCE = 0.10;
 
     private static final Map<UnitType, Integer> VANILLA_TIERS =
         new IdentityHashMap<>();
