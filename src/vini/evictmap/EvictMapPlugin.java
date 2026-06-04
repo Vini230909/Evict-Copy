@@ -9,6 +9,7 @@ import mindustry.content.Blocks;
 import mindustry.game.EventType.CoreChangeEvent;
 import mindustry.game.EventType.GameOverEvent;
 import mindustry.game.EventType.PlayEvent;
+import mindustry.game.EventType.Trigger;
 import mindustry.game.EventType.PlayerJoin;
 import mindustry.game.EventType.WorldLoadEvent;
 import mindustry.game.Team;
@@ -55,6 +56,8 @@ import java.util.Set;
  * - custom victory detection
  * - automatic random-seed round reset through the dedicated server's
  *   normal post-game transition
+ * - capture and long-range unit attrition
+ * - /fullassault toggle for unattended combat units
  *
  * Deliberately not included yet:
  * - final resource balancing
@@ -175,6 +178,10 @@ public class EvictMapPlugin extends Plugin {
     private long connectedPlayerScanSerial = 0L;
 
     private final TeamManager teamManager = new TeamManager(this::handleRoundVictory);
+    private final AttritionManager attritionManager =
+        new AttritionManager(teamManager);
+    private final EvictCommands evictCommands =
+        new EvictCommands(teamManager);
 
     @Override
     public void init() {
@@ -218,9 +225,22 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Events.on(PlayerJoin.class, event -> teamManager.handlePlayerJoin(event.player));
-        Events.on(CoreChangeEvent.class, event -> teamManager.handleCoreChange(event.core));
+        Events.on(
+            CoreChangeEvent.class,
+            event -> teamManager.handleCoreChange(event.core, attritionManager)
+        );
 
-        Log.info("[EvictMapGenerator] Loaded. Code revision 0.8.3. Use 'evictstatus' for commands and current settings.");
+        Events.run(Trigger.update, () -> {
+            attritionManager.update();
+            evictCommands.update();
+        });
+
+        Log.info("[EvictMapGenerator] Loaded. Code revision 0.9.0. Use 'evictstatus' for commands and current settings.");
+    }
+
+    @Override
+    public void registerClientCommands(CommandHandler handler) {
+        evictCommands.registerClientCommands(handler);
     }
 
     @Override
@@ -398,6 +418,8 @@ public class EvictMapPlugin extends Plugin {
             startHexSlots(centers, normalCells, filledCells),
             seed
         );
+        attritionManager.beginRound();
+        evictCommands.beginRound();
         teamManager.assignConnectedPlayers();
 
         lastSeed = seed;

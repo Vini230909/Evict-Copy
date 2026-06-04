@@ -9,6 +9,7 @@ import mindustry.game.Team;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
+import mindustry.gen.Unit;
 import mindustry.world.Tile;
 import mindustry.world.blocks.storage.CoreBlock.CoreBuild;
 
@@ -46,7 +47,8 @@ import java.util.Set;
  * - existing attacker resources remain untouched because Mindustry cores
  *   intentionally share one team inventory
  * - personal-team elimination messages
- * - victory detection after all capture delays have finished
+ * - elimination and victory detection immediately after the successful
+ *   destruction, before the delayed replacement Core Shard appears
  * - Fallen can win only after at least one personal start core was assigned
  * - one guarded automatic random-seed round reset
  */
@@ -373,7 +375,10 @@ final class TeamManager {
         slot.ownerTeamId = personalTeam.id;
     }
 
-    void handleCoreChange(CoreBuild core) {
+    void handleCoreChange(
+        CoreBuild core,
+        AttritionManager attritionManager
+    ) {
         if (
             !roundActive
                 || resetting
@@ -417,7 +422,8 @@ final class TeamManager {
                 slot,
                 defenderTeam,
                 attackerTeam,
-                scheduledRoundSerial
+                scheduledRoundSerial,
+                attritionManager
             )
         );
     }
@@ -426,7 +432,8 @@ final class TeamManager {
         HexSlot slot,
         Team defenderTeam,
         Team attackerTeam,
-        long scheduledRoundSerial
+        long scheduledRoundSerial,
+        AttritionManager attritionManager
     ) {
         if (
             !roundActive
@@ -438,13 +445,41 @@ final class TeamManager {
         }
 
         int removedBuildings = clearSyntheticBuildingsInsideHex(slot);
+        int attritionDeaths =
+            attritionManager.applyCaptureAttrition(slot.x, slot.y);
 
         Log.info(
-            "[EvictMapGenerator] Cleared @ synthetic buildings from captured hex (@,@). Waiting 5 seconds for team #@ Core Shard.",
+            "[EvictMapGenerator] Cleared @ synthetic buildings and removed @ units through capture attrition from hex (@,@).",
             removedBuildings,
+            attritionDeaths,
             slot.col,
-            slot.row,
-            attackerTeam.id
+            slot.row
+        );
+
+        /**
+         * Ownership changes logically as soon as the old core is destroyed.
+         * The replacement Core Shard remains delayed for visual/gameplay
+         * parity, but elimination and victory messages must not wait five
+         * seconds for that replacement block.
+         */
+        if (attackerTeam != defenderTeam) {
+            announceEliminationIfNeeded(defenderTeam, attackerTeam);
+        }
+
+        checkVictory();
+
+        if (!roundActive || resetting) {
+            Log.info(
+                "[EvictMapGenerator] Final capture resolved the round before replacement Core Shard placement."
+            );
+            return;
+        }
+
+        Log.info(
+            "[EvictMapGenerator] Waiting 5 seconds for team #@ Core Shard at captured hex (@,@).",
+            attackerTeam.id,
+            slot.col,
+            slot.row
         );
 
         Time.run(
@@ -518,11 +553,6 @@ final class TeamManager {
             attackerTeam.id
         );
 
-        if (attackerTeam != defenderTeam) {
-            announceEliminationIfNeeded(defenderTeam, attackerTeam);
-        }
-
-        checkVictory();
     }
 
     private void announceEliminationIfNeeded(
@@ -576,20 +606,14 @@ final class TeamManager {
         }
 
         /**
-         * Do not finish a round while another captured core is still waiting
-         * for its Core Shard. This guarantees that the final visible capture
-         * completes before the normal post-game transition begins.
+         * Pending captures count as ownership immediately. The delayed Core
+         * Shard is only the visible replacement block, not the moment at which
+         * the round result is decided.
          */
-        for (HexSlot slot : slots) {
-            if (slot.capturing) {
-                return;
-            }
-        }
-
-        int winnerTeamId = slots.get(0).ownerTeamId;
+        int winnerTeamId = effectiveOwnerTeamId(slots.get(0));
 
         for (HexSlot slot : slots) {
-            if (slot.ownerTeamId != winnerTeamId) {
+            if (effectiveOwnerTeamId(slot) != winnerTeamId) {
                 return;
             }
         }
@@ -704,6 +728,89 @@ final class TeamManager {
 
     private int effectiveOwnerTeamId(HexSlot slot) {
         return slot.capturing ? slot.pendingCaptureTeamId : slot.ownerTeamId;
+    }
+
+    boolean isRoundActiveForSystems() {
+        return roundActive && !resetting;
+    }
+
+    /**
+     * A unit is protected from recurring range attrition while it remains in
+     * an owned core hex or one directly neighbouring hex. Entering a hex two
+     * graph steps away is the first point at which recurring attrition applies.
+     */
+    boolean isWithinOneHexOfOwnedCore(Unit unit) {
+        if (unit == null || slots.isEmpty()) {
+            return false;
+        }
+
+        HexSlot unitHex = closestHexSlot(unit.tileX(), unit.tileY());
+
+        if (unitHex == null) {
+            return false;
+        }
+
+        for (HexSlot coreHex : slots) {
+            if (
+                effectiveOwnerTeamId(coreHex) == unit.team.id
+                    && gridDistance(unitHex, coreHex) <= 1
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * /fullassault targets the globally closest currently existing enemy core
+     * for each eligible unit. Pending captures are deliberately skipped until
+     * their delayed Core Shard actually exists.
+     */
+    CoreBuild closestEnemyCore(Unit unit) {
+        if (unit == null) {
+            return null;
+        }
+
+        CoreBuild closest = null;
+        float closestDistanceSquared = Float.POSITIVE_INFINITY;
+
+        for (HexSlot slot : slots) {
+            Tile tile = Vars.world.tile(slot.x, slot.y);
+
+            if (
+                tile == null
+                    || !(tile.build instanceof CoreBuild core)
+                    || core.team == unit.team
+            ) {
+                continue;
+            }
+
+            float distanceSquared = unit.dst2(core);
+
+            if (distanceSquared < closestDistanceSquared) {
+                closest = core;
+                closestDistanceSquared = distanceSquared;
+            }
+        }
+
+        return closest;
+    }
+
+    private HexSlot closestHexSlot(int tileX, int tileY) {
+        HexSlot closest = null;
+        long closestDistanceSquared = Long.MAX_VALUE;
+
+        for (HexSlot slot : slots) {
+            long distanceSquared = squaredDistance(tileX, tileY, slot);
+
+            if (distanceSquared < closestDistanceSquared) {
+                closest = slot;
+                closestDistanceSquared = distanceSquared;
+            }
+        }
+
+        return closest;
     }
 
     private void assignPlayerToTeam(Player player, Team team) {
