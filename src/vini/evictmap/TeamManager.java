@@ -139,11 +139,23 @@ final class TeamManager {
     }
 
     void assignConnectedPlayers() {
-        if (!roundActive) {
+        if (!roundActive || resetting) {
             return;
         }
 
-        Groups.player.each(this::handlePlayerJoin);
+        /**
+         * This method may run both during generation and one tick after
+         * PlayEvent. Only process players not yet registered in this round so
+         * an already assigned player is never spawned or messaged twice.
+         */
+        Groups.player.each(player -> {
+            if (
+                player != null
+                    && !teamIdByPlayerUuid.containsKey(player.uuid())
+            ) {
+                handlePlayerJoin(player);
+            }
+        });
     }
 
     void handlePlayerJoin(Player player) {

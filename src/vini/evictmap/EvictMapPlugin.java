@@ -3,6 +3,7 @@ package vini.evictmap;
 import arc.Events;
 import arc.util.CommandHandler;
 import arc.util.Log;
+import arc.util.Time;
 import mindustry.Vars;
 import mindustry.content.Blocks;
 import mindustry.game.EventType.CoreChangeEvent;
@@ -191,13 +192,24 @@ public class EvictMapPlugin extends Plugin {
              * after that overwrite and before the first game-state check.
              */
             applyEvictRules();
+
+            /**
+             * During an automatic post-game map reload, connected players are
+             * temporarily absent while WorldLoadEvent generates the new map.
+             * They become available again once PlayEvent finishes.
+             *
+             * Re-check one tick later so players who stayed connected receive
+             * a fresh start core for the new round without having to reconnect.
+             */
+            Time.run(1f, teamManager::assignConnectedPlayers);
+
             Log.info("[EvictMapGenerator] Re-applied Evict rules after host-mode initialization.");
         });
 
         Events.on(PlayerJoin.class, event -> teamManager.handlePlayerJoin(event.player));
         Events.on(CoreChangeEvent.class, event -> teamManager.handleCoreChange(event.core));
 
-        Log.info("[EvictMapGenerator] Loaded. Code revision 0.8.1. Use 'evictstatus' for commands and current settings.");
+        Log.info("[EvictMapGenerator] Loaded. Code revision 0.8.2. Use 'evictstatus' for commands and current settings.");
     }
 
     @Override
