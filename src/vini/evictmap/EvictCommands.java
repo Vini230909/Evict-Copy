@@ -36,6 +36,7 @@ final class EvictCommands {
 
     private final TeamManager teamManager;
     private final AttritionManager attritionManager;
+    private final EvictSettings settings;
     private final Set<Integer> fullAssaultTeamIds = new HashSet<>();
 
     private float fullAssaultRefreshTimer = 0f;
@@ -43,10 +44,12 @@ final class EvictCommands {
 
     EvictCommands(
         TeamManager teamManager,
-        AttritionManager attritionManager
+        AttritionManager attritionManager,
+        EvictSettings settings
     ) {
         this.teamManager = teamManager;
         this.attritionManager = attritionManager;
+        this.settings = settings;
     }
 
     void registerClientCommands(CommandHandler handler) {
@@ -67,6 +70,13 @@ final class EvictCommands {
             "[t1-3] [t4] [t5]",
             "Admin only: show or set attrition percentages, e.g. /attrition 40 18 9.",
             (args, player) -> configureAttrition(args, player)
+        );
+
+        handler.<Player>register(
+            "wall",
+            "[full-wall] [small-wall] [open] [passage]",
+            "Admin only: show or set persistent wall-template percentages, e.g. /wall 25 20 15 40.",
+            (args, player) -> configureWalls(args, player)
         );
 
         handler.<Player>register(
@@ -224,6 +234,50 @@ final class EvictCommands {
             );
         } catch (NumberFormatException exception) {
             player.sendMessage("[scarlet]Attrition values must be numbers.[]");
+        } catch (IllegalArgumentException exception) {
+            player.sendMessage("[scarlet]" + exception.getMessage() + "[]");
+        }
+    }
+
+    private void configureWalls(String[] args, Player player) {
+        if (!requireAdmin(player)) {
+            return;
+        }
+
+        if (args.length == 0) {
+            player.sendMessage(
+                "[accent]Walls: []" + settings.compactWallSettings()
+            );
+            return;
+        }
+
+        if (args.length != 4) {
+            player.sendMessage(
+                "[scarlet]Use: /wall <full-wall> <small-wall> <open> <passage>[]"
+            );
+            return;
+        }
+
+        try {
+            double fullWall = Double.parseDouble(args[0]);
+            double smallWall = Double.parseDouble(args[1]);
+            double open = Double.parseDouble(args[2]);
+            double passage = Double.parseDouble(args[3]);
+
+            settings.setWallPercentages(
+                fullWall,
+                smallWall,
+                open,
+                passage
+            );
+
+            player.sendMessage(
+                "[green]Wall settings saved: []"
+                    + settings.compactWallSettings()
+                    + "[green]. Applies to the next generated map.[]"
+            );
+        } catch (NumberFormatException exception) {
+            player.sendMessage("[scarlet]Wall values must be numbers.[]");
         } catch (IllegalArgumentException exception) {
             player.sendMessage("[scarlet]" + exception.getMessage() + "[]");
         }

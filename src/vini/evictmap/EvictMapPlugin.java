@@ -124,11 +124,6 @@ public class EvictMapPlugin extends Plugin {
     // Adjustable probabilities
     // ---------------------------------------------------------------------
 
-    private static final double FULL_WEIGHT = 0.25;
-    private static final double THIN_WEIGHT = 0.25;
-    private static final double OPEN_WEIGHT = 0.25;
-    private static final double PASSAGE_WEIGHT = 0.25;
-
     private static final double FILLED_HEX_BORDER_CHANCE = 0.11;
     private static final double FILLED_HEX_SECOND_RING_CHANCE = 0.035;
     private static final double FILLED_HEX_INNER_CHANCE = 0.010;
@@ -177,14 +172,17 @@ public class EvictMapPlugin extends Plugin {
 
     private long connectedPlayerScanSerial = 0L;
 
+    private final EvictSettings settings = new EvictSettings();
     private final TeamManager teamManager = new TeamManager(this::handleRoundVictory);
     private final AttritionManager attritionManager =
-        new AttritionManager(teamManager);
+        new AttritionManager(teamManager, settings);
     private final EvictCommands evictCommands =
-        new EvictCommands(teamManager, attritionManager);
+        new EvictCommands(teamManager, attritionManager, settings);
 
     @Override
     public void init() {
+        settings.load();
+
         Events.on(WorldLoadEvent.class, event -> {
             if (!autoGenerate || refreshingWorldIndexes) {
                 return;
@@ -235,7 +233,7 @@ public class EvictMapPlugin extends Plugin {
             evictCommands.update();
         });
 
-        Log.info("[EvictMapGenerator] Loaded. Code revision 0.9.2. Use 'evictstatus' for commands and current settings.");
+        Log.info("[EvictMapGenerator] Loaded. Code revision 0.9.3. Use 'evictstatus' for commands and current settings.");
     }
 
     @Override
@@ -346,11 +344,9 @@ public class EvictMapPlugin extends Plugin {
                     CENTER_BONUS_RADIUS
                 );
                 Log.info("[EvictMapGenerator] resources: @", ResourceGenerator.presetDescription());
-                Log.info("[EvictMapGenerator] edge weights: full=@%, thin=@%, open=@%, passage=@%",
-                    percent(FULL_WEIGHT),
-                    percent(THIN_WEIGHT),
-                    percent(OPEN_WEIGHT),
-                    percent(PASSAGE_WEIGHT)
+                Log.info(
+                    "[EvictMapGenerator] edge weights: @",
+                    settings.compactWallSettings()
                 );
             }
         );
@@ -1501,25 +1497,40 @@ public class EvictMapPlugin extends Plugin {
     }
 
     private EdgeType chooseTraversableEdgeType(Random random) {
-        return random.nextBoolean() ? EdgeType.OPEN : EdgeType.PASSAGE;
+        double open = settings.openChance();
+        double passage = settings.passageChance();
+        double total = open + passage;
+
+        /**
+         * Connectivity repair always needs a traversable edge. If both
+         * traversable weights were intentionally configured to zero, use a
+         * passage as the least-open repair fallback.
+         */
+        if (total <= 0d) {
+            return EdgeType.PASSAGE;
+        }
+
+        return random.nextDouble() * total < open
+            ? EdgeType.OPEN
+            : EdgeType.PASSAGE;
     }
 
     private EdgeType chooseEdgeType(Random random) {
         double value = random.nextDouble();
 
-        if (value < FULL_WEIGHT) {
+        if (value < settings.fullWallChance()) {
             return EdgeType.FULL;
         }
 
-        value -= FULL_WEIGHT;
+        value -= settings.fullWallChance();
 
-        if (value < THIN_WEIGHT) {
+        if (value < settings.smallWallChance()) {
             return EdgeType.THIN;
         }
 
-        value -= THIN_WEIGHT;
+        value -= settings.smallWallChance();
 
-        if (value < OPEN_WEIGHT) {
+        if (value < settings.openChance()) {
             return EdgeType.OPEN;
         }
 
