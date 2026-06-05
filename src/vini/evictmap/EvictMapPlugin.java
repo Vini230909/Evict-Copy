@@ -181,6 +181,8 @@ public class EvictMapPlugin extends Plugin {
         new EvictCommands(teamManager, attritionManager, settings);
     private final InviteManager inviteManager =
         new InviteManager(teamManager);
+    private final RoundEndCommands roundEndCommands =
+        new RoundEndCommands(teamManager);
 
     @Override
     public void init() {
@@ -238,13 +240,14 @@ public class EvictMapPlugin extends Plugin {
             evictCommands.update();
         });
 
-        Log.info("[EvictMapGenerator] Loaded. Code revision 0.10.0. Use 'evictstatus' for commands and current settings.");
+        Log.info("[EvictMapGenerator] Loaded. Code revision 0.10.1. Use 'evictstatus' for commands and current settings.");
     }
 
     @Override
     public void registerClientCommands(CommandHandler handler) {
         evictCommands.registerClientCommands(handler);
         inviteManager.registerClientCommands(handler);
+        roundEndCommands.registerClientCommands(handler);
     }
 
     @Override
@@ -495,6 +498,7 @@ public class EvictMapPlugin extends Plugin {
         attritionManager.beginRound();
         evictCommands.beginRound();
         inviteManager.beginRound();
+        roundEndCommands.beginRound();
         teamManager.assignConnectedPlayers();
 
         lastSeed = seed;

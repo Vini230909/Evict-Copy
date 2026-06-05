@@ -99,6 +99,8 @@ final class TeamManager {
     private final Map<String, Integer> claimTeamIdByPlayerUuid = new HashMap<>();
     private final Map<Integer, Map<Integer, Integer>>
         capturesByDefenderTeamId = new HashMap<>();
+    private final Map<Integer, Integer> maximumOwnedHexesByTeamId =
+        new HashMap<>();
     private final Set<Integer> usedPersonalTeamIds = new HashSet<>();
     private final Set<Integer> eliminatedTeamIds = new HashSet<>();
 
@@ -109,6 +111,7 @@ final class TeamManager {
     private boolean roundActive = false;
     private boolean roundActivated = false;
     private boolean resetting = false;
+    private boolean suppressCoreChangeEvents = false;
     private long roundSerial = 0L;
 
     TeamManager(Cons<Team> victoryHandler) {
@@ -129,6 +132,7 @@ final class TeamManager {
         personalTeamCreationOrder.clear();
         claimTeamIdByPlayerUuid.clear();
         capturesByDefenderTeamId.clear();
+        maximumOwnedHexesByTeamId.clear();
         usedPersonalTeamIds.clear();
         eliminatedTeamIds.clear();
 
@@ -401,6 +405,7 @@ final class TeamManager {
          */
         StartLoadout.place(slot.x, slot.y, personalTeam);
         slot.ownerTeamId = personalTeam.id;
+        updateMaximumOwnedHexes(personalTeam.id);
     }
 
     void handleCoreChange(
@@ -410,6 +415,7 @@ final class TeamManager {
         if (
             !roundActive
                 || resetting
+                || suppressCoreChangeEvents
                 || core == null
                 || core.health > 0f
                 || core.tile == null
@@ -428,6 +434,10 @@ final class TeamManager {
 
         slot.capturing = true;
         slot.pendingCaptureTeamId = attackerTeam.id;
+
+        if (attackerTeam != defenderTeam) {
+            updateMaximumOwnedHexes(attackerTeam.id);
+        }
 
         long scheduledRoundSerial = roundSerial;
 
@@ -715,10 +725,22 @@ final class TeamManager {
         Team defenderTeam,
         Team claimantTeam
     ) {
+        return moveTeamPlayersToFallen(
+            defenderTeam,
+            claimantTeam,
+            "[scarlet]Your team was eliminated. You are now Fallen.[]"
+        );
+    }
+
+    private List<String> moveTeamPlayersToFallen(
+        Team previousTeam,
+        Team claimantTeam,
+        String playerMessage
+    ) {
         List<String> affectedUuids = new ArrayList<>();
 
         for (Map.Entry<String, Integer> entry : teamIdByPlayerUuid.entrySet()) {
-            if (entry.getValue() != defenderTeam.id) {
+            if (entry.getValue() != previousTeam.id) {
                 continue;
             }
 
@@ -736,7 +758,7 @@ final class TeamManager {
 
             if (player != null) {
                 assignPlayerToTeam(player, FALLEN_TEAM);
-                player.sendMessage("[scarlet]Your team was eliminated. You are now Fallen.[]");
+                player.sendMessage(playerMessage);
 
                 if (claimantTeam != null) {
                     player.sendMessage(
@@ -780,6 +802,224 @@ final class TeamManager {
         }
 
         return false;
+    }
+
+    private int countOwnedHexes(int teamId) {
+        int count = 0;
+
+        for (HexSlot slot : slots) {
+            if (effectiveOwnerTeamId(slot) == teamId) {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private void updateMaximumOwnedHexes(int teamId) {
+        if (teamId == FALLEN_TEAM_ID || teamId == Team.derelict.id) {
+            return;
+        }
+
+        int current = countOwnedHexes(teamId);
+
+        maximumOwnedHexesByTeamId.put(
+            teamId,
+            Math.max(
+                current,
+                maximumOwnedHexesByTeamId.getOrDefault(teamId, 0)
+            )
+        );
+    }
+
+    boolean surrenderTeam(Team team) {
+        if (
+            !roundActive
+                || resetting
+                || team == null
+                || team == FALLEN_TEAM
+                || team == Team.derelict
+                || !isActivePersonalTeam(team.id)
+        ) {
+            return false;
+        }
+
+        String surrenderName = displayTeam(team);
+
+        /**
+         * Logical ownership changes before building destruction so CoreChange
+         * events triggered by the surrender cannot create captures.
+         */
+        for (HexSlot slot : slots) {
+            if (effectiveOwnerTeamId(slot) == team.id) {
+                slot.ownerTeamId = FALLEN_TEAM_ID;
+                slot.pendingCaptureTeamId = FALLEN_TEAM_ID;
+                slot.capturing = false;
+            }
+        }
+
+        clearSurrenderedTeamAssets(team);
+        eliminatedTeamIds.add(team.id);
+
+        List<String> surrenderedPlayerUuids =
+            moveTeamPlayersToFallen(
+                team,
+                null,
+                "[scarlet]Your team surrendered. You are now Fallen.[]"
+            );
+
+        /**
+         * Surrender has no conqueror. Existing claims held by this team become
+         * free Fallen spectators rather than transferring to another team.
+         */
+        transferExistingClaims(team, null);
+
+        if (inviteManager != null) {
+            inviteManager.handleTeamEliminated(
+                team,
+                null,
+                surrenderedPlayerUuids
+            );
+        }
+
+        Call.sendMessage(
+            "[scarlet]"
+                + surrenderName
+                + "[] has surrendered."
+        );
+
+        Log.info(
+            "[EvictMapGenerator] Surrender: @ gave up. Buildings and units removed.",
+            surrenderName
+        );
+
+        checkVictory();
+        return true;
+    }
+
+    private void clearSurrenderedTeamAssets(Team team) {
+        List<Tile> buildingTiles = new ArrayList<>();
+        List<Unit> unitsToKill = new ArrayList<>();
+
+        for (Tile tile : Vars.world.tiles) {
+            if (
+                tile != null
+                    && tile.build != null
+                    && tile.isCenter()
+                    && tile.build.team == team
+            ) {
+                buildingTiles.add(tile);
+            }
+        }
+
+        Groups.unit.each(unit -> {
+            if (unit != null && unit.team == team) {
+                unitsToKill.add(unit);
+            }
+        });
+
+        suppressCoreChangeEvents = true;
+
+        try {
+            for (Tile tile : buildingTiles) {
+                if (
+                    tile.build != null
+                        && tile.isCenter()
+                        && tile.build.team == team
+                ) {
+                    tile.build.kill();
+                }
+            }
+
+            for (Unit unit : unitsToKill) {
+                if (unit.isAdded()) {
+                    unit.kill();
+                }
+            }
+        } finally {
+            suppressCoreChangeEvents = false;
+        }
+    }
+
+    EarlyEndStatus earlyEndStatus(Team candidate) {
+        if (
+            candidate == null
+                || candidate == FALLEN_TEAM
+                || candidate == Team.derelict
+                || !isActivePersonalTeam(candidate.id)
+                || slots.isEmpty()
+        ) {
+            return new EarlyEndStatus(false, 0, 0, List.of());
+        }
+
+        int owned = countOwnedHexes(candidate.id);
+        int requiredForHalf = (slots.size() + 1) / 2;
+        int additionalNeeded = Math.max(0, requiredForHalf - owned);
+        List<EarlyEndBlocker> blockers = new ArrayList<>();
+
+        /**
+         * A one-core team is ignored only when it never expanded beyond its
+         * original starting core. A previously established enemy must be
+         * eliminated completely, even if it has already been reduced back to
+         * one remaining core.
+         */
+        for (int teamId : personalTeamCreationOrder) {
+            if (
+                teamId == candidate.id
+                    || !isActivePersonalTeam(teamId)
+            ) {
+                continue;
+            }
+
+            int remainingCores = countOwnedHexes(teamId);
+            int maximumCores =
+                maximumOwnedHexesByTeamId.getOrDefault(teamId, remainingCores);
+
+            if (maximumCores > 1) {
+                blockers.add(
+                    new EarlyEndBlocker(
+                        Team.get(teamId),
+                        remainingCores
+                    )
+                );
+            }
+        }
+
+        return new EarlyEndStatus(
+            additionalNeeded == 0 && blockers.isEmpty(),
+            owned,
+            additionalNeeded,
+            blockers
+        );
+    }
+
+    boolean endRoundEarly(Team winner) {
+        EarlyEndStatus status = earlyEndStatus(winner);
+
+        if (!roundActive || resetting || !status.eligible()) {
+            return false;
+        }
+
+        resetting = true;
+        roundActive = false;
+
+        Call.sendMessage(
+            "[accent]"
+                + displayTeam(winner)
+                + "'s team[] ended the round early after securing at least "
+                + "50% of all cores with no remaining established enemy team "
+                + "to conquer."
+        );
+
+        Log.info(
+            "[EvictMapGenerator] Early round end: @ owns @/@ cores and has no remaining established enemy team to conquer.",
+            displayTeam(winner),
+            status.ownedCores(),
+            slots.size()
+        );
+
+        victoryHandler.get(winner);
+        return true;
     }
 
     private void checkVictory() {
@@ -1195,6 +1435,20 @@ final class TeamManager {
 
     private int colsForRow(int row) {
         return row % 2 == 0 ? SHORT_ROW_COLS : LONG_ROW_COLS;
+    }
+
+    record EarlyEndStatus(
+        boolean eligible,
+        int ownedCores,
+        int additionalCoresNeededForHalf,
+        List<EarlyEndBlocker> blockers
+    ) {
+    }
+
+    record EarlyEndBlocker(
+        Team team,
+        int remainingCores
+    ) {
     }
 
     static final class HexSlot {
