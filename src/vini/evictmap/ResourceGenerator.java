@@ -73,23 +73,54 @@ final class ResourceGenerator {
      * - small tilts make some fields slightly stretched instead of circular
      */
     /**
-     * Strict ore-only editor-preset test.
+     * Ore settings are loaded from persistent server configuration.
      *
-     * Order intentionally matches the provided editor screenshot:
-     * copper, lead, coal, titanium, thorium, scrap.
-     *
-     * Ores use the five visible editor parameters exactly. Warp strength and
-     * richness strength are disabled for this test so hidden custom modifiers
-     * do not distort the comparison. Water and tar presets remain unchanged.
+     * Tilt, coordinate warp and richness modifiers stay disabled for the
+     * editor-style comparison workflow. Water and tar presets remain fixed.
      */
-    private static final NoisePreset[] ORE_PRESETS = new NoisePreset[]{
-        new NoisePreset(Blocks.oreCopper,   101, 22.45f, 0.81f, 3.10f, 0.13f, 0.0f, 0.0f, 125.0f, 0.0f),
-        new NoisePreset(Blocks.oreLead,     211, 22.45f, 0.81f, 3.10f, 0.30f, 0.0f, 0.0f, 120.0f, 0.0f),
-        new NoisePreset(Blocks.oreCoal,     307, 24.95f, 0.84f, 1.71f, 0.30f, 0.0f, 0.0f, 110.0f, 0.0f),
-        new NoisePreset(Blocks.oreTitanium, 401, 24.95f, 0.86f, 1.98f, 0.12f, 0.0f, 0.0f, 105.0f, 0.0f),
-        new NoisePreset(Blocks.oreThorium,  503, 24.95f, 0.88f, 2.20f, 0.22f, 0.0f, 0.0f, 105.0f, 0.0f),
-        new NoisePreset(Blocks.oreScrap,    353, 19.96f, 0.85f, 2.34f, 0.20f, 0.0f, 0.0f, 110.0f, 0.0f)
-    };
+    private static NoisePreset[] createOrePresets(EvictSettings settings) {
+        EvictSettings.OreSettings copper =
+            settings.ore(EvictSettings.OreKind.COPPER);
+        EvictSettings.OreSettings lead =
+            settings.ore(EvictSettings.OreKind.LEAD);
+        EvictSettings.OreSettings coal =
+            settings.ore(EvictSettings.OreKind.COAL);
+        EvictSettings.OreSettings titanium =
+            settings.ore(EvictSettings.OreKind.TITANIUM);
+        EvictSettings.OreSettings thorium =
+            settings.ore(EvictSettings.OreKind.THORIUM);
+        EvictSettings.OreSettings scrap =
+            settings.ore(EvictSettings.OreKind.SCRAP);
+
+        return new NoisePreset[]{
+            orePreset(Blocks.oreCopper, 101, copper, 125.0f),
+            orePreset(Blocks.oreLead, 211, lead, 120.0f),
+            orePreset(Blocks.oreCoal, 307, coal, 110.0f),
+            orePreset(Blocks.oreTitanium, 401, titanium, 105.0f),
+            orePreset(Blocks.oreThorium, 503, thorium, 105.0f),
+            orePreset(Blocks.oreScrap, 353, scrap, 110.0f)
+        };
+    }
+
+    private static NoisePreset orePreset(
+        Block block,
+        int seedOffset,
+        EvictSettings.OreSettings settings,
+        float richnessScale
+    ) {
+        return new NoisePreset(
+            block,
+            seedOffset,
+            (float)settings.scale(),
+            (float)settings.threshold(),
+            (float)settings.octaves(),
+            (float)settings.falloff(),
+            0.0f,
+            0.0f,
+            richnessScale,
+            0.0f
+        );
+    }
 
     private static final NoisePreset WATER_PRESET =
         new NoisePreset(Blocks.darksandWater, 701, 24.0f, 0.885f, 2f, 0.38f, 0.10f, 5.0f, 115.0f, 0.032f);
@@ -128,10 +159,15 @@ final class ResourceGenerator {
     private ResourceGenerator() {
     }
 
-    static Summary generate(long mapSeed, List<HexCenter> centers) {
+    static Summary generate(
+        long mapSeed,
+        List<HexCenter> centers,
+        EvictSettings settings
+    ) {
         int seed = foldSeed(mapSeed ^ RESOURCE_SEED_XOR);
         Random correctionRandom = new Random(mapSeed ^ 0x464149522d455649L);
         CorrectionCounter corrections = new CorrectionCounter();
+        NoisePreset[] orePresets = createOrePresets(settings);
 
         // Floors first: tar does not overwrite water.
         generateFloorNoise(seed, centers, WATER_PRESET);
@@ -139,17 +175,25 @@ final class ResourceGenerator {
         generateFloorNoise(seed, centers, TAR_PRESET);
 
         // Ores afterward. Later presets may naturally overwrite earlier ones.
-        for (NoisePreset preset : ORE_PRESETS) {
+        for (NoisePreset preset : orePresets) {
             generateOreNoise(seed, centers, preset);
         }
 
-        ensureEveryHexHasEveryOre(seed, correctionRandom, centers, corrections);
+        ensureEveryHexHasEveryOre(
+            seed,
+            correctionRandom,
+            centers,
+            corrections,
+            orePresets
+        );
 
         return summarizeWorld(corrections);
     }
 
-    static String presetDescription() {
-        return "strict editor-style ore preset test + unchanged liquid presets + tiny per-hex fairness repairs";
+    static String presetDescription(EvictSettings settings) {
+        return "persistent editor-style ores: "
+            + settings.compactOreSettings()
+            + " + unchanged liquid presets + tiny per-hex fairness repairs";
     }
 
     // ---------------------------------------------------------------------
@@ -337,10 +381,11 @@ final class ResourceGenerator {
         int seed,
         Random random,
         List<HexCenter> centers,
-        CorrectionCounter corrections
+        CorrectionCounter corrections,
+        NoisePreset[] orePresets
     ) {
         for (HexCenter center : centers) {
-            for (NoisePreset preset : ORE_PRESETS) {
+            for (NoisePreset preset : orePresets) {
                 int existingTiles = countOreTiles(center, preset.block);
 
                 if (existingTiles >= MIN_ORE_TILES_PER_HEX) {

@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.EnumMap;
 import java.util.Properties;
 
 /**
@@ -15,6 +16,43 @@ import java.util.Properties;
  * closes, full Java restarts and normal plugin updates.
  */
 final class EvictSettings {
+
+    enum OreKind {
+        COPPER("copper", 29.94d, 0.82d, 3.10d, 0.13d),
+        LEAD("lead", 27.44d, 0.83d, 3.10d, 0.16d),
+        COAL("coal", 24.95d, 0.83d, 1.71d, 0.20d),
+        TITANIUM("titanium", 27.44d, 0.86d, 1.98d, 0.12d),
+        THORIUM("thorium", 29.94d, 0.88d, 2.20d, 0.14d),
+        SCRAP("scrap", 24.95d, 0.83d, 2.34d, 0.17d);
+
+        final String key;
+        final double defaultScale;
+        final double defaultThreshold;
+        final double defaultOctaves;
+        final double defaultFalloff;
+
+        OreKind(
+            String key,
+            double defaultScale,
+            double defaultThreshold,
+            double defaultOctaves,
+            double defaultFalloff
+        ) {
+            this.key = key;
+            this.defaultScale = defaultScale;
+            this.defaultThreshold = defaultThreshold;
+            this.defaultOctaves = defaultOctaves;
+            this.defaultFalloff = defaultFalloff;
+        }
+    }
+
+    record OreSettings(
+        double scale,
+        double threshold,
+        double octaves,
+        double falloff
+    ) {
+    }
 
     private static final File SETTINGS_FILE =
         new File("config/evict-map-generator.properties");
@@ -27,6 +65,23 @@ final class EvictSettings {
     private double smallWallPercent = 25d;
     private double openPercent = 25d;
     private double passagePercent = 25d;
+
+    private final EnumMap<OreKind, OreSettings> oreSettings =
+        new EnumMap<>(OreKind.class);
+
+    EvictSettings() {
+        for (OreKind kind : OreKind.values()) {
+            oreSettings.put(
+                kind,
+                new OreSettings(
+                    kind.defaultScale,
+                    kind.defaultThreshold,
+                    kind.defaultOctaves,
+                    kind.defaultFalloff
+                )
+            );
+        }
+    }
 
     void load() {
         if (!SETTINGS_FILE.exists()) {
@@ -84,10 +139,42 @@ final class EvictSettings {
                 )
             );
 
+            for (OreKind kind : OreKind.values()) {
+                OreSettings current = ore(kind);
+
+                setOreSettingsWithoutSaving(
+                    kind,
+                    readDouble(
+                        properties,
+                        oreProperty(kind, "scale"),
+                        current.scale()
+                    ),
+                    readDouble(
+                        properties,
+                        oreProperty(kind, "threshold"),
+                        current.threshold()
+                    ),
+                    readDouble(
+                        properties,
+                        oreProperty(kind, "octaves"),
+                        current.octaves()
+                    ),
+                    readDouble(
+                        properties,
+                        oreProperty(kind, "falloff"),
+                        current.falloff()
+                    )
+                );
+            }
+
+            // Backfill newly introduced properties after plugin upgrades.
+            save();
+
             Log.info(
-                "[EvictMapGenerator] Loaded persistent settings: attrition=@; walls=@",
+                "[EvictMapGenerator] Loaded persistent settings: attrition=@; walls=@; ores=@",
                 compactAttritionSettings(),
-                compactWallSettings()
+                compactWallSettings(),
+                compactOreSettings()
             );
         } catch (Exception exception) {
             Log.err(
@@ -119,6 +206,27 @@ final class EvictSettings {
             passage
         );
         save();
+    }
+
+    void setOreSettings(
+        OreKind kind,
+        double scale,
+        double threshold,
+        double octaves,
+        double falloff
+    ) {
+        setOreSettingsWithoutSaving(
+            kind,
+            scale,
+            threshold,
+            octaves,
+            falloff
+        );
+        save();
+    }
+
+    OreSettings ore(OreKind kind) {
+        return oreSettings.get(kind);
     }
 
     double attritionTier1To3Chance() {
@@ -162,6 +270,31 @@ final class EvictSettings {
             + "%, passage=" + formatPercent(passagePercent) + "%";
     }
 
+    String compactOreSettings() {
+        StringBuilder result = new StringBuilder();
+
+        for (OreKind kind : OreKind.values()) {
+            if (result.length() > 0) {
+                result.append("; ");
+            }
+
+            result.append(compactOreSettings(kind));
+        }
+
+        return result.toString();
+    }
+
+    String compactOreSettings(OreKind kind) {
+        OreSettings ore = ore(kind);
+
+        return kind.key
+            + "(scale=" + formatNumber(ore.scale())
+            + ", threshold=" + formatNumber(ore.threshold())
+            + ", octaves=" + formatNumber(ore.octaves())
+            + ", falloff=" + formatNumber(ore.falloff())
+            + ")";
+    }
+
     private void setAttritionPercentagesWithoutSaving(
         double tier1To3,
         double tier4,
@@ -198,6 +331,60 @@ final class EvictSettings {
         smallWallPercent = smallWall;
         openPercent = open;
         passagePercent = passage;
+    }
+
+    private void setOreSettingsWithoutSaving(
+        OreKind kind,
+        double scale,
+        double threshold,
+        double octaves,
+        double falloff
+    ) {
+        if (kind == null) {
+            throw new IllegalArgumentException("Ore kind is required.");
+        }
+
+        scale = validatePositiveFinite(kind.key + " scale", scale);
+        threshold = validateRange(kind.key + " threshold", threshold, 0d, 1d);
+        octaves = validatePositiveFinite(kind.key + " octaves", octaves);
+        falloff = validateRange(kind.key + " falloff", falloff, 0d, 1d);
+
+        oreSettings.put(
+            kind,
+            new OreSettings(scale, threshold, octaves, falloff)
+        );
+    }
+
+    private double validatePositiveFinite(String name, double value) {
+        if (
+            Double.isNaN(value)
+                || Double.isInfinite(value)
+                || value <= 0d
+        ) {
+            throw new IllegalArgumentException(name + " must be greater than 0.");
+        }
+
+        return value;
+    }
+
+    private double validateRange(
+        String name,
+        double value,
+        double minimum,
+        double maximum
+    ) {
+        if (
+            Double.isNaN(value)
+                || Double.isInfinite(value)
+                || value < minimum
+                || value > maximum
+        ) {
+            throw new IllegalArgumentException(
+                name + " must be between " + minimum + " and " + maximum + "."
+            );
+        }
+
+        return value;
     }
 
     private double validatePercentage(String name, double value) {
@@ -270,6 +457,27 @@ final class EvictSettings {
             Double.toString(passagePercent)
         );
 
+        for (OreKind kind : OreKind.values()) {
+            OreSettings ore = ore(kind);
+
+            properties.setProperty(
+                oreProperty(kind, "scale"),
+                Double.toString(ore.scale())
+            );
+            properties.setProperty(
+                oreProperty(kind, "threshold"),
+                Double.toString(ore.threshold())
+            );
+            properties.setProperty(
+                oreProperty(kind, "octaves"),
+                Double.toString(ore.octaves())
+            );
+            properties.setProperty(
+                oreProperty(kind, "falloff"),
+                Double.toString(ore.falloff())
+            );
+        }
+
         try (FileOutputStream output = new FileOutputStream(SETTINGS_FILE)) {
             properties.store(output, "EvictMapGenerator persistent settings");
         } catch (IOException exception) {
@@ -280,7 +488,15 @@ final class EvictSettings {
         }
     }
 
+    private String oreProperty(OreKind kind, String field) {
+        return "ore." + kind.key + "." + field;
+    }
+
     private String formatPercent(double value) {
+        return formatNumber(value);
+    }
+
+    private String formatNumber(double value) {
         if (Math.rint(value) == value) {
             return Long.toString(Math.round(value));
         }

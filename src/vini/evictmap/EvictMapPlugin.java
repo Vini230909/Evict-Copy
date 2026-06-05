@@ -233,7 +233,7 @@ public class EvictMapPlugin extends Plugin {
             evictCommands.update();
         });
 
-        Log.info("[EvictMapGenerator] Loaded. Code revision 0.9.4. Use 'evictstatus' for commands and current settings.");
+        Log.info("[EvictMapGenerator] Loaded. Code revision 0.9.5. Use 'evictstatus' for commands and current settings.");
     }
 
     @Override
@@ -343,7 +343,10 @@ public class EvictMapPlugin extends Plugin {
                     percent(CENTER_FILLED_HEX_BONUS),
                     CENTER_BONUS_RADIUS
                 );
-                Log.info("[EvictMapGenerator] resources: @", ResourceGenerator.presetDescription());
+                Log.info(
+                    "[EvictMapGenerator] resources: @",
+                    ResourceGenerator.presetDescription(settings)
+                );
                 Log.info(
                     "[EvictMapGenerator] edge weights: @",
                     settings.compactWallSettings()
@@ -356,6 +359,71 @@ public class EvictMapPlugin extends Plugin {
             args -> teamManager.logStatus()
         );
 
+        registerOrePresetCommand(handler, "evictcopper", EvictSettings.OreKind.COPPER);
+        registerOrePresetCommand(handler, "evictlead", EvictSettings.OreKind.LEAD);
+        registerOrePresetCommand(handler, "evictcoal", EvictSettings.OreKind.COAL);
+        registerOrePresetCommand(handler, "evicttitanium", EvictSettings.OreKind.TITANIUM);
+        registerOrePresetCommand(handler, "evictthorium", EvictSettings.OreKind.THORIUM);
+        registerOrePresetCommand(handler, "evictscrap", EvictSettings.OreKind.SCRAP);
+
+        handler.register(
+            "evictorestatus",
+            "Show persistent ore settings used for the next generated match.",
+            args -> Log.info(
+                "[EvictMapGenerator] ores: @",
+                settings.compactOreSettings()
+            )
+        );
+    }
+
+    private void registerOrePresetCommand(
+        CommandHandler handler,
+        String command,
+        EvictSettings.OreKind oreKind
+    ) {
+        handler.register(
+            command,
+            "[scale] [threshold] [octaves] [falloff]",
+            "Show or persist editor-style ore noise settings for the next generated match.",
+            args -> {
+                if (args.length == 0) {
+                    Log.info(
+                        "[EvictMapGenerator] @: @",
+                        command,
+                        settings.compactOreSettings(oreKind)
+                    );
+                    return;
+                }
+
+                if (args.length != 4) {
+                    Log.err(
+                        "[EvictMapGenerator] Use: @ <scale> <threshold> <octaves> <falloff>",
+                        command
+                    );
+                    return;
+                }
+
+                try {
+                    settings.setOreSettings(
+                        oreKind,
+                        Double.parseDouble(args[0]),
+                        Double.parseDouble(args[1]),
+                        Double.parseDouble(args[2]),
+                        Double.parseDouble(args[3])
+                    );
+
+                    Log.info(
+                        "[EvictMapGenerator] Saved @. Applies to the next generated match: @",
+                        command,
+                        settings.compactOreSettings(oreKind)
+                    );
+                } catch (NumberFormatException exception) {
+                    Log.err("[EvictMapGenerator] Ore settings must be numbers.");
+                } catch (IllegalArgumentException exception) {
+                    Log.err("[EvictMapGenerator] @", exception.getMessage());
+                }
+            }
+        );
     }
 
     private void generate(long seed) {
@@ -404,7 +472,11 @@ public class EvictMapPlugin extends Plugin {
         applyTerrainToWorld(walls);
 
         ResourceGenerator.Summary resourceSummary =
-            ResourceGenerator.generate(seed, resourceCenters(centers, normalCells));
+            ResourceGenerator.generate(
+                seed,
+                resourceCenters(centers, normalCells),
+                settings
+            );
 
         placeNucleusCores(centers, normalCells);
 
