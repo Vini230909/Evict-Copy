@@ -27,9 +27,9 @@ final class AttritionManager {
     private static final float RANGE_ATTRITION_INTERVAL_TICKS = 5f * 60f;
     private static final int CAPTURE_ATTRITION_RADIUS_TILES = 40;
 
-    private static final double TIER_1_TO_3_DEATH_CHANCE = 0.30;
-    private static final double TIER_4_DEATH_CHANCE = 0.20;
-    private static final double TIER_5_DEATH_CHANCE = 0.10;
+    private double tier1To3DeathChance = 0.40;
+    private double tier4DeathChance = 0.18;
+    private double tier5DeathChance = 0.09;
 
     private static final Map<UnitType, Integer> VANILLA_TIERS =
         new IdentityHashMap<>();
@@ -193,16 +193,52 @@ final class AttritionManager {
         }
     }
 
-    private static double deathChance(UnitType type) {
+    void setDeathChancesPercent(
+        double tier1To3Percent,
+        double tier4Percent,
+        double tier5Percent
+    ) {
+        tier1To3DeathChance = validatePercent(tier1To3Percent) / 100d;
+        tier4DeathChance = validatePercent(tier4Percent) / 100d;
+        tier5DeathChance = validatePercent(tier5Percent) / 100d;
+    }
+
+    String compactSettings() {
+        return "T1-T3=" + formatPercent(tier1To3DeathChance)
+            + "%, T4=" + formatPercent(tier4DeathChance)
+            + "%, T5=" + formatPercent(tier5DeathChance) + "%";
+    }
+
+    private double deathChance(UnitType type) {
         ensureTierMap();
 
         int tier = VANILLA_TIERS.getOrDefault(type, 1);
 
         return switch (tier) {
-            case 4 -> TIER_4_DEATH_CHANCE;
-            case 5 -> TIER_5_DEATH_CHANCE;
-            default -> TIER_1_TO_3_DEATH_CHANCE;
+            case 4 -> tier4DeathChance;
+            case 5 -> tier5DeathChance;
+            default -> tier1To3DeathChance;
         };
+    }
+
+    private double validatePercent(double value) {
+        if (Double.isNaN(value) || value < 0d || value > 100d) {
+            throw new IllegalArgumentException(
+                "Attrition percentages must be between 0 and 100."
+            );
+        }
+
+        return value;
+    }
+
+    private String formatPercent(double chance) {
+        double percent = chance * 100d;
+
+        if (Math.rint(percent) == percent) {
+            return Long.toString(Math.round(percent));
+        }
+
+        return Double.toString(percent);
     }
 
     @FunctionalInterface

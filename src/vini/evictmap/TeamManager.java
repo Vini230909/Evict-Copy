@@ -627,10 +627,30 @@ final class TeamManager {
             return;
         }
 
-        Team winner = Team.get(winnerTeamId);
+        finishRound(Team.get(winnerTeamId), false);
+    }
 
+    boolean forceEnd(Team winner) {
+        if (
+            !roundActive
+                || resetting
+                || winner == null
+                || winner == Team.derelict
+        ) {
+            return false;
+        }
+
+        finishRound(winner, true);
+        return true;
+    }
+
+    private void finishRound(Team winner, boolean forced) {
         resetting = true;
         roundActive = false;
+
+        if (forced) {
+            Call.sendMessage("[scarlet]The round was force-ended by an admin.[]");
+        }
 
         Call.sendMessage(
             "[accent]"
@@ -639,8 +659,9 @@ final class TeamManager {
         );
 
         Log.info(
-            "[EvictMapGenerator] Victory: @ owns every hex. Starting guarded post-game reset.",
-            displayTeam(winner)
+            "[EvictMapGenerator] Victory: @ won the round@ Starting guarded post-game reset.",
+            displayTeam(winner),
+            forced ? " through /forceend." : "."
         );
 
         victoryHandler.get(winner);

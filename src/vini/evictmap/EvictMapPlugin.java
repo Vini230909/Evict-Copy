@@ -181,7 +181,7 @@ public class EvictMapPlugin extends Plugin {
     private final AttritionManager attritionManager =
         new AttritionManager(teamManager);
     private final EvictCommands evictCommands =
-        new EvictCommands(teamManager);
+        new EvictCommands(teamManager, attritionManager);
 
     @Override
     public void init() {
@@ -235,7 +235,7 @@ public class EvictMapPlugin extends Plugin {
             evictCommands.update();
         });
 
-        Log.info("[EvictMapGenerator] Loaded. Code revision 0.9.1. Use 'evictstatus' for commands and current settings.");
+        Log.info("[EvictMapGenerator] Loaded. Code revision 0.9.2. Use 'evictstatus' for commands and current settings.");
     }
 
     @Override
@@ -547,6 +547,13 @@ public class EvictMapPlugin extends Plugin {
          * after host-mode initialization.
          */
         Vars.state.rules.unitBuildSpeedMultiplier = 1f;
+
+        /**
+         * Unit-cap bonuses are intentionally core-based in Evict. This also
+         * keeps the admin /corecap tuning command aligned with vanilla cap
+         * calculation.
+         */
+        Vars.state.rules.unitCapVariable = true;
 
         Vars.state.rules.canGameOver = false;
         Vars.state.rules.cleanupDeadTeams = false;
