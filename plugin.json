@@ -2,7 +2,7 @@
   "name": "EvictMapGenerator",
   "author": "Vini2309",
   "main": "vini.evictmap.EvictMapPlugin",
-  "description": "Server-side Evict-style Mindustry PvP plugin with procedural hex maps, captures, claims, split persistent attrition and Extinction, including an admin-only /extinction command for an immediate early event.",
-  "version": "1.2.1",
+  "description": "Server-side Evict-style Mindustry PvP plugin with procedural hex maps, captures, claims, split persistent attrition and Extinction. Fixes CaptureManager round-state checks after the refactor.",
+  "version": "1.2.2",
   "minGameVersion": "157.4"
 }
