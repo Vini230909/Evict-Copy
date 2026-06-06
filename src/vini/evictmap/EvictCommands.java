@@ -66,10 +66,17 @@ final class EvictCommands {
         );
 
         handler.<Player>register(
-            "attrition",
+            "attritioncore",
             "[t1-3] [t4] [t5]",
-            "Admin only: show or set attrition percentages, e.g. /attrition 40 18 9.",
-            (args, player) -> configureAttrition(args, player)
+            "Admin only: show or set capture attrition percentages, e.g. /attritioncore 40 18 9.",
+            (args, player) -> configureCoreAttrition(args, player)
+        );
+
+        handler.<Player>register(
+            "attritionrange",
+            "[percent]",
+            "Admin only: show or set the flat range attrition percentage, e.g. /attritionrange 20.",
+            (args, player) -> configureRangeAttrition(args, player)
         );
 
         handler.<Player>register(
@@ -200,20 +207,23 @@ final class EvictCommands {
         }
     }
 
-    private void configureAttrition(String[] args, Player player) {
+    private void configureCoreAttrition(String[] args, Player player) {
         if (!requireAdmin(player)) {
             return;
         }
 
         if (args.length == 0) {
             player.sendMessage(
-                "[accent]Attrition: []" + attritionManager.compactSettings()
+                "[accent]Core attrition: []"
+                    + attritionManager.compactCoreSettings()
             );
             return;
         }
 
         if (args.length != 3) {
-            player.sendMessage("[scarlet]Use: /attrition <t1-3> <t4> <t5>[]");
+            player.sendMessage(
+                "[scarlet]Use: /attritioncore <t1-3> <t4> <t5>[]"
+            );
             return;
         }
 
@@ -222,18 +232,58 @@ final class EvictCommands {
             double tier4 = Double.parseDouble(args[1]);
             double tier5 = Double.parseDouble(args[2]);
 
-            attritionManager.setDeathChancesPercent(
+            attritionManager.setCoreDeathChancesPercent(
                 tier1To3,
                 tier4,
                 tier5
             );
 
             player.sendMessage(
-                "[green]Attrition updated: []"
-                    + attritionManager.compactSettings()
+                "[green]Core attrition saved: []"
+                    + attritionManager.compactCoreSettings()
             );
         } catch (NumberFormatException exception) {
-            player.sendMessage("[scarlet]Attrition values must be numbers.[]");
+            player.sendMessage(
+                "[scarlet]Core attrition values must be numbers.[]"
+            );
+        } catch (IllegalArgumentException exception) {
+            player.sendMessage("[scarlet]" + exception.getMessage() + "[]");
+        }
+    }
+
+    private void configureRangeAttrition(String[] args, Player player) {
+        if (!requireAdmin(player)) {
+            return;
+        }
+
+        if (args.length == 0) {
+            player.sendMessage(
+                "[accent]Range attrition: []"
+                    + attritionManager.compactRangeSettings()
+            );
+            return;
+        }
+
+        if (args.length != 1) {
+            player.sendMessage(
+                "[scarlet]Use: /attritionrange <percent>[]"
+            );
+            return;
+        }
+
+        try {
+            attritionManager.setRangeDeathChancePercent(
+                Double.parseDouble(args[0])
+            );
+
+            player.sendMessage(
+                "[green]Range attrition saved: []"
+                    + attritionManager.compactRangeSettings()
+            );
+        } catch (NumberFormatException exception) {
+            player.sendMessage(
+                "[scarlet]Range attrition value must be a number.[]"
+            );
         } catch (IllegalArgumentException exception) {
             player.sendMessage("[scarlet]" + exception.getMessage() + "[]");
         }

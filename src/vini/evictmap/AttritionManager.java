@@ -16,10 +16,10 @@ import java.util.Map;
 /**
  * Evict unit attrition:
  *
- * - Every captured core applies a one-time attrition roll to every normal unit
- *   inside the 40-tile capture radius, regardless of team.
+ * - Every captured core applies a one-time tier-based core-attrition roll to
+ *   every normal unit inside the 40-tile capture radius, regardless of team.
  * - Every five seconds, units at least two graph hexes away from the nearest
- *   owned core hex receive the same attrition roll.
+ *   owned core hex receive one flat range-attrition roll, regardless of tier.
  * - Player/core units spawned by a core are always immune.
  */
 final class AttritionManager {
@@ -150,24 +150,29 @@ final class AttritionManager {
         float radius = CAPTURE_ATTRITION_RADIUS_TILES * Vars.tilesize;
 
         return killMatching(
-            unit -> unit.within(centerX, centerY, radius)
+            unit -> unit.within(centerX, centerY, radius),
+            unit -> coreDeathChance(unit.type)
         );
     }
 
     private int applyRangeAttrition() {
         return killMatching(
-            unit -> !teamManager.isWithinOneHexOfOwnedCore(unit)
+            unit -> !teamManager.isWithinOneHexOfOwnedCore(unit),
+            unit -> settings.rangeAttritionChance()
         );
     }
 
-    private int killMatching(UnitFilter filter) {
+    private int killMatching(
+        UnitFilter filter,
+        ChanceProvider chanceProvider
+    ) {
         Seq<Unit> toKill = new Seq<>();
 
         Groups.unit.each(unit -> {
             if (
                 !eligibleForAttrition(unit)
                     || !filter.accept(unit)
-                    || !Mathf.chance(deathChance(unit.type))
+                    || !Mathf.chance(chanceProvider.chance(unit))
             ) {
                 return;
             }
@@ -195,36 +200,49 @@ final class AttritionManager {
         }
     }
 
-    void setDeathChancesPercent(
+    void setCoreDeathChancesPercent(
         double tier1To3Percent,
         double tier4Percent,
         double tier5Percent
     ) {
-        settings.setAttritionPercentages(
+        settings.setCoreAttritionPercentages(
             tier1To3Percent,
             tier4Percent,
             tier5Percent
         );
     }
 
-    String compactSettings() {
-        return settings.compactAttritionSettings();
+    void setRangeDeathChancePercent(double percent) {
+        settings.setRangeAttritionPercent(percent);
     }
 
-    private double deathChance(UnitType type) {
+    String compactCoreSettings() {
+        return settings.compactCoreAttritionSettings();
+    }
+
+    String compactRangeSettings() {
+        return settings.compactRangeAttritionSettings();
+    }
+
+    private double coreDeathChance(UnitType type) {
         ensureTierMap();
 
         int tier = VANILLA_TIERS.getOrDefault(type, 1);
 
         return switch (tier) {
-            case 4 -> settings.attritionTier4Chance();
-            case 5 -> settings.attritionTier5Chance();
-            default -> settings.attritionTier1To3Chance();
+            case 4 -> settings.coreAttritionTier4Chance();
+            case 5 -> settings.coreAttritionTier5Chance();
+            default -> settings.coreAttritionTier1To3Chance();
         };
     }
 
     @FunctionalInterface
     private interface UnitFilter {
         boolean accept(Unit unit);
+    }
+
+    @FunctionalInterface
+    private interface ChanceProvider {
+        double chance(Unit unit);
     }
 }

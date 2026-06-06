@@ -57,9 +57,14 @@ final class EvictSettings {
     private static final File SETTINGS_FILE =
         new File("config/evict-map-generator.properties");
 
-    private double attritionTier1To3Percent = 40d;
-    private double attritionTier4Percent = 18d;
-    private double attritionTier5Percent = 9d;
+    /**
+     * Capture attrition keeps the tier-based percentages.
+     * Range attrition is intentionally one flat percentage for every unit.
+     */
+    private double coreAttritionTier1To3Percent = 40d;
+    private double coreAttritionTier4Percent = 18d;
+    private double coreAttritionTier5Percent = 9d;
+    private double rangeAttritionPercent = 20d;
 
     private double fullWallPercent = 25d;
     private double smallWallPercent = 25d;
@@ -98,21 +103,41 @@ final class EvictSettings {
         try (FileInputStream input = new FileInputStream(SETTINGS_FILE)) {
             properties.load(input);
 
-            setAttritionPercentagesWithoutSaving(
+            setCoreAttritionPercentagesWithoutSaving(
                 readDouble(
                     properties,
-                    "attrition.tier1To3Percent",
-                    attritionTier1To3Percent
+                    "attrition.core.tier1To3Percent",
+                    readDouble(
+                        properties,
+                        "attrition.tier1To3Percent",
+                        coreAttritionTier1To3Percent
+                    )
                 ),
                 readDouble(
                     properties,
-                    "attrition.tier4Percent",
-                    attritionTier4Percent
+                    "attrition.core.tier4Percent",
+                    readDouble(
+                        properties,
+                        "attrition.tier4Percent",
+                        coreAttritionTier4Percent
+                    )
                 ),
                 readDouble(
                     properties,
-                    "attrition.tier5Percent",
-                    attritionTier5Percent
+                    "attrition.core.tier5Percent",
+                    readDouble(
+                        properties,
+                        "attrition.tier5Percent",
+                        coreAttritionTier5Percent
+                    )
+                )
+            );
+
+            setRangeAttritionPercentWithoutSaving(
+                readDouble(
+                    properties,
+                    "attrition.range.percent",
+                    rangeAttritionPercent
                 )
             );
 
@@ -171,8 +196,9 @@ final class EvictSettings {
             save();
 
             Log.info(
-                "[EvictMapGenerator] Loaded persistent settings: attrition=@; walls=@; ores=@",
-                compactAttritionSettings(),
+                "[EvictMapGenerator] Loaded persistent settings: coreAttrition=@; rangeAttrition=@; walls=@; ores=@",
+                compactCoreAttritionSettings(),
+                compactRangeAttritionSettings(),
                 compactWallSettings(),
                 compactOreSettings()
             );
@@ -184,12 +210,17 @@ final class EvictSettings {
         }
     }
 
-    void setAttritionPercentages(
+    void setCoreAttritionPercentages(
         double tier1To3,
         double tier4,
         double tier5
     ) {
-        setAttritionPercentagesWithoutSaving(tier1To3, tier4, tier5);
+        setCoreAttritionPercentagesWithoutSaving(tier1To3, tier4, tier5);
+        save();
+    }
+
+    void setRangeAttritionPercent(double percent) {
+        setRangeAttritionPercentWithoutSaving(percent);
         save();
     }
 
@@ -229,16 +260,20 @@ final class EvictSettings {
         return oreSettings.get(kind);
     }
 
-    double attritionTier1To3Chance() {
-        return attritionTier1To3Percent / 100d;
+    double coreAttritionTier1To3Chance() {
+        return coreAttritionTier1To3Percent / 100d;
     }
 
-    double attritionTier4Chance() {
-        return attritionTier4Percent / 100d;
+    double coreAttritionTier4Chance() {
+        return coreAttritionTier4Percent / 100d;
     }
 
-    double attritionTier5Chance() {
-        return attritionTier5Percent / 100d;
+    double coreAttritionTier5Chance() {
+        return coreAttritionTier5Percent / 100d;
+    }
+
+    double rangeAttritionChance() {
+        return rangeAttritionPercent / 100d;
     }
 
     double fullWallChance() {
@@ -257,10 +292,14 @@ final class EvictSettings {
         return passagePercent / 100d;
     }
 
-    String compactAttritionSettings() {
-        return "T1-T3=" + formatPercent(attritionTier1To3Percent)
-            + "%, T4=" + formatPercent(attritionTier4Percent)
-            + "%, T5=" + formatPercent(attritionTier5Percent) + "%";
+    String compactCoreAttritionSettings() {
+        return "T1-T3=" + formatPercent(coreAttritionTier1To3Percent)
+            + "%, T4=" + formatPercent(coreAttritionTier4Percent)
+            + "%, T5=" + formatPercent(coreAttritionTier5Percent) + "%";
+    }
+
+    String compactRangeAttritionSettings() {
+        return formatPercent(rangeAttritionPercent) + "%";
     }
 
     String compactWallSettings() {
@@ -295,17 +334,22 @@ final class EvictSettings {
             + ")";
     }
 
-    private void setAttritionPercentagesWithoutSaving(
+    private void setCoreAttritionPercentagesWithoutSaving(
         double tier1To3,
         double tier4,
         double tier5
     ) {
-        attritionTier1To3Percent =
-            validatePercentage("T1-T3 attrition", tier1To3);
-        attritionTier4Percent =
-            validatePercentage("T4 attrition", tier4);
-        attritionTier5Percent =
-            validatePercentage("T5 attrition", tier5);
+        coreAttritionTier1To3Percent =
+            validatePercentage("T1-T3 core attrition", tier1To3);
+        coreAttritionTier4Percent =
+            validatePercentage("T4 core attrition", tier4);
+        coreAttritionTier5Percent =
+            validatePercentage("T5 core attrition", tier5);
+    }
+
+    private void setRangeAttritionPercentWithoutSaving(double percent) {
+        rangeAttritionPercent =
+            validatePercentage("Range attrition", percent);
     }
 
     private void setWallPercentagesWithoutSaving(
@@ -429,16 +473,20 @@ final class EvictSettings {
 
         Properties properties = new Properties();
         properties.setProperty(
-            "attrition.tier1To3Percent",
-            Double.toString(attritionTier1To3Percent)
+            "attrition.core.tier1To3Percent",
+            Double.toString(coreAttritionTier1To3Percent)
         );
         properties.setProperty(
-            "attrition.tier4Percent",
-            Double.toString(attritionTier4Percent)
+            "attrition.core.tier4Percent",
+            Double.toString(coreAttritionTier4Percent)
         );
         properties.setProperty(
-            "attrition.tier5Percent",
-            Double.toString(attritionTier5Percent)
+            "attrition.core.tier5Percent",
+            Double.toString(coreAttritionTier5Percent)
+        );
+        properties.setProperty(
+            "attrition.range.percent",
+            Double.toString(rangeAttritionPercent)
         );
         properties.setProperty(
             "wall.fullPercent",
