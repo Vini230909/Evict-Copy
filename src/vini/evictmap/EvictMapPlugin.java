@@ -161,7 +161,6 @@ public class EvictMapPlugin extends Plugin {
         attritionManager.beginRound();
         evictCommands.beginRound();
         inviteManager.beginRound();
-        roundEndCommands.beginRound();
         teamManager.assignConnectedPlayers();
 
         runtime.lastSeed = seed;
