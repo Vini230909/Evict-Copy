@@ -34,7 +34,6 @@ import java.util.Set;
 
 /**
  * First functional Evict-style map generator prototype.
- *
  * Current scope:
  * - Dark Sand floor
  * - Dirt Wall terrain
@@ -49,20 +48,18 @@ import java.util.Set;
  * - first-join personal team assignment with safe spawn spacing
  * - reconnect to the same personal team during the current round
  * - one-time starting items and starting schematic on personal-core claim
- *
  * - delayed Core Shard capture after a core is destroyed
  * - captured-hex building wipe before the new Core Shard appears
- *
  * - elimination announcements
  * - custom victory detection
  * - automatic random-seed round reset through the dedicated server's
  *   normal post-game transition
  * - capture and long-range unit attrition
  * - /fullassault toggle for unattended combat units
- *
  * Deliberately not included yet:
  * - final resource balancing
  */
+@SuppressWarnings("unused")
 public class EvictMapPlugin extends Plugin {
 
     // ---------------------------------------------------------------------
@@ -86,7 +83,7 @@ public class EvictMapPlugin extends Plugin {
     private static final int DIAGONAL_DY = 64;
 
     // Width of the open doorway cut across PASSAGE walls.
-    // This is independent from the wall thickness. The wall thickness itself
+    // This is independent of the wall thickness. The wall thickness itself
     // is derived automatically from circle radius, core spacing and polygon.
     private static final int PASSAGE_WIDTH = 7;
 
@@ -95,14 +92,12 @@ public class EvictMapPlugin extends Plugin {
 
     /**
      * Mirrored inner guaranteed-floor polygon.
-     *
      * Reference center: (739, 168)
      * Updated points:
      * - middle left:          (-34,  0)
      * - upper-left side:      (-34, 20)
      * - upper-left top:       ( -4, 38)
      * - middle top:           (  0, 38)
-     *
      * These are the former polygon points shifted one tile farther
      * away from the center on each applicable axis.
      */
@@ -129,7 +124,7 @@ public class EvictMapPlugin extends Plugin {
     private static final double FILLED_HEX_SECOND_RING_CHANCE = 0.035;
     private static final double FILLED_HEX_INNER_CHANCE = 0.010;
 
-    // Small extra chance near the map centre.
+    // Small extra chance near the map center.
     // It fades smoothly to zero before reaching the outer rows.
     // Squared distance is used so no square root is needed.
     private static final double CENTER_FILLED_HEX_BONUS = 0.08;
@@ -162,7 +157,7 @@ public class EvictMapPlugin extends Plugin {
     private boolean refreshingWorldIndexes = false;
 
     /**
-     * Connected players can temporarily disappear from Groups.player while a
+     * Connected players can temporarily disappear from `Groups.player` while a
      * dedicated server transitions into the next map. A single next-tick
      * retry was not sufficient on real round resets, so scan repeatedly for a
      * short bounded period after every PlayEvent.
@@ -211,19 +206,19 @@ public class EvictMapPlugin extends Plugin {
                 return;
             }
 
-            /**
-             * Dedicated-server hosting applies the selected map / gamemode
-             * rules again after WorldLoadEvent. Re-apply the Evict rules here,
-             * after that overwrite and before the first game-state check.
+            /*
+              Dedicated-server hosting applies the selected map / gamemode
+              rules again after WorldLoadEvent. Re-apply the Evict rules here,
+              after that overwrite and before the first game-state check.
              */
             applyEvictRules();
 
-            /**
-             * During an automatic post-game map reload, connected players are
-             * temporarily absent from Groups.player. On a real server they may
-             * still be missing one tick after PlayEvent, so keep checking for a
-             * bounded period. TeamManager safely ignores players already
-             * assigned during this round.
+            /*
+              During an automatic post-game map reload, connected players are
+              temporarily absent from Groups.player. On a real server they may
+              still be missing one tick after PlayEvent, so keep checking for a
+              bounded period. TeamManager safely ignores players already
+              assigned during this round.
              */
             scheduleConnectedPlayerAssignmentScan();
 
@@ -251,9 +246,9 @@ public class EvictMapPlugin extends Plugin {
         inviteManager.registerClientCommands(handler);
         roundEndCommands.registerClientCommands(handler);
 
-        /**
-         * Register last so it replaces vanilla /help after every normal and
-         * development chat command is present in the handler.
+        /*
+          Register last so it replaces vanilla /help after every normal and
+          development chat command is present in the handler.
          */
         helpCommands.registerClientCommands(handler);
     }
@@ -271,7 +266,7 @@ public class EvictMapPlugin extends Plugin {
                     return;
                 }
 
-                if (Groups.player.size() > 0) {
+                if (!Groups.player.isEmpty()) {
                     Log.warn("[EvictMapGenerator] Players are connected. Immediate generation is intended for testing. Reconnect clients afterwards if terrain is not refreshed.");
                 }
 
@@ -566,12 +561,12 @@ public class EvictMapPlugin extends Plugin {
     }
 
     private void handleRoundVictory(Team winner) {
-        /**
-         * Reuse the dedicated server's normal GameOverEvent transition.
-         *
-         * ServerControl will announce the selected next map, wait its normal
-         * post-game delay and load a fresh base map. WorldLoadEvent then runs
-         * this generator again and consumes the random seed prepared here.
+        /*
+          Reuse the dedicated server's normal GameOverEvent transition.
+
+          ServerControl will announce the selected next map, wait its normal
+          post-game delay and load a fresh base map. WorldLoadEvent then runs
+          this generator again and consumes the random seed prepared here.
          */
         nextSeed = randomSeed();
 
@@ -585,18 +580,18 @@ public class EvictMapPlugin extends Plugin {
     }
 
     private void refreshWorldIndexes() {
-        /**
-         * The blank base map has already emitted its normal WorldLoadEvent
-         * before this plugin replaces floors, overlays, walls and cores.
-         *
-         * Vanilla systems such as BlockIndexer and Pathfinder listen for that
-         * event to build their caches. Fire the event once more after the
-         * finished Evict world exists so Monos mine the real ore tiles and
-         * pathfinding sees the generated walls.
-         *
-         * Mindustry's own BlockIndexer explicitly supports duplicate
-         * WorldLoadEvents, so this uses the same normal rebuild path instead
-         * of modifying internal cache fields directly.
+        /*
+          The blank base map has already emitted its normal WorldLoadEvent
+          before this plugin replaces floors, overlays, walls and cores.
+
+          Vanilla systems such as BlockIndexer and Pathfinder listen for that
+          event to build their caches. Fire the event once more after the
+          finished Evict world exists so Monos mine the real ore tiles and
+          pathfinding sees the generated walls.
+
+          Mindustry's own BlockIndexer explicitly supports duplicate
+          WorldLoadEvents, so this uses the same normal rebuild path instead
+          of modifying internal cache fields directly.
          */
         refreshingWorldIndexes = true;
 
@@ -609,12 +604,12 @@ public class EvictMapPlugin extends Plugin {
     }
 
     private void applyEvictRules() {
-        /**
-         * The generated map is a custom always-running PvP mode.
-         *
-         * Vanilla game-over must stay disabled because all cores initially
-         * belong to Fallen team #18 and the plugin will later implement its
-         * own capture, victory and reset logic.
+        /*
+          The generated map is a custom always-running PvP mode.
+
+          Vanilla game-over must stay disabled because all cores initially
+          belong to Fallen team #18 and the plugin will later implement its
+          own capture, victory and reset logic.
          */
         Vars.state.rules.pvp = true;
         Vars.state.rules.pvpAutoPause = false;
@@ -627,17 +622,17 @@ public class EvictMapPlugin extends Plugin {
         Vars.state.rules.infiniteResources = false;
         Vars.state.rules.attackMode = false;
 
-        /**
-         * Hosting with the vanilla PvP preset forces unit factories to 2x.
-         * Evict uses normal 1x unit-factory speed, so override that preset here
-         * after host-mode initialization.
+        /*
+          Hosting with the vanilla PvP preset forces unit factories to 2x.
+          Evict uses normal 1x unit-factory speed, so override that preset here
+          after host-mode initialization.
          */
         Vars.state.rules.unitBuildSpeedMultiplier = 1f;
 
-        /**
-         * Unit-cap bonuses are intentionally core-based in Evict. This also
-         * keeps the admin /corecap tuning command aligned with vanilla cap
-         * calculation.
+        /*
+          Unit-cap bonuses are intentionally core-based in Evict. This also
+          keeps the admin /corecap tuning command aligned with vanilla cap
+          calculation.
          */
         Vars.state.rules.unitCapVariable = true;
 
@@ -647,11 +642,11 @@ public class EvictMapPlugin extends Plugin {
 
         Vars.state.rules.defaultTeam = TeamManager.FALLEN_TEAM;
 
-        /**
-         * The server's normal logic.play() fills one core per active team from
-         * rules.loadout. Fallen owns every neutral core at round start, so that
-         * vanilla loadout must be disabled. Personal start resources are added
-         * exactly once by StartLoadout when a player claims a hex.
+        /*
+          The server's normal logic.play() fills one core per active team from
+          rules.loadout. Fallen owns every neutral core at round start, so that
+          vanilla loadout must be disabled. Personal start resources are added
+          exactly once by StartLoadout when a player claims a hex.
          */
         Vars.state.rules.loadout.clear();
 
@@ -668,7 +663,7 @@ public class EvictMapPlugin extends Plugin {
         List<Cell> normalCells
     ) {
         // 0 = outside all active circles: fixed Dirt Wall
-        // 1 = inside a circle, outside all inner polygons: variable grey zone
+        // 1 = inside a circle, outside all inner polygons: variable gray zone
         // 2 = inside an inner polygon: guaranteed Dark Sand
         byte[][] zones = new byte[height][width];
 
@@ -717,7 +712,7 @@ public class EvictMapPlugin extends Plugin {
             for (int x = 0; x < width; x++) {
                 // Outside every active outer circle is fixed Dirt Wall.
                 // Everything reached by a circle starts as floor. Connection
-                // templates add walls only between two normal neighbouring hexes.
+                // templates add walls only between two normal neighboring hexes.
                 // This makes all map-border and full-hex-facing sides perfectly round.
                 walls[y][x] = zones[y][x] == 0;
             }
@@ -790,16 +785,16 @@ public class EvictMapPlugin extends Plugin {
         Map<Cell, Point> centers,
         Map<Edge, EdgeType> edgeTypes
     ) {
-        /**
-         * Important raster rule:
-         *
-         * Mindustry uses square tiles. Several grey edge regions touch each other
-         * near the red triangle tips. The previous prototype let multiple edges
-         * edit the same tile. The edge processed last could therefore slightly
-         * distort a neighbouring triangle.
-         *
-         * Now every editable grey tile is assigned to exactly one edge first.
-         * Afterwards each template edits only its own fixed tile mask.
+        /*
+          Important raster rule:
+
+          Mindustry uses square tiles. Several gray edge regions touch each other
+          near the red triangle tips. The previous prototype let multiple edges
+          edit the same tile. The edge processed last could therefore slightly
+          distort a neighboring triangle.
+
+          Now every editable gray tile is assigned to exactly one edge first.
+          Afterwards each template edits only its own fixed tile mask.
          */
         Map<Edge, Set<TilePoint>> tilesByEdge =
             buildOwnedEdgeMasks(zones, centers, edgeTypes.keySet());
@@ -923,11 +918,11 @@ public class EvictMapPlugin extends Plugin {
         Edge edge,
         Set<TilePoint> mask
     ) {
-        /**
-         * A mathematically centered line can lie exactly between two tile rows.
-         * Selecting every tile with distance <= 0.5 would then create a two-tile
-         * wall. Instead, rasterize one digital line with Bresenham's algorithm.
-         * This always produces a line exactly one tile thick.
+        /*
+          A mathematically centered line can lie exactly between two tile rows.
+          Selecting every tile with distance <= 0.5 would then create a two-tile
+          wall. Instead, rasterize one digital line with Bresenham's algorithm.
+          This always produces a line exactly one tile thick.
          */
         for (TilePoint point : mask) {
             walls[point.y][point.x] = false;
@@ -1056,9 +1051,9 @@ public class EvictMapPlugin extends Plugin {
     }
 
     private int deterministicRound(double value) {
-        /**
-         * Java's normal round() would also work most of the time, but this
-         * explicitly resolves exact half-tile positions in one consistent way.
+        /*
+          Java's normal round() would also work most of the time, but this
+          explicitly resolves exact half-tile positions in one consistent way.
          */
         return (int)Math.floor(value + 0.5);
     }
@@ -1078,17 +1073,17 @@ public class EvictMapPlugin extends Plugin {
         Map<Cell, Point> centers,
         Map<Edge, EdgeType> edgeTypes
     ) {
-        /**
-         * A thin wall must be exactly one tile thick.
-         *
-         * Even after assigning edge ownership, another nearby template can touch
-         * the same visual corridor close to the triangle tips. Therefore thin
-         * walls get a final cleanup pass after every other template:
-         *
-         * 1. clear the complete grey corridor for this edge
-         * 2. draw one single digital center line
-         *
-         * For a half-tile midpoint, one side is selected consistently.
+        /*
+          A thin wall must be exactly one tile thick.
+
+          Even after assigning edge ownership, another nearby template can touch
+          the same visual corridor close to the triangle tips. Therefore, thin
+          walls get a final cleanup pass after every other template:
+
+          1. clear the complete gray corridor for this edge
+          2. draw one single digital center line
+
+          For a half-tile midpoint, one side is selected consistently.
          */
         for (Map.Entry<Edge, EdgeType> entry : edgeTypes.entrySet()) {
             if (entry.getValue() != EdgeType.THIN) {
@@ -1248,10 +1243,10 @@ public class EvictMapPlugin extends Plugin {
         Map<Cell, Point> centers,
         List<Cell> normalCells
     ) {
-        /**
-         * Every unclaimed Nucleus starts as Fallen team #18.
-         * A first-time player later claims one safe random start hex and
-         * receives a unique personal team.
+        /*
+          Every unclaimed Nucleus starts as Fallen team #18.
+          A first-time player later claims one safe random start hex and
+          receives a unique personal team.
          */
         for (Cell cell : normalCells) {
             Point center = centers.get(cell);
@@ -1472,13 +1467,13 @@ public class EvictMapPlugin extends Plugin {
         Map<Edge, EdgeType> edgeTypes,
         Random random
     ) {
-        /**
-         * First, every normal-normal edge is rolled with the normal 25/25/25/25
-         * probabilities. Only if this creates separated sectors do we repair the
-         * minimum number of crossing edges by converting them to OPEN or PASSAGE.
-         *
-         * This keeps the visible result much closer to the requested equal
-         * distribution than forcing an entire spanning tree up front.
+        /*
+          First, every normal-normal edge is rolled with the normal 25/25/25/25
+          probabilities. Only if this creates separated sectors do we repair the
+          minimum number of crossing edges by converting them to OPEN or PASSAGE.
+
+          This keeps the visible result much closer to the requested equal
+          distribution than forcing an entire spanning tree up front.
          */
         Set<Edge> repairedEdges = new HashSet<>();
 
@@ -1591,10 +1586,10 @@ public class EvictMapPlugin extends Plugin {
         double passage = settings.passageChance();
         double total = open + passage;
 
-        /**
-         * Connectivity repair always needs a traversable edge. If both
-         * traversable weights were intentionally configured to zero, use a
-         * passage as the least-open repair fallback.
+        /*
+          Connectivity repair always needs a traversable edge. If both
+          traversable weights were intentionally configured to zero, use a
+          passage as the least-open repair fallback.
          */
         if (total <= 0d) {
             return EdgeType.PASSAGE;
@@ -1705,15 +1700,15 @@ public class EvictMapPlugin extends Plugin {
         slots.add(new Cell(cell.col - 1, cell.row));
         slots.add(new Cell(cell.col + 1, cell.row));
 
-        /**
-         * Short rows contain 7 cores and are shifted 37 tiles to the right.
-         * Long rows contain 8 cores and start 37 tiles further left.
-         *
-         * This centers the pattern:
-         *   7
-         *  8
-         *   7
-         *  8
+        /*
+          Short rows contain 7 cores and are shifted 37 tiles to the right.
+          Long rows contain 8 cores and start 37 tiles further left.
+
+          This centers the pattern:
+            7
+           8
+            7
+           8
          */
         if (cell.row % 2 == 0) {
             // Short shifted row -> adjacent long rows.
@@ -1860,16 +1855,16 @@ public class EvictMapPlugin extends Plugin {
     }
 
     private int horizontalGreyBandWidth() {
-        /**
-         * The horizontal variable zone is everything strictly between the
-         * guaranteed-floor polygons of two neighbouring cores.
-         *
-         * With the current values:
-         *   coordinate distance = 74
-         *   inner polygon reaches 34 tiles toward its neighbour on each side
-         *   grey band = 74 - 34 - 34 - 1 = 5 tiles
-         *
-         * The -1 accounts for inclusive tile coordinates.
+        /*
+          The horizontal variable zone is everything strictly between the
+          guaranteed-floor polygons of two neighboring cores.
+
+          With the current values:
+            coordinate distance = 74
+            inner polygon reaches 34 tiles toward its neighbor on each side
+            gray band = 74 - 34 - 34 - 1 = 5 tiles
+
+          The -1 accounts for inclusive tile coordinates.
          */
         return HORIZONTAL_DX - 2 * supportDistance(1.0, 0.0) < 1.0
             ? 0
