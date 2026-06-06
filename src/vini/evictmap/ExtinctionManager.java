@@ -100,7 +100,9 @@ final class ExtinctionManager {
 
             Call.sendMessage(
                 "[scarlet]EXTINCTION begins in 10 minutes. "
-                    + "Outer hexes will collapse toward the center.[]"
+                    + "Outer hexes will collapse toward the center. "
+                    + "When only the middle area remains, control the middle "
+                    + "core to win the round.[]"
             );
         }
 
@@ -195,7 +197,9 @@ final class ExtinctionManager {
 
         Call.sendMessage(
             "[scarlet]EXTINCTION HAS STARTED. "
-                + "The outermost ring is collapsing core by core.[]"
+                + "The outermost ring is collapsing core by core. "
+                + "Fight toward the middle: controlling the middle core in "
+                + "the final phase wins the round.[]"
         );
 
         nextRingCollapseTicks = elapsedTicks;
@@ -330,9 +334,10 @@ final class ExtinctionManager {
         finalPhaseEndTicks = elapsedTicks + FINAL_HOLD_TICKS;
 
         Call.sendMessage(
-            "[accent]FINAL EXTINCTION PHASE: only the center and its six "
-                + "neighbouring hexes remain. Hold the center core. "
-                + "Its owner in 4 minutes wins the round.[]"
+            "[accent]FINAL EXTINCTION PHASE: the last outer ring disappeared. "
+                + "Only the middle hex and its six neighbouring hexes remain. "
+                + "You now have 4 minutes to conquer and control the middle "
+                + "core. Its owner when the timer ends wins the round.[]"
         );
     }
 
