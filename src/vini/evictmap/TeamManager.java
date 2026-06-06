@@ -100,6 +100,13 @@ final class TeamManager {
     private static final int EXTINCTION_HEX_RADIUS_SQUARED =
         EXTINCTION_HEX_RADIUS * EXTINCTION_HEX_RADIUS;
 
+    /**
+     * Floor changes are network-synchronised. Sending thousands of floor
+     * packets in one tick can disconnect clients, so collapsed terrain is
+     * streamed gradually.
+     */
+    private static final int EXTINCTION_TERRAIN_CHANGES_PER_TICK = 24;
+
     private static final int CENTER_ROW = ROWS / 2;
     private static final int CENTER_COL = SHORT_ROW_COLS / 2;
 
@@ -115,6 +122,7 @@ final class TeamManager {
         new HashMap<>();
     private final Set<Integer> usedPersonalTeamIds = new HashSet<>();
     private final Set<Integer> eliminatedTeamIds = new HashSet<>();
+    private final ArrayDeque<Tile> extinctionTerrainQueue = new ArrayDeque<>();
 
     private final Cons<Team> victoryHandler;
     private InviteManager inviteManager;
@@ -149,6 +157,7 @@ final class TeamManager {
         maximumOwnedHexesByTeamId.clear();
         usedPersonalTeamIds.clear();
         eliminatedTeamIds.clear();
+        extinctionTerrainQueue.clear();
 
         for (HexSlot slot : slots) {
             slot.ownerTeamId = FALLEN_TEAM_ID;
@@ -1191,13 +1200,13 @@ final class TeamManager {
                 }
             }
 
-            for (Tile tile : terrainTiles) {
-                if (tile.block() != Blocks.air) {
-                    tile.removeNet();
-                }
-
-                tile.setFloorNet(Blocks.space);
-            }
+            /**
+             * Queue floor removal instead of synchronising every tile in one
+             * tick. Buildings and cores are already gone immediately, so the
+             * logical collapse still happens at once while visual terrain
+             * removal is streamed safely across later ticks.
+             */
+            extinctionTerrainQueue.addAll(terrainTiles);
         } finally {
             suppressCoreChangeEvents = false;
         }
@@ -1205,11 +1214,48 @@ final class TeamManager {
         eliminateCorelessTeamsThroughExtinction();
 
         Log.info(
-            "[EvictMapGenerator] Extinction collapsed @ hexes, removed @ building centers and killed @ units.",
+            "[EvictMapGenerator] Extinction collapsed @ hexes, removed @ building centers, killed @ units and queued @ terrain tiles for throttled removal.",
             collapsing.size(),
             buildingCenters.size(),
-            unitsToKill.size()
+            unitsToKill.size(),
+            terrainTiles.size()
         );
+    }
+
+    void updateExtinctionTerrainQueue() {
+        if (extinctionTerrainQueue.isEmpty()) {
+            return;
+        }
+
+        int changed = 0;
+
+        suppressCoreChangeEvents = true;
+
+        try {
+            while (
+                changed < EXTINCTION_TERRAIN_CHANGES_PER_TICK
+                    && !extinctionTerrainQueue.isEmpty()
+            ) {
+                Tile tile = extinctionTerrainQueue.removeFirst();
+
+                if (tile == null) {
+                    continue;
+                }
+
+                if (tile.block() != Blocks.air) {
+                    tile.removeNet();
+                }
+
+                tile.setFloorNet(Blocks.space);
+                changed++;
+            }
+        } finally {
+            suppressCoreChangeEvents = false;
+        }
+    }
+
+    boolean hasPendingExtinctionTerrainChanges() {
+        return !extinctionTerrainQueue.isEmpty();
     }
 
     void finishExtinction(Team winner, boolean overtime) {
