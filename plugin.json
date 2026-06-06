@@ -2,7 +2,7 @@
   "name": "EvictMapGenerator",
   "author": "Vini2309",
   "main": "vini.evictmap.EvictMapPlugin",
-  "description": "Server-side Evict-style Mindustry PvP plugin with procedural hex maps, captures, claims, invites, attrition, surrender, early ending and persistent tuning. Filled maps now contain 6-12 blocked hexes with an increased center bonus.",
-  "version": "1.1.3",
+  "description": "Server-side Evict-style Mindustry PvP plugin with procedural hex maps, captures, claims, invites, split persistent core and range attrition, surrender, early ending and persistent tuning.",
+  "version": "1.1.4",
   "minGameVersion": "157.4"
 }

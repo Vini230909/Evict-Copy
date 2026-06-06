@@ -30,7 +30,8 @@ A server-side Mindustry plugin for Evict-style persistent PvP on a procedurally 
 
 ```text
 /forceend
-/attrition [t1-3] [t4] [t5]
+/attritioncore [t1-3] [t4] [t5]
+/attritionrange [percent]
 /wall [full-wall] [small-wall] [open] [passage]
 /corecap [additional-per-core]
 /spawnunit [unit] [amount] [team]
