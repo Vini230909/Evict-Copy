@@ -96,8 +96,7 @@ final class CaptureManager {
         AttritionManager attritionManager
     ) {
         if (
-            !roundActive
-                || resetting
+            !teamManager.isRoundActiveForSystems()
                 || scheduledRoundSerial != teamManager.roundSerial()
                 || !slot.capturing
         ) {
@@ -164,8 +163,7 @@ final class CaptureManager {
         long scheduledRoundSerial
     ) {
         if (
-            !roundActive
-                || resetting
+            !teamManager.isRoundActiveForSystems()
                 || scheduledRoundSerial != teamManager.roundSerial()
                 || !slot.capturing
         ) {
