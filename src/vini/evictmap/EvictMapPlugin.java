@@ -21,6 +21,7 @@ import mindustry.mod.Plugin;
  * in focused classes such as EvictTerrainGenerator, CaptureManager,
  * TeamManager and the command registrars.
  */
+@SuppressWarnings("unused")
 public class EvictMapPlugin extends Plugin {
 
     private static final float CONNECTED_PLAYER_SCAN_INITIAL_DELAY_TICKS = 1f;
@@ -161,7 +162,6 @@ public class EvictMapPlugin extends Plugin {
         attritionManager.beginRound();
         evictCommands.beginRound();
         inviteManager.beginRound();
-        roundEndCommands.beginRound();
         teamManager.assignConnectedPlayers();
 
         runtime.lastSeed = seed;
