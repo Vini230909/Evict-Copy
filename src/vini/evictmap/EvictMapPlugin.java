@@ -135,7 +135,7 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Log.info(
-            "[EvictMapGenerator] Loaded. Code revision 1.1.2. Use 'evictstatus' for commands and current settings."
+            "[EvictMapGenerator] Loaded. Code revision 1.1.1. Use 'evictstatus' for commands and current settings."
         );
     }
 
