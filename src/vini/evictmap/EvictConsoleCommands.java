@@ -157,7 +157,7 @@ final class EvictConsoleCommands {
         handler.register(
             "evictextinctiontiles",
             "[amount]",
-            "Show or set how many collapsed terrain tiles are converted to space per tick.",
+            "Show or persist how many collapsed terrain tiles are converted to space per tick.",
             args -> {
                 if (args.length == 0) {
                     Log.info(
@@ -179,10 +179,13 @@ final class EvictConsoleCommands {
                 try {
                     int amount = Integer.parseInt(args[0]);
 
-                    teamManager.setExtinctionTerrainChangesPerTick(amount);
+                    settings.setExtinctionTerrainChangesPerTick(amount);
+                    teamManager.setExtinctionTerrainChangesPerTick(
+                        settings.extinctionTerrainChangesPerTick()
+                    );
 
                     Log.info(
-                        "[EvictMapGenerator] Extinction terrain changes per tick set to @. This applies immediately.",
+                        "[EvictMapGenerator] Extinction terrain changes per tick saved as @. This applies immediately and after restart.",
                         teamManager.extinctionTerrainChangesPerTick()
                     );
                 } catch (NumberFormatException exception) {

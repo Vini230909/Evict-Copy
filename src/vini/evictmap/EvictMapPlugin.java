@@ -29,6 +29,8 @@ public class EvictMapPlugin extends Plugin {
 
     private final EvictRuntimeState runtime = new EvictRuntimeState();
     private final EvictSettings settings = new EvictSettings();
+    private final CoreUnitDamageManager coreUnitDamageManager =
+        new CoreUnitDamageManager();
 
     private final TeamManager teamManager =
         new TeamManager(this::handleRoundVictory);
@@ -53,6 +55,9 @@ public class EvictMapPlugin extends Plugin {
     private final RoundEndCommands roundEndCommands =
         new RoundEndCommands(teamManager, extinctionManager);
 
+    private final RoundTimeCommands roundTimeCommands =
+        new RoundTimeCommands();
+
     private final EvictHelpCommands helpCommands =
         new EvictHelpCommands();
 
@@ -61,6 +66,7 @@ public class EvictMapPlugin extends Plugin {
             evictCommands,
             inviteManager,
             roundEndCommands,
+            roundTimeCommands,
             helpCommands
         );
 
@@ -82,6 +88,10 @@ public class EvictMapPlugin extends Plugin {
     @Override
     public void init() {
         settings.load();
+        coreUnitDamageManager.apply();
+        teamManager.setExtinctionTerrainChangesPerTick(
+            settings.extinctionTerrainChangesPerTick()
+        );
         teamManager.setInviteManager(inviteManager);
 
         Events.on(WorldLoadEvent.class, event -> {
@@ -119,15 +129,15 @@ public class EvictMapPlugin extends Plugin {
             );
         });
 
-        Events.on(
-            PlayerJoin.class,
-            event -> teamManager.handlePlayerJoin(event.player)
-        );
+        Events.on(PlayerJoin.class, event -> {
+            roundTimeCommands.handlePlayerJoin(event.player);
+            teamManager.handlePlayerJoin(event.player);
+        });
 
-        Events.on(
-            PlayerLeave.class,
-            event -> inviteManager.handlePlayerLeave(event.player)
-        );
+        Events.on(PlayerLeave.class, event -> {
+            roundTimeCommands.handlePlayerLeave(event.player);
+            inviteManager.handlePlayerLeave(event.player);
+        });
 
         Events.on(
             CoreChangeEvent.class,
@@ -145,7 +155,7 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Log.info(
-            "[EvictMapGenerator] Loaded. Code revision 1.2.7. Use 'evictstatus' for commands and current settings."
+            "[EvictMapGenerator] Loaded. Code revision 1.2.8. Use 'evictstatus' for commands and current settings."
         );
     }
 
@@ -171,7 +181,7 @@ public class EvictMapPlugin extends Plugin {
         attritionManager.beginRound();
         evictCommands.beginRound();
         inviteManager.beginRound();
-        roundEndCommands.beginRound();
+        roundTimeCommands.beginRound();
         extinctionManager.beginRound();
         teamManager.assignConnectedPlayers();
 

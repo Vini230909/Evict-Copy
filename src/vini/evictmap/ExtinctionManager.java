@@ -32,10 +32,11 @@ final class ExtinctionManager {
 
     private static final float RING_INTERVAL_TICKS = 90f * 60f;
     /**
-     * Logical core deletion is cheap enough to stream quickly. Terrain removal
-     * remains separately throttled inside TeamManager.
+     * No artificial pause between core hexes. The update loop still processes
+     * one hex per server tick, while terrain removal remains separately
+     * throttled inside TeamManager.
      */
-    private static final float HEX_COLLAPSE_INTERVAL_TICKS = 1f * 60f;
+    private static final float HEX_COLLAPSE_INTERVAL_TICKS = 0f;
     private static final float FINAL_HOLD_TICKS = 4f * 60f * 60f;
 
     private final TeamManager teamManager;

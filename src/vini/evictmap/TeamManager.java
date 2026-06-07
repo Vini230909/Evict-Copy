@@ -27,9 +27,9 @@ import java.util.Set;
  * Phase 1 of the Evict round system.
  *
  * Implemented:
- * - every generated neutral core belongs to Fallen team #18
+ * - every generated neutral core belongs to Fallen team #14
  * - a first-time player receives a random unique team ID from #1..#128,
- *   excluding #18
+ *   excluding #14
  * - a safe unclaimed start hex is selected with two complete hexes between
  *   player starts
  * - edge / filled-wall protection is preferred
@@ -54,7 +54,7 @@ import java.util.Set;
  */
 final class TeamManager {
 
-    static final int FALLEN_TEAM_ID = 18;
+    static final int FALLEN_TEAM_ID = 14;
     static final Team FALLEN_TEAM = Team.get(FALLEN_TEAM_ID);
 
     private static final int FIRST_PERSONAL_TEAM_ID = 1;
@@ -105,7 +105,7 @@ final class TeamManager {
      * packets in one tick can disconnect clients, so collapsed terrain is
      * streamed gradually.
      */
-    private static final int DEFAULT_EXTINCTION_TERRAIN_CHANGES_PER_TICK = 24;
+    private static final int DEFAULT_EXTINCTION_TERRAIN_CHANGES_PER_TICK = 120;
     private static final int MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK = 4096;
 
     private static final int CENTER_ROW = ROWS / 2;
@@ -913,7 +913,6 @@ final class TeamManager {
         if (
             !roundActive
                 || resetting
-                || extinctionActive
                 || slots.isEmpty()
         ) {
             return;
@@ -924,12 +923,10 @@ final class TeamManager {
          * Shard is only the visible replacement block, not the moment at which
          * the round result is decided.
          */
-        int winnerTeamId = effectiveOwnerTeamId(slots.get(0));
+        Integer winnerTeamId = singleSurvivingOwnerTeamId();
 
-        for (HexSlot slot : slots) {
-            if (effectiveOwnerTeamId(slot) != winnerTeamId) {
-                return;
-            }
+        if (winnerTeamId == null) {
+            return;
         }
 
         /**
@@ -942,6 +939,34 @@ final class TeamManager {
         }
 
         finishRound(Team.get(winnerTeamId), false);
+    }
+
+    private Integer singleSurvivingOwnerTeamId() {
+        Integer winnerTeamId = null;
+
+        for (HexSlot slot : slots) {
+            /*
+             * Extinction removes hexes logically before their terrain finishes
+             * streaming to space. Those removed hexes no longer block victory.
+             */
+            if (slot.extinct) {
+                continue;
+            }
+
+            int ownerTeamId = effectiveOwnerTeamId(slot);
+
+            if (ownerTeamId == Team.derelict.id) {
+                continue;
+            }
+
+            if (winnerTeamId == null) {
+                winnerTeamId = ownerTeamId;
+            } else if (winnerTeamId != ownerTeamId) {
+                return null;
+            }
+        }
+
+        return winnerTeamId;
     }
 
     boolean forceEnd(Team winner) {
@@ -966,10 +991,13 @@ final class TeamManager {
             Call.sendMessage("[scarlet]The round was force-ended by an admin.[]");
         }
 
+        String victoryReason = extinctionActive
+            ? " has secured every surviving hex during EXTINCTION and won "
+                + "the round."
+            : " has conquered every hex and won the round.";
+
         Call.sendMessage(
-            "[accent]"
-                + displayTeam(winner)
-                + "[] has conquered every hex and won the round."
+            "[accent]" + displayTeam(winner) + "[]" + victoryReason
         );
 
         Log.info(
@@ -1215,6 +1243,7 @@ final class TeamManager {
         }
 
         eliminateCorelessTeamsThroughExtinction();
+        checkVictory();
 
         Log.info(
             "[EvictMapGenerator] Extinction collapsed @ hexes, removed @ building centers, killed @ units and queued @ terrain tiles for throttled removal.",

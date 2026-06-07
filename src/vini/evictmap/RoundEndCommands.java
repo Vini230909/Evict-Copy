@@ -37,10 +37,6 @@ final class RoundEndCommands {
         );
     }
 
-    void beginRound() {
-        // No per-round command state is needed anymore.
-    }
-
     private void surrender(String[] args, Player player) {
         if (args.length != 0) {
             player.sendMessage("[scarlet]Use: /die[]");

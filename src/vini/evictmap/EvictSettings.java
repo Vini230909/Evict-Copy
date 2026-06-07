@@ -56,6 +56,9 @@ final class EvictSettings {
 
     private static final File SETTINGS_FILE =
         new File("config/evict-map-generator.properties");
+    private static final int DEFAULT_EXTINCTION_TERRAIN_CHANGES_PER_TICK = 120;
+    private static final int MIN_EXTINCTION_TERRAIN_CHANGES_PER_TICK = 1;
+    private static final int MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK = 4096;
 
     /**
      * Capture attrition keeps the tier-based percentages.
@@ -70,6 +73,8 @@ final class EvictSettings {
     private double smallWallPercent = 25d;
     private double openPercent = 25d;
     private double passagePercent = 25d;
+    private int extinctionTerrainChangesPerTick =
+        DEFAULT_EXTINCTION_TERRAIN_CHANGES_PER_TICK;
 
     private final EnumMap<OreKind, OreSettings> oreSettings =
         new EnumMap<>(OreKind.class);
@@ -164,6 +169,14 @@ final class EvictSettings {
                 )
             );
 
+            setExtinctionTerrainChangesPerTickWithoutSaving(
+                readInt(
+                    properties,
+                    "extinction.terrainChangesPerTick",
+                    extinctionTerrainChangesPerTick
+                )
+            );
+
             for (OreKind kind : OreKind.values()) {
                 OreSettings current = ore(kind);
 
@@ -196,10 +209,11 @@ final class EvictSettings {
             save();
 
             Log.info(
-                "[EvictMapGenerator] Loaded persistent settings: coreAttrition=@; rangeAttrition=@; walls=@; ores=@",
+                "[EvictMapGenerator] Loaded persistent settings: coreAttrition=@; rangeAttrition=@; walls=@; extinctionTerrain=@; ores=@",
                 compactCoreAttritionSettings(),
                 compactRangeAttritionSettings(),
                 compactWallSettings(),
+                compactExtinctionTerrainSettings(),
                 compactOreSettings()
             );
         } catch (Exception exception) {
@@ -236,6 +250,11 @@ final class EvictSettings {
             open,
             passage
         );
+        save();
+    }
+
+    void setExtinctionTerrainChangesPerTick(int amount) {
+        setExtinctionTerrainChangesPerTickWithoutSaving(amount);
         save();
     }
 
@@ -292,6 +311,10 @@ final class EvictSettings {
         return passagePercent / 100d;
     }
 
+    int extinctionTerrainChangesPerTick() {
+        return extinctionTerrainChangesPerTick;
+    }
+
     String compactCoreAttritionSettings() {
         return "T1-T3=" + formatPercent(coreAttritionTier1To3Percent)
             + "%, T4=" + formatPercent(coreAttritionTier4Percent)
@@ -307,6 +330,10 @@ final class EvictSettings {
             + "%, small-wall=" + formatPercent(smallWallPercent)
             + "%, open=" + formatPercent(openPercent)
             + "%, passage=" + formatPercent(passagePercent) + "%";
+    }
+
+    String compactExtinctionTerrainSettings() {
+        return Integer.toString(extinctionTerrainChangesPerTick);
     }
 
     String compactOreSettings() {
@@ -375,6 +402,23 @@ final class EvictSettings {
         smallWallPercent = smallWall;
         openPercent = open;
         passagePercent = passage;
+    }
+
+    private void setExtinctionTerrainChangesPerTickWithoutSaving(int amount) {
+        if (
+            amount < MIN_EXTINCTION_TERRAIN_CHANGES_PER_TICK
+                || amount > MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK
+        ) {
+            throw new IllegalArgumentException(
+                "Extinction terrain changes per tick must be between "
+                    + MIN_EXTINCTION_TERRAIN_CHANGES_PER_TICK
+                    + " and "
+                    + MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK
+                    + "."
+            );
+        }
+
+        extinctionTerrainChangesPerTick = amount;
     }
 
     private void setOreSettingsWithoutSaving(
@@ -460,6 +504,20 @@ final class EvictSettings {
         return Double.parseDouble(value.trim());
     }
 
+    private int readInt(
+        Properties properties,
+        String key,
+        int fallback
+    ) {
+        String value = properties.getProperty(key);
+
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+
+        return Integer.parseInt(value.trim());
+    }
+
     private void save() {
         File parent = SETTINGS_FILE.getParentFile();
 
@@ -503,6 +561,10 @@ final class EvictSettings {
         properties.setProperty(
             "wall.passagePercent",
             Double.toString(passagePercent)
+        );
+        properties.setProperty(
+            "extinction.terrainChangesPerTick",
+            Integer.toString(extinctionTerrainChangesPerTick)
         );
 
         for (OreKind kind : OreKind.values()) {

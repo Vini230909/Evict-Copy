@@ -10,17 +10,20 @@ final class EvictClientCommands {
     private final EvictCommands gameplay;
     private final InviteManager invites;
     private final RoundEndCommands roundEnd;
+    private final RoundTimeCommands roundTime;
     private final EvictHelpCommands help;
 
     EvictClientCommands(
         EvictCommands gameplay,
         InviteManager invites,
         RoundEndCommands roundEnd,
+        RoundTimeCommands roundTime,
         EvictHelpCommands help
     ) {
         this.gameplay = gameplay;
         this.invites = invites;
         this.roundEnd = roundEnd;
+        this.roundTime = roundTime;
         this.help = help;
     }
 
@@ -28,6 +31,7 @@ final class EvictClientCommands {
         gameplay.registerClientCommands(handler);
         invites.registerClientCommands(handler);
         roundEnd.registerClientCommands(handler);
+        roundTime.registerClientCommands(handler);
 
         // Register last so the filtered menu replaces vanilla /help.
         help.registerClientCommands(handler);

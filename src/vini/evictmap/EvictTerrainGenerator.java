@@ -843,7 +843,7 @@ final class EvictTerrainGenerator {
         List<Cell> normalCells
     ) {
         /**
-         * Every unclaimed Nucleus starts as Fallen team #18.
+         * Every unclaimed Nucleus starts as Fallen team #14.
          * A first-time player later claims one safe random start hex and
          * receives a unique personal team.
          */
