@@ -28,6 +28,7 @@ ext {
 
 dependencies {
     compileOnly "Anuken:Mindustry:$mindustryVersion"
+    implementation "org.xerial:sqlite-jdbc:3.46.1.0"
 }
 
 jar {

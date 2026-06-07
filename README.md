@@ -14,6 +14,7 @@ A server-side Mindustry plugin for Evict-style persistent PvP on a procedurally 
 - Team-scoped `/fullassault` mode for unattended combat units
 - `/die` surrender and `/over` early round ending
 - Timed Extinction late game with collapsing outer rings and a center-core final phase
+- Async SQLite player data storage for profiles, playtime and FFA results
 - Automatic random-seed round resets
 - Persistent tuning for attrition, walls, ore generation and Extinction terrain streaming
 
@@ -39,6 +40,7 @@ A server-side Mindustry plugin for Evict-style persistent PvP on a procedurally 
 /wall [full-wall] [small-wall] [open] [passage]
 /corecap [additional-per-core]
 /spawnunit [unit] [amount] [team]
+/info [online-player] [team] [#number]
 ```
 
 Extinction terrain streaming can be adjusted from the server console:
@@ -46,6 +48,18 @@ Extinction terrain streaming can be adjusted from the server console:
 ```text
 evictextinctiontiles [amount]
 ```
+
+Stored player data can be searched from the server console:
+
+```text
+evictplayerinfo [name/uuid]
+```
+
+Console player lookup searches the latest stored name first. Old stored names
+and UUIDs are used only if no latest-name match exists. If multiple online
+players match `/info`, the command shows numbered matches; use the shown
+`#number` to pick one. Running `/info` without arguments opens a clickable
+online-player selection menu.
 
 Ore presets can be adjusted from the server console:
 

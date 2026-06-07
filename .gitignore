@@ -1,2 +1,6 @@
 .gradle/
 build/
+.tools/
+config/*.db
+config/*.db-shm
+config/*.db-wal

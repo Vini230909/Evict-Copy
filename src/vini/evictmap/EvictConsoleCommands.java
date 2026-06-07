@@ -15,6 +15,7 @@ final class EvictConsoleCommands {
     private final EvictSettings settings;
     private final EvictTerrainGenerator terrain;
     private final TeamManager teamManager;
+    private final PlayerDataManager playerDataManager;
     private final LongConsumer generate;
 
     EvictConsoleCommands(
@@ -22,12 +23,14 @@ final class EvictConsoleCommands {
         EvictSettings settings,
         EvictTerrainGenerator terrain,
         TeamManager teamManager,
+        PlayerDataManager playerDataManager,
         LongConsumer generate
     ) {
         this.runtime = runtime;
         this.settings = settings;
         this.terrain = terrain;
         this.teamManager = teamManager;
+        this.playerDataManager = playerDataManager;
         this.generate = generate;
     }
 
@@ -245,6 +248,74 @@ final class EvictConsoleCommands {
                 settings.compactOreSettings()
             )
         );
+
+        handler.register(
+            "evictplayerinfo",
+            "[name/uuid]",
+            "Search stored player data by partial name or UUID. With no argument, list all stored players.",
+            args -> showStoredPlayerInfo(String.join(" ", args).trim())
+        );
+    }
+
+    private void showStoredPlayerInfo(String query) {
+        playerDataManager.searchPlayerInfo(
+            query,
+            matches -> {
+                if (matches.isEmpty()) {
+                    Log.info(
+                        "[EvictMapGenerator] No stored players match '@'.",
+                        query
+                    );
+                    return;
+                }
+
+                if (matches.size() == 1) {
+                    Log.info(
+                        "[EvictMapGenerator] @",
+                        plainPlayerInfo(matches.get(0))
+                    );
+                    return;
+                }
+
+                Log.info(
+                    "[EvictMapGenerator] Stored player matches (@):",
+                    matches.size()
+                );
+
+                for (PlayerDataManager.PlayerInfo info : matches) {
+                    Log.info(
+                        "[EvictMapGenerator] @",
+                        compactPlayerInfo(info)
+                    );
+                }
+            }
+        );
+    }
+
+    private String compactPlayerInfo(PlayerDataManager.PlayerInfo info) {
+        return info.lastName()
+            + " | uuid=" + info.uuid()
+            + " | names=" + String.join(", ", info.knownNames())
+            + " | FFA=" + info.ffaWon() + "/" + info.ffaPlayed()
+            + " | playtime="
+            + EvictCommands.formatDuration(info.totalPlaytimeMillis());
+    }
+
+    private String plainPlayerInfo(PlayerDataManager.PlayerInfo info) {
+        return info.lastName()
+            + " | uuid=" + info.uuid()
+            + " | names=" + String.join(", ", info.knownNames())
+            + " | totalPlaytime="
+            + EvictCommands.formatDuration(info.totalPlaytimeMillis())
+            + " | ffaPlaytime="
+            + EvictCommands.formatDuration(info.ffaPlaytimeMillis())
+            + " | ffaWon=" + info.ffaWon()
+            + " | ffaPlayed=" + info.ffaPlayed()
+            + " | rankedWins=" + info.rankedWins()
+            + " | rankedLosses=" + info.rankedLosses()
+            + " | rankedPlayed=" + info.rankedMatchesPlayed()
+            + " | elo=" + info.elo()
+            + " | peakElo=" + info.peakElo();
     }
 
     private void registerOrePresetCommand(

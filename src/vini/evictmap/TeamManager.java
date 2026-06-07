@@ -1017,6 +1017,34 @@ final class TeamManager {
             ) == FALLEN_TEAM_ID;
     }
 
+    boolean isPersonalRoundPlayer(Player player) {
+        if (player == null) {
+            return false;
+        }
+
+        Integer teamId = teamIdByPlayerUuid.get(player.uuid());
+
+        return teamId != null
+            && teamId != FALLEN_TEAM_ID
+            && teamId != Team.derelict.id;
+    }
+
+    List<String> playerUuidsForTeam(Team team) {
+        List<String> result = new ArrayList<>();
+
+        if (team == null) {
+            return result;
+        }
+
+        for (Map.Entry<String, Integer> entry : teamIdByPlayerUuid.entrySet()) {
+            if (entry.getValue() == team.id) {
+                result.add(entry.getKey());
+            }
+        }
+
+        return result;
+    }
+
     boolean isLeader(Player player) {
         if (player == null || player.team() == FALLEN_TEAM) {
             return false;

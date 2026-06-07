@@ -31,6 +31,8 @@ public class EvictMapPlugin extends Plugin {
     private final EvictSettings settings = new EvictSettings();
     private final CoreUnitDamageManager coreUnitDamageManager =
         new CoreUnitDamageManager();
+    private final PlayerDataManager playerDataManager =
+        new PlayerDataManager();
 
     private final TeamManager teamManager =
         new TeamManager(this::handleRoundVictory);
@@ -49,7 +51,8 @@ public class EvictMapPlugin extends Plugin {
             teamManager,
             attritionManager,
             extinctionManager,
-            settings
+            settings,
+            playerDataManager
         );
 
     private final RoundEndCommands roundEndCommands =
@@ -79,6 +82,7 @@ public class EvictMapPlugin extends Plugin {
             settings,
             terrainGenerator,
             teamManager,
+            playerDataManager,
             this::generate
         );
 
@@ -88,6 +92,7 @@ public class EvictMapPlugin extends Plugin {
     @Override
     public void init() {
         settings.load();
+        playerDataManager.start();
         coreUnitDamageManager.apply();
         teamManager.setExtinctionTerrainChangesPerTick(
             settings.extinctionTerrainChangesPerTick()
@@ -130,11 +135,14 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Events.on(PlayerJoin.class, event -> {
+            playerDataManager.handlePlayerJoin(event.player);
             roundTimeCommands.handlePlayerJoin(event.player);
             teamManager.handlePlayerJoin(event.player);
+            playerDataManager.recordConnectedFfaParticipants(teamManager);
         });
 
         Events.on(PlayerLeave.class, event -> {
+            playerDataManager.handlePlayerLeave(event.player);
             inviteManager.handlePlayerLeave(event.player);
         });
 
@@ -154,7 +162,7 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Log.info(
-            "[EvictMapGenerator] Loaded. Code revision 1.2.8. Use 'evictstatus' for commands and current settings."
+            "[EvictMapGenerator] Loaded. Code revision 1.2.14. Use 'evictstatus' for commands and current settings."
         );
     }
 
@@ -177,12 +185,13 @@ public class EvictMapPlugin extends Plugin {
         refreshWorldIndexes();
 
         teamManager.beginRound(round.slots(), seed);
+        playerDataManager.beginFfaRound();
         attritionManager.beginRound();
         evictCommands.beginRound();
         inviteManager.beginRound();
         roundTimeCommands.beginRound();
         extinctionManager.beginRound();
-        teamManager.assignConnectedPlayers();
+        assignConnectedPlayersAndRecordStats();
 
         runtime.lastSeed = seed;
 
@@ -228,7 +237,7 @@ public class EvictMapPlugin extends Plugin {
                     return;
                 }
 
-                teamManager.assignConnectedPlayers();
+                assignConnectedPlayersAndRecordStats();
 
                 if (attemptsRemaining > 1) {
                     scheduleConnectedPlayerAssignmentScan(
@@ -242,6 +251,7 @@ public class EvictMapPlugin extends Plugin {
     }
 
     private void handleRoundVictory(Team winner) {
+        playerDataManager.recordFfaWinner(teamManager, winner);
         runtime.nextSeed = runtime.randomSeed();
 
         Log.info(
@@ -251,6 +261,11 @@ public class EvictMapPlugin extends Plugin {
         );
 
         Events.fire(new GameOverEvent(winner));
+    }
+
+    private void assignConnectedPlayersAndRecordStats() {
+        teamManager.assignConnectedPlayers();
+        playerDataManager.recordConnectedFfaParticipants(teamManager);
     }
 
     private void refreshWorldIndexes() {

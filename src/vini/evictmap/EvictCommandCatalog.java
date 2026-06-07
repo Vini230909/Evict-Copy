@@ -21,6 +21,7 @@ final class EvictCommandCatalog {
         commands.add("wall");
         commands.add("corecap");
         commands.add("spawnunit");
+        commands.add("info");
 
         DEV_COMMANDS = Collections.unmodifiableSet(commands);
     }

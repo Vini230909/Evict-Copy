@@ -8,13 +8,20 @@ import mindustry.ai.UnitCommand;
 import mindustry.ai.types.CommandAI;
 import mindustry.content.Blocks;
 import mindustry.game.Team;
+import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
 import mindustry.gen.Unit;
 import mindustry.type.UnitType;
+import mindustry.ui.Menus;
 import mindustry.world.blocks.storage.CoreBlock.CoreBuild;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -33,12 +40,17 @@ final class EvictCommands {
     private static final float FULL_ASSAULT_REFRESH_INTERVAL_TICKS = 5f * 60f;
     private static final int MAX_SPAWNUNIT_AMOUNT = 1000;
     private static final int MAX_CORECAP_INCREMENT = 10000;
+    private static final int INFO_MENU_COLUMNS = 2;
 
     private final TeamManager teamManager;
     private final AttritionManager attritionManager;
     private final ExtinctionManager extinctionManager;
     private final EvictSettings settings;
+    private final PlayerDataManager playerDataManager;
+    private final int playerInfoMenuId;
     private final Set<Integer> fullAssaultTeamIds = new HashSet<>();
+    private final Map<String, List<String>> infoMenuTargetsByAdminUuid =
+        new HashMap<>();
 
     private float fullAssaultRefreshTimer = 0f;
     private int extraCoreCapPerCore = 0;
@@ -47,12 +59,16 @@ final class EvictCommands {
         TeamManager teamManager,
         AttritionManager attritionManager,
         ExtinctionManager extinctionManager,
-        EvictSettings settings
+        EvictSettings settings,
+        PlayerDataManager playerDataManager
     ) {
         this.teamManager = teamManager;
         this.attritionManager = attritionManager;
         this.extinctionManager = extinctionManager;
         this.settings = settings;
+        this.playerDataManager = playerDataManager;
+        this.playerInfoMenuId =
+            Menus.registerMenu(this::handleInfoMenuSelection);
     }
 
     void registerClientCommands(CommandHandler handler) {
@@ -107,6 +123,13 @@ final class EvictCommands {
             "<unit> <amount> [team]",
             "Admin only: spawn test units near you. Team defaults to your current team.",
             (args, player) -> spawnUnits(args, player)
+        );
+
+        handler.<Player>register(
+            "info",
+            "[online-player]",
+            "Admin only: show stored stats for one online player.",
+            (args, player) -> showOnlinePlayerInfo(args, player)
         );
     }
 
@@ -494,6 +517,339 @@ final class EvictCommands {
                 + targetTeam.id
                 + ".[]"
         );
+    }
+
+    private void showOnlinePlayerInfo(String[] args, Player player) {
+        if (!requireAdmin(player)) {
+            return;
+        }
+
+        if (args.length == 0) {
+            showPlayerInfoSelectionMenu(player);
+            return;
+        }
+
+        InfoTargetRequest request = parseInfoTarget(args);
+
+        if (request.nameQuery().isEmpty()) {
+            player.sendMessage("[scarlet]Use: /info <online-player> [team][]");
+            return;
+        }
+
+        List<Player> matches =
+            onlinePlayersMatching(request.nameQuery(), request.teamId());
+
+        if (matches.isEmpty()) {
+            player.sendMessage(
+                "[scarlet]No online player matches '"
+                    + request.nameQuery()
+                    + "'.[]"
+            );
+            return;
+        }
+
+        if (request.matchNumber() != null) {
+            int matchIndex = request.matchNumber() - 1;
+
+            if (matchIndex < 0 || matchIndex >= matches.size()) {
+                player.sendMessage(
+                    "[scarlet]Match number must be between 1 and "
+                        + matches.size()
+                        + ".[]"
+                );
+                return;
+            }
+
+            showStoredInfoForOnlinePlayer(player, matches.get(matchIndex));
+            return;
+        }
+
+        if (matches.size() > 1) {
+            player.sendMessage(
+                "[scarlet]Multiple online players match '"
+                    + request.nameQuery()
+                    + "': []"
+                    + compactOnlinePlayerMatches(matches)
+                    + "\n[lightgray]Use: [orange]/info <name> #<number>[]"
+                    + " [lightgray]or [orange]/info <name> <team> #<number>[]"
+            );
+            return;
+        }
+
+        showStoredInfoForOnlinePlayer(player, matches.get(0));
+    }
+
+    private void showPlayerInfoSelectionMenu(Player player) {
+        List<Player> players = onlinePlayers();
+
+        if (players.isEmpty()) {
+            player.sendMessage("[scarlet]No online players to select.[]");
+            return;
+        }
+
+        List<String> targetUuids = new ArrayList<>();
+        List<String[]> rows = new ArrayList<>();
+        List<String> currentRow = new ArrayList<>();
+
+        for (Player target : players) {
+            targetUuids.add(target.uuid());
+            currentRow.add(target.plainName());
+
+            if (currentRow.size() == INFO_MENU_COLUMNS) {
+                rows.add(currentRow.toArray(new String[0]));
+                currentRow.clear();
+            }
+        }
+
+        if (!currentRow.isEmpty()) {
+            rows.add(currentRow.toArray(new String[0]));
+        }
+
+        rows.add(new String[] {"[red]Cancel"});
+        infoMenuTargetsByAdminUuid.put(player.uuid(), targetUuids);
+
+        Call.menu(
+            player.con,
+            playerInfoMenuId,
+            "[accent]Select a player",
+            "Select a player for the argument\n\"target\"",
+            rows.toArray(new String[0][])
+        );
+    }
+
+    private List<Player> onlinePlayers() {
+        List<Player> players = new ArrayList<>();
+
+        Groups.player.each(player -> {
+            if (player != null) {
+                players.add(player);
+            }
+        });
+
+        players.sort(
+            Comparator.comparing(
+                Player::plainName,
+                String.CASE_INSENSITIVE_ORDER
+            )
+        );
+
+        return players;
+    }
+
+    private void handleInfoMenuSelection(Player player, int option) {
+        if (player == null || !player.admin) {
+            return;
+        }
+
+        List<String> targetUuids = infoMenuTargetsByAdminUuid.remove(
+            player.uuid()
+        );
+
+        if (
+            targetUuids == null
+                || option < 0
+                || option >= targetUuids.size()
+        ) {
+            return;
+        }
+
+        Player target = Groups.player.find(
+            onlinePlayer -> onlinePlayer != null
+                && onlinePlayer.uuid().equals(targetUuids.get(option))
+        );
+
+        if (target == null) {
+            player.sendMessage("[scarlet]That player is no longer online.[]");
+            return;
+        }
+
+        showStoredInfoForOnlinePlayer(player, target);
+    }
+
+    private void showStoredInfoForOnlinePlayer(Player player, Player target) {
+        playerDataManager.findPlayerInfoByUuid(
+            target.uuid(),
+            info -> {
+                if (info == null) {
+                    player.sendMessage(
+                        "[scarlet]No stored player data for "
+                            + target.plainName()
+                            + " yet.[]"
+                    );
+                    return;
+                }
+
+                player.sendMessage(formatPlayerInfo(info, false));
+            }
+        );
+    }
+
+    private InfoTargetRequest parseInfoTarget(String[] args) {
+        Integer teamId = null;
+        Integer matchNumber = null;
+        int nameEnd = args.length;
+
+        if (args.length > 1 && args[args.length - 1].startsWith("#")) {
+            try {
+                matchNumber = Integer.parseInt(
+                    args[args.length - 1].substring(1)
+                );
+                nameEnd = args.length - 1;
+            } catch (NumberFormatException ignored) {
+                // Last word is part of the player name.
+            }
+        }
+
+        if (args.length > 1) {
+            try {
+                teamId = Integer.parseInt(args[nameEnd - 1]);
+                nameEnd--;
+            } catch (NumberFormatException ignored) {
+                // Last word is part of the player name.
+            }
+        }
+
+        StringBuilder name = new StringBuilder();
+
+        for (int index = 0; index < nameEnd; index++) {
+            if (index > 0) {
+                name.append(" ");
+            }
+
+            name.append(args[index]);
+        }
+
+        return new InfoTargetRequest(name.toString().trim(), teamId, matchNumber);
+    }
+
+    private List<Player> onlinePlayersMatching(
+        String query,
+        Integer teamId
+    ) {
+        List<Player> matches = new ArrayList<>();
+        List<Player> exactMatches = new ArrayList<>();
+        String normalizedQuery = query.toLowerCase();
+
+        Groups.player.each(player -> {
+            if (player == null) {
+                return;
+            }
+
+            if (teamId != null && player.team().id != teamId) {
+                return;
+            }
+
+            String normalizedName = player.plainName().toLowerCase();
+
+            if (normalizedName.equals(normalizedQuery)) {
+                exactMatches.add(player);
+            }
+
+            if (normalizedName.contains(normalizedQuery)) {
+                matches.add(player);
+            }
+        });
+
+        if (exactMatches.size() == 1) {
+            return exactMatches;
+        }
+
+        return matches;
+    }
+
+    private String compactOnlinePlayerMatches(List<Player> matches) {
+        StringBuilder result = new StringBuilder();
+
+        for (int index = 0; index < matches.size(); index++) {
+            if (index > 0) {
+                result.append(", ");
+            }
+
+            Player player = matches.get(index);
+
+            result.append("[")
+                .append(index + 1)
+                .append("] ")
+                .append(player.plainName())
+                .append(" team #")
+                .append(player.team().id);
+        }
+
+        return result.toString();
+    }
+
+    static String formatPlayerInfo(
+        PlayerDataManager.PlayerInfo info,
+        boolean includeUuid
+    ) {
+        StringBuilder message = new StringBuilder();
+
+        message.append("[accent]Player: [white]")
+            .append(info.lastName())
+            .append("[]");
+
+        if (!info.knownNames().isEmpty()) {
+            message.append("\n[accent]Known names: [white]")
+                .append(String.join(", ", info.knownNames()))
+                .append("[]");
+        }
+
+        if (includeUuid) {
+            message.append("\n[accent]UUID: [white]")
+                .append(info.uuid())
+                .append("[]");
+        }
+
+        message.append("\n[accent]Total playtime: [white]")
+            .append(formatDuration(info.totalPlaytimeMillis()))
+            .append("[]\n[accent]FFA playtime: [white]")
+            .append(formatDuration(info.ffaPlaytimeMillis()))
+            .append("[]\n[accent]FFA: [white]")
+            .append(info.ffaWon())
+            .append(" wins / ")
+            .append(info.ffaPlayed())
+            .append(" played[]")
+            .append("\n[accent]Ranked: [white]")
+            .append(info.rankedWins())
+            .append(" wins / ")
+            .append(info.rankedLosses())
+            .append(" losses / ")
+            .append(info.rankedMatchesPlayed())
+            .append(" played[]")
+            .append("\n[accent]ELO: [white]")
+            .append(info.elo())
+            .append(" current / ")
+            .append(info.peakElo())
+            .append(" peak[]");
+
+        return message.toString();
+    }
+
+    static String formatDuration(long durationMillis) {
+        long totalSeconds = Math.max(0L, durationMillis / 1000L);
+        long hours = totalSeconds / 3600L;
+        long minutes = (totalSeconds % 3600L) / 60L;
+        long seconds = totalSeconds % 60L;
+
+        StringBuilder result = new StringBuilder();
+
+        if (hours > 0L) {
+            result.append(hours).append("h ");
+        }
+
+        if (hours > 0L || minutes > 0L) {
+            result.append(minutes).append("m ");
+        }
+
+        result.append(seconds).append("s");
+        return result.toString();
+    }
+
+    private record InfoTargetRequest(
+        String nameQuery,
+        Integer teamId,
+        Integer matchNumber
+    ) {
     }
 
     private boolean requireAdmin(Player player) {

@@ -6,7 +6,7 @@ This repository contains a server-side Mindustry plugin for Evict-style persiste
 
 The plugin is intended for a dedicated Mindustry server. Clients do not install the plugin.
 
-Current stable baseline: `1.2.8`.
+Current stable baseline: `1.2.14`.
 
 ## Workflow Rules
 
@@ -85,6 +85,13 @@ gradle jar
 - Capture attrition
 - Range attrition
 
+`PlayerDataManager.java`
+- Async SQLite player data writes
+- Player profile rows
+- FFA played/won counters
+- Total and FFA playtime counters
+- Reserved ranked/ELO columns
+
 `CoreUnitDamageManager.java`
 - Disables Alpha/Beta/Gamma core-unit combat damage
 - Leaves core-unit building and mining intact
@@ -107,6 +114,7 @@ gradle jar
 
 `EvictCommands.java`
 - `/fullassault`
+- `/info`
 - Admin dev commands
 
 `RoundEndCommands.java`
@@ -126,6 +134,7 @@ gradle jar
 
 `EvictConsoleCommands.java`
 - Dedicated-server console commands
+- Stored player-data lookup
 
 ## Important Gameplay Rules
 
@@ -173,6 +182,25 @@ Core-spawned player units do not receive attrition.
 Core units can build and mine, but do not deal combat damage to buildings or units.
 
 Both values persist across full server restarts.
+
+### Player Data
+
+Persistent player data is stored in:
+
+```text
+config/evict-players.db
+```
+
+- Database writes run asynchronously on one background writer thread.
+- Profiles are keyed by player UUID.
+- Stored values include last name, first seen, last seen, total playtime, FFA playtime, FFA played and FFA won.
+- All observed names are stored per UUID in `player_names`.
+- Ranked playtime, ranked wins, ranked losses, ranked matches played, ELO and peak ELO columns exist for later ranked/1v1 features.
+- FFA playtime is counted only after a player receives a personal team in that round.
+- No IP addresses are stored.
+- `/info` is admin-only and opens a clickable online-player selection menu with two players per row and a bottom cancel button.
+- `/info [name] [team] [#number]` is admin-only and searches online players by partial name. The optional team ID filters duplicate online names; `#number` selects one result from the duplicate list.
+- Console command `evictplayerinfo [name/uuid]` searches stored database rows by partial latest name first. Old names and UUIDs are searched only if no latest-name match exists.
 
 ### Full Assault
 
@@ -305,6 +333,7 @@ Current dev commands:
 - `/wall`
 - `/corecap`
 - `/spawnunit`
+- `/info`
 
 ## Persistent Console Settings
 
