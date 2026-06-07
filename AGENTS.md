@@ -115,7 +115,7 @@ gradle jar
 
 `RoundTimeCommands.java`
 - `/time`
-- Round runtime and player session runtime
+- Round runtime and player first-join runtime
 
 `EvictHelpCommands.java`
 - Filtered `/help`
@@ -234,7 +234,7 @@ Both values persist across full server restarts.
 
 - Available to every player.
 - Shows how long the current round has been running.
-- Shows how long the player has been connected in the current server session.
+- Shows how long the player has been connected since their first join this round.
 
 ### Extinction
 

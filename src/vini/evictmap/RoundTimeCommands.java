@@ -8,7 +8,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Player-facing time command and lightweight session timer.
+ * Player-facing time command and lightweight first-join timer.
  */
 final class RoundTimeCommands {
 
@@ -20,28 +20,23 @@ final class RoundTimeCommands {
     void registerClientCommands(CommandHandler handler) {
         handler.<Player>register(
             "time",
-            "Show round time and your current session time.",
+            "Show round time and your time since first joining this round.",
             (args, player) -> showTime(args, player)
         );
     }
 
     void beginRound() {
         roundStartedAtMillis = System.currentTimeMillis();
+        joinedAtMillisByPlayerUuid.clear();
         rememberConnectedPlayers();
     }
 
     void handlePlayerJoin(Player player) {
         if (player != null) {
-            joinedAtMillisByPlayerUuid.put(
+            joinedAtMillisByPlayerUuid.putIfAbsent(
                 player.uuid(),
                 System.currentTimeMillis()
             );
-        }
-    }
-
-    void handlePlayerLeave(Player player) {
-        if (player != null) {
-            joinedAtMillisByPlayerUuid.remove(player.uuid());
         }
     }
 
@@ -80,7 +75,7 @@ final class RoundTimeCommands {
         player.sendMessage(
             "[accent]Round time: [white]"
                 + roundTime
-                + "[]\n[accent]Your session time: [white]"
+                + "[]\n[accent]Your first-join time: [white]"
                 + formatDuration(currentMillis - joinedAtMillis)
                 + "[]"
         );

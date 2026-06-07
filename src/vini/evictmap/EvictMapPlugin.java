@@ -135,7 +135,6 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Events.on(PlayerLeave.class, event -> {
-            roundTimeCommands.handlePlayerLeave(event.player);
             inviteManager.handlePlayerLeave(event.player);
         });
 
