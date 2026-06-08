@@ -593,7 +593,7 @@ final class EvictCommands {
 
         for (Player target : players) {
             targetUuids.add(target.uuid());
-            currentRow.add(target.plainName());
+            currentRow.add(PlayerNameFormatter.displayName(target));
 
             if (currentRow.size() == INFO_MENU_COLUMNS) {
                 rows.add(currentRow.toArray(new String[0]));
@@ -673,7 +673,7 @@ final class EvictCommands {
                 if (info == null) {
                     player.sendMessage(
                         "[scarlet]No stored player data for "
-                            + target.plainName()
+                            + PlayerNameFormatter.displayName(target)
                             + " yet.[]"
                     );
                     return;
@@ -770,7 +770,7 @@ final class EvictCommands {
             result.append("[")
                 .append(index + 1)
                 .append("] ")
-                .append(player.plainName())
+                .append(PlayerNameFormatter.displayName(player))
                 .append(" team #")
                 .append(player.team().id);
         }

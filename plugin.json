@@ -3,6 +3,6 @@
   "author": "Vini2309",
   "main": "vini.evictmap.EvictMapPlugin",
   "description": "Server-side Evict-style Mindustry PvP plugin with procedural hex maps, captures, claims, split persistent attrition, Extinction and async SQLite player statistics.",
-  "version": "1.2.14",
+  "version": "1.2.17",
   "minGameVersion": "157.4"
 }

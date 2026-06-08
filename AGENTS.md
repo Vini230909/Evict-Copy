@@ -6,7 +6,7 @@ This repository contains a server-side Mindustry plugin for Evict-style persiste
 
 The plugin is intended for a dedicated Mindustry server. Clients do not install the plugin.
 
-Current stable baseline: `1.2.14`.
+Current stable baseline: `1.2.17`.
 
 ## Workflow Rules
 
@@ -180,6 +180,7 @@ Range attrition:
 
 Core-spawned player units do not receive attrition.
 Core units can build and mine, but do not deal combat damage to buildings or units.
+Building-fired bullets deal `10%` damage to buildings while keeping normal damage against units.
 
 Both values persist across full server restarts.
 
@@ -235,6 +236,12 @@ config/evict-players.db
 ```
 
 - Leader only.
+- Available only after the round has run for `10 minutes`.
+- Before `10 minutes`, `/die` must not show a countdown.
+- At `10 minutes`, a global status message lists active match player names
+  only, but must not show team/core counts or say `/die` is available.
+- Live player names in chat/menu features should use the player's first
+  `[#xxxxxx]` name color when present; otherwise use their team color.
 - No confirmation required.
 - Immediately destroys all team buildings and units.
 - Converts all surrendered hexes to Fallen.

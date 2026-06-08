@@ -1,7 +1,9 @@
 package vini.evictmap;
 
 import arc.util.CommandHandler;
+import arc.util.Time;
 import mindustry.game.Team;
+import mindustry.gen.Call;
 import mindustry.gen.Player;
 
 /**
@@ -11,6 +13,11 @@ import mindustry.gen.Player;
  * match state.
  */
 final class RoundEndCommands {
+
+    private static final long SURRENDER_UNLOCK_DELAY_MILLIS =
+        10L * 60L * 1000L;
+    private static final float SURRENDER_UNLOCK_DELAY_TICKS =
+        10f * 60f * 60f;
 
     private final TeamManager teamManager;
     private final ExtinctionManager extinctionManager;
@@ -26,7 +33,7 @@ final class RoundEndCommands {
     void registerClientCommands(CommandHandler handler) {
         handler.<Player>register(
             "die",
-            "Leader only: surrender your complete team immediately.",
+            "Leader only: surrender your complete team after 10 minutes.",
             (args, player) -> surrender(args, player)
         );
 
@@ -34,6 +41,15 @@ final class RoundEndCommands {
             "over",
             "End an eligible round immediately.",
             (args, player) -> endEarly(args, player)
+        );
+    }
+
+    void beginRound() {
+        long scheduledRoundSerial = teamManager.roundSerial();
+
+        Time.run(
+            SURRENDER_UNLOCK_DELAY_TICKS,
+            () -> announceOpeningPeriodEnded(scheduledRoundSerial)
         );
     }
 
@@ -51,6 +67,16 @@ final class RoundEndCommands {
         if (!teamManager.isLeader(player)) {
             player.sendMessage(
                 "[scarlet]Only your team's original leader can surrender.[]"
+            );
+            return;
+        }
+
+        long remainingMillis =
+            SURRENDER_UNLOCK_DELAY_MILLIS - teamManager.roundRuntimeMillis();
+
+        if (remainingMillis > 0L) {
+            player.sendMessage(
+                "[scarlet]Your team cannot surrender during the opening 10 minutes.[]"
             );
             return;
         }
@@ -146,5 +172,28 @@ final class RoundEndCommands {
         }
 
         player.sendMessage(message.toString());
+    }
+
+    private void announceOpeningPeriodEnded(long scheduledRoundSerial) {
+        if (
+            !teamManager.isRoundActiveForSystems()
+                || scheduledRoundSerial != teamManager.roundSerial()
+        ) {
+            return;
+        }
+
+        String activeMatchPlayers =
+            teamManager.activeMatchPlayerNamesSummary();
+
+        if (activeMatchPlayers.isBlank()) {
+            return;
+        }
+
+        Call.sendMessage(
+            "[accent]The opening 10 minutes have passed.[]\n"
+                + "[lightgray]Match players: []"
+                + activeMatchPlayers
+                + "[lightgray].[]"
+        );
     }
 }

@@ -168,7 +168,7 @@ final class InviteManager {
         joinRequests.add(
             new JoinRequest(
                 player.uuid(),
-                player.plainName(),
+                PlayerNameFormatter.displayName(player),
                 targetTeam.id,
                 nextSequence()
             )
@@ -182,7 +182,7 @@ final class InviteManager {
 
         leader.sendMessage(
             "[accent]"
-                + player.plainName()
+                + PlayerNameFormatter.displayName(player)
                 + " wants to join your team. Use /invite to view pending requests.[]"
         );
     }
@@ -227,7 +227,7 @@ final class InviteManager {
 
         leader.sendMessage(
             "[green]"
-                + entry.player.plainName()
+                + PlayerNameFormatter.displayName(entry.player)
                 + " joined your team.[]"
         );
     }
@@ -348,7 +348,7 @@ final class InviteManager {
                 message.append("\n[lightgray]")
                     .append(index + 1)
                     .append(". []")
-                    .append(entry.player.plainName())
+                    .append(PlayerNameFormatter.displayName(entry.player))
                     .append(entry.type == EntryType.REQUEST
                         ? " [accent][request][]"
                         : " [orange][claimed][]");

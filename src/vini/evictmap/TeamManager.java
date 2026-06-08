@@ -138,6 +138,7 @@ final class TeamManager {
     private int extinctionTerrainChangesPerTick =
         DEFAULT_EXTINCTION_TERRAIN_CHANGES_PER_TICK;
     private long roundSerial = 0L;
+    private long roundStartedAtMillis = 0L;
 
     TeamManager(Cons<Team> victoryHandler) {
         this.victoryHandler = victoryHandler;
@@ -171,6 +172,7 @@ final class TeamManager {
 
         random = new Random(seed ^ TEAM_RANDOM_XOR);
         roundSerial++;
+        roundStartedAtMillis = System.currentTimeMillis();
         roundActivated = false;
         resetting = false;
         extinctionActive = false;
@@ -219,7 +221,10 @@ final class TeamManager {
                 existingTeamId != FALLEN_TEAM_ID
                     && uuid.equals(leaderUuidByTeamId.get(existingTeamId))
             ) {
-                playerNameByTeamId.put(existingTeamId, player.plainName());
+                playerNameByTeamId.put(
+                    existingTeamId,
+                    PlayerNameFormatter.displayName(player)
+                );
             }
 
             assignPlayerToTeam(player, Team.get(existingTeamId));
@@ -275,7 +280,10 @@ final class TeamManager {
         claimCore(startHex, personalTeam);
         usedPersonalTeamIds.add(teamId);
         teamIdByPlayerUuid.put(uuid, teamId);
-        playerNameByTeamId.put(teamId, player.plainName());
+        playerNameByTeamId.put(
+            teamId,
+            PlayerNameFormatter.displayName(player)
+        );
         leaderUuidByTeamId.put(teamId, uuid);
         personalTeamCreationOrder.add(teamId);
         roundActivated = true;
@@ -1088,6 +1096,20 @@ final class TeamManager {
         return result;
     }
 
+    String activeMatchPlayerNamesSummary() {
+        List<String> playerNames = new ArrayList<>();
+
+        for (int teamId : personalTeamCreationOrder) {
+            if (!isActivePersonalTeam(teamId)) {
+                continue;
+            }
+
+            playerNames.add(displayTeam(Team.get(teamId)));
+        }
+
+        return String.join("[lightgray], []", playerNames);
+    }
+
     Integer claimTeamId(String playerUuid) {
         return claimTeamIdByPlayerUuid.get(playerUuid);
     }
@@ -1497,6 +1519,14 @@ final class TeamManager {
 
     boolean isRoundActiveForSystems() {
         return roundActive && !resetting;
+    }
+
+    long roundRuntimeMillis() {
+        if (roundStartedAtMillis == 0L) {
+            return 0L;
+        }
+
+        return Math.max(0L, System.currentTimeMillis() - roundStartedAtMillis);
     }
 
     /**

@@ -39,20 +39,111 @@ final class CaptureManager {
             !teamManager.isRoundActiveForSystems()
                 || teamManager.isCaptureSuppressed()
                 || core == null
-                || core.health > 0f
                 || core.tile == null
         ) {
             return;
         }
 
-        TeamManager.HexSlot slot = findSlotByCoreTile(core.tile.x, core.tile.y);
+        int coreTileX = core.tile.x;
+        int coreTileY = core.tile.y;
+        Team defenderTeam = core.team;
+        Team attackerTeam = validCaptureAttacker(core.lastDamage, defenderTeam);
+
+        if (core.health > 0f) {
+            retryCoreChangeAfterVanillaUpdate(
+                coreTileX,
+                coreTileY,
+                defenderTeam,
+                attackerTeam,
+                teamManager.roundSerial(),
+                attritionManager
+            );
+            return;
+        }
+
+        beginCaptureForDestroyedCore(
+            coreTileX,
+            coreTileY,
+            defenderTeam,
+            attackerTeam,
+            attritionManager
+        );
+    }
+
+    private void retryCoreChangeAfterVanillaUpdate(
+        int coreTileX,
+        int coreTileY,
+        Team originalDefenderTeam,
+        Team originalAttackerTeam,
+        long scheduledRoundSerial,
+        AttritionManager attritionManager
+    ) {
+        Time.run(
+            0f,
+            () -> retryCoreChangeAfterVanillaUpdate(
+                coreTileX,
+                coreTileY,
+                originalDefenderTeam,
+                originalAttackerTeam,
+                scheduledRoundSerial,
+                attritionManager,
+                Vars.world.tile(coreTileX, coreTileY)
+            )
+        );
+    }
+
+    private void retryCoreChangeAfterVanillaUpdate(
+        int coreTileX,
+        int coreTileY,
+        Team originalDefenderTeam,
+        Team originalAttackerTeam,
+        long scheduledRoundSerial,
+        AttritionManager attritionManager,
+        Tile centerTile
+    ) {
+        if (
+            !teamManager.isRoundActiveForSystems()
+                || scheduledRoundSerial != teamManager.roundSerial()
+        ) {
+            return;
+        }
+
+        if (centerTile != null && centerTile.build instanceof CoreBuild core) {
+            if (core.health > 0f) {
+                return;
+            }
+
+            beginCaptureForDestroyedCore(
+                coreTileX,
+                coreTileY,
+                core.team,
+                validCaptureAttacker(core.lastDamage, core.team),
+                attritionManager
+            );
+            return;
+        }
+
+        beginCaptureForDestroyedCore(
+            coreTileX,
+            coreTileY,
+            originalDefenderTeam,
+            originalAttackerTeam,
+            attritionManager
+        );
+    }
+
+    private void beginCaptureForDestroyedCore(
+        int coreTileX,
+        int coreTileY,
+        Team defenderTeam,
+        Team attackerTeam,
+        AttritionManager attritionManager
+    ) {
+        TeamManager.HexSlot slot = findSlotByCoreTile(coreTileX, coreTileY);
 
         if (slot == null || slot.extinct || slot.capturing) {
             return;
         }
-
-        Team defenderTeam = core.team;
-        Team attackerTeam = validCaptureAttacker(core.lastDamage, defenderTeam);
 
         slot.capturing = true;
         slot.pendingCaptureTeamId = attackerTeam.id;

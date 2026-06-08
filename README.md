@@ -11,8 +11,11 @@ A server-side Mindustry plugin for Evict-style persistent PvP on a procedurally 
 - Elimination messages, claims and leader-managed `/invite` requests
 - Capture and long-range unit attrition
 - Core units can build and mine, but cannot damage buildings or units
+- Building-fired bullets deal 10% damage to buildings while keeping normal
+  damage against units
 - Team-scoped `/fullassault` mode for unattended combat units
-- `/die` surrender and `/over` early round ending
+- `/die` surrender after 10 minutes, with a neutral 10-minute match-player
+  status broadcast, and `/over` early round ending
 - Timed Extinction late game with collapsing outer rings and a center-core final phase
 - Async SQLite player data storage for profiles, playtime and FFA results
 - Automatic random-seed round resets

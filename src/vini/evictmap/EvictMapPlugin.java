@@ -31,6 +31,8 @@ public class EvictMapPlugin extends Plugin {
     private final EvictSettings settings = new EvictSettings();
     private final CoreUnitDamageManager coreUnitDamageManager =
         new CoreUnitDamageManager();
+    private final BuildingDamageManager buildingDamageManager =
+        new BuildingDamageManager();
     private final PlayerDataManager playerDataManager =
         new PlayerDataManager();
 
@@ -94,6 +96,7 @@ public class EvictMapPlugin extends Plugin {
         settings.load();
         playerDataManager.start();
         coreUnitDamageManager.apply();
+        buildingDamageManager.apply();
         teamManager.setExtinctionTerrainChangesPerTick(
             settings.extinctionTerrainChangesPerTick()
         );
@@ -162,7 +165,7 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Log.info(
-            "[EvictMapGenerator] Loaded. Code revision 1.2.14. Use 'evictstatus' for commands and current settings."
+            "[EvictMapGenerator] Loaded. Code revision 1.2.17. Use 'evictstatus' for commands and current settings."
         );
     }
 
@@ -189,6 +192,7 @@ public class EvictMapPlugin extends Plugin {
         attritionManager.beginRound();
         evictCommands.beginRound();
         inviteManager.beginRound();
+        roundEndCommands.beginRound();
         roundTimeCommands.beginRound();
         extinctionManager.beginRound();
         assignConnectedPlayersAndRecordStats();
