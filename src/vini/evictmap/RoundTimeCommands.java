@@ -42,7 +42,7 @@ final class RoundTimeCommands {
         }
     }
 
-    private void rememberConnectedPlayers() {
+    void rememberConnectedPlayers() {
         long currentMillis = System.currentTimeMillis();
 
         Groups.player.each(player -> {

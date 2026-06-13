@@ -6,7 +6,7 @@ This repository contains a server-side Mindustry plugin for Evict-style persiste
 
 The plugin is intended for a dedicated Mindustry server. Clients do not install the plugin.
 
-Current stable baseline: `1.2.26`.
+Current stable baseline: `1.2.27`.
 
 ## Workflow Rules
 
@@ -274,7 +274,7 @@ config/evict-players.db
 
 - Available to every player.
 - Shows how long the current generated round has been running since map start.
-- Shows how long the player has been connected since their first join this round; if the join record is missing, it falls back to round start instead of first `/time` use.
+- Shows how long the player has been connected since their first join this round; connected players are remembered during repeated startup scans, and if the join record is still missing it falls back to round start instead of first `/time` use.
 
 ### Extinction
 

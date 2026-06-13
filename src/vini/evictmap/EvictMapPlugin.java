@@ -165,7 +165,7 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Log.info(
-            "[EvictMapGenerator] Loaded. Code revision 1.2.26. Use 'evictstatus' for commands and current settings."
+            "[EvictMapGenerator] Loaded. Code revision 1.2.27. Use 'evictstatus' for commands and current settings."
         );
     }
 
@@ -268,6 +268,7 @@ public class EvictMapPlugin extends Plugin {
     }
 
     private void assignConnectedPlayersAndRecordStats() {
+        roundTimeCommands.rememberConnectedPlayers();
         teamManager.assignConnectedPlayers();
         playerDataManager.recordConnectedFfaParticipants(teamManager);
     }
