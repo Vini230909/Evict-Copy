@@ -10,6 +10,7 @@ import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
 import mindustry.gen.Unit;
+import mindustry.world.Block;
 import mindustry.world.Tile;
 import mindustry.world.blocks.storage.CoreBlock.CoreBuild;
 
@@ -684,7 +685,7 @@ final class TeamManager {
 
     private boolean ownsAnyHex(int teamId) {
         for (HexSlot slot : slots) {
-            if (effectiveOwnerTeamId(slot) == teamId) {
+            if (effectiveCoreOwnerTeamId(slot) == teamId) {
                 return true;
             }
         }
@@ -696,7 +697,7 @@ final class TeamManager {
         int count = 0;
 
         for (HexSlot slot : slots) {
-            if (effectiveOwnerTeamId(slot) == teamId) {
+            if (effectiveCoreOwnerTeamId(slot) == teamId) {
                 count++;
             }
         }
@@ -753,8 +754,15 @@ final class TeamManager {
             }
         }
 
-        clearSurrenderedTeamAssets(team);
-        placeFallenCoresAfterSurrender(surrenderedSlots);
+        suppressCoreChangeEvents = true;
+
+        try {
+            clearSurrenderedTeamAssets(team);
+            placeFallenCoresAfterSurrender(surrenderedSlots);
+        } finally {
+            suppressCoreChangeEvents = false;
+        }
+
         eliminatedTeamIds.add(team.id);
 
         List<String> surrenderedPlayerUuids =
@@ -810,16 +818,17 @@ final class TeamManager {
                 continue;
             }
 
-            /**
-             * All surrendered buildings were already removed. Clear any
-             * unexpected synthetic remnant and restore the surrendered hex as
-             * a normal Fallen-owned Nucleus immediately.
-             */
-            if (centerTile.synthetic()) {
-                centerTile.removeNet();
+            if (
+                !placeCoreAndVerify(
+                    slot,
+                    Blocks.coreNucleus,
+                    FALLEN_TEAM,
+                    "surrender"
+                )
+            ) {
+                slot.ownerTeamId = Team.derelict.id;
+                slot.pendingCaptureTeamId = Team.derelict.id;
             }
-
-            centerTile.setNet(Blocks.coreNucleus, FALLEN_TEAM, 0);
         }
 
         Log.info(
@@ -997,7 +1006,7 @@ final class TeamManager {
                 continue;
             }
 
-            int ownerTeamId = effectiveOwnerTeamId(slot);
+            int ownerTeamId = effectiveCoreOwnerTeamId(slot);
 
             if (ownerTeamId == Team.derelict.id) {
                 continue;
@@ -1220,6 +1229,105 @@ final class TeamManager {
         return slot.capturing ? slot.pendingCaptureTeamId : slot.ownerTeamId;
     }
 
+    private int effectiveCoreOwnerTeamId(HexSlot slot) {
+        if (slot.extinct) {
+            return Team.derelict.id;
+        }
+
+        if (slot.capturing) {
+            return slot.pendingCaptureTeamId;
+        }
+
+        Tile tile = Vars.world.tile(slot.x, slot.y);
+
+        if (tile == null || !(tile.build instanceof CoreBuild core)) {
+            return Team.derelict.id;
+        }
+
+        return core.team.id;
+    }
+
+    boolean placeCoreAndVerify(
+        HexSlot slot,
+        Block coreBlock,
+        Team team,
+        String reason
+    ) {
+        if (
+            slot == null
+                || coreBlock == null
+                || team == null
+                || team == Team.derelict
+        ) {
+            return false;
+        }
+
+        Tile centerTile = Vars.world.tile(slot.x, slot.y);
+
+        if (centerTile == null) {
+            Log.err(
+                "[EvictMapGenerator] Cannot place @ core: missing center tile for hex (@,@).",
+                reason,
+                slot.col,
+                slot.row
+            );
+            return false;
+        }
+
+        boolean previousSuppression = suppressCoreChangeEvents;
+        suppressCoreChangeEvents = true;
+
+        try {
+            placeCoreOnce(centerTile, coreBlock, team);
+
+            if (hasExpectedCore(slot, coreBlock, team)) {
+                return true;
+            }
+
+            placeCoreOnce(centerTile, coreBlock, team);
+
+            if (hasExpectedCore(slot, coreBlock, team)) {
+                return true;
+            }
+        } finally {
+            suppressCoreChangeEvents = previousSuppression;
+        }
+
+        Log.err(
+            "[EvictMapGenerator] Failed to verify @ core at hex (@,@), tile (@,@), expected @ for team #@. The hex will not count as owned.",
+            reason,
+            slot.col,
+            slot.row,
+            slot.x,
+            slot.y,
+            coreBlock.name,
+            team.id
+        );
+
+        return false;
+    }
+
+    private void placeCoreOnce(Tile centerTile, Block coreBlock, Team team) {
+        if (centerTile.synthetic()) {
+            centerTile.removeNet();
+        }
+
+        centerTile.setNet(coreBlock, team, 0);
+    }
+
+    private boolean hasExpectedCore(
+        HexSlot slot,
+        Block coreBlock,
+        Team team
+    ) {
+        Tile centerTile = Vars.world.tile(slot.x, slot.y);
+
+        return centerTile != null
+            && centerTile.block() == coreBlock
+            && centerTile.build instanceof CoreBuild core
+            && core.team == team;
+    }
+
     boolean isRoundActivated() {
         return roundActivated;
     }
@@ -1244,7 +1352,7 @@ final class TeamManager {
     Team centerHexOwner() {
         for (HexSlot slot : slots) {
             if (slot.col == CENTER_COL && slot.row == CENTER_ROW) {
-                return Team.get(effectiveOwnerTeamId(slot));
+                return Team.get(effectiveCoreOwnerTeamId(slot));
             }
         }
 
@@ -1592,7 +1700,7 @@ final class TeamManager {
 
         for (HexSlot coreHex : slots) {
             if (
-                effectiveOwnerTeamId(coreHex) == unit.team.id
+                effectiveCoreOwnerTeamId(coreHex) == unit.team.id
                     && gridDistance(unitHex, coreHex) <= 1
             ) {
                 return true;

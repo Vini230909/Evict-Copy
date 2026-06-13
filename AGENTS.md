@@ -6,7 +6,7 @@ This repository contains a server-side Mindustry plugin for Evict-style persiste
 
 The plugin is intended for a dedicated Mindustry server. Clients do not install the plugin.
 
-Current stable baseline: `1.2.23`.
+Current stable baseline: `1.2.24`.
 
 ## Workflow Rules
 
@@ -154,6 +154,8 @@ gradle jar
 - Buildings created during those `5 seconds` are deleted again immediately before replacement.
 - Captured cores become Core Shards.
 - `/die` surrender restores Fallen Nucleus cores in surrendered hexes.
+- Replacement cores are verified after placement; an unverified or missing core does not count as owned and cannot block victory as a phantom core.
+- Victory, elimination and `/over` core counts use actual existing core blocks, while pending captures still count immediately for their pending owner.
 
 ### Attrition
 

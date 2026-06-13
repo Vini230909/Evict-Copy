@@ -7,7 +7,7 @@ A server-side Mindustry plugin for Evict-style persistent PvP on a procedurally 
 - Procedural hex-map generation with walls, passages, ores, water and oil
 - Fallen team `#14` as the neutral owner of unclaimed cores
 - Personal player teams with protected starting hexes, a start schematic and starting resources
-- Core captures with a 5-second replacement delay, hex cleanup and captured Core Shards
+- Core captures with a 5-second replacement delay, hex cleanup, captured Core Shards and verified replacement placement
 - Elimination messages, claims and leader-managed `/invite` requests
 - Capture and long-range unit attrition
 - Core units can build and mine, but cannot damage buildings or units

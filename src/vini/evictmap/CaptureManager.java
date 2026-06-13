@@ -292,16 +292,13 @@ final class CaptureManager {
             slot.row
         );
 
-        /**
-         * The center should now be empty. Clear any unexpected synthetic
-         * remnant and place the attacker's small 3x3 Core Shard without adding
-         * any bonus items.
-         */
-        if (centerTile.synthetic()) {
-            centerTile.removeNet();
-        }
-
-        centerTile.setNet(Blocks.coreShard, attackerTeam, 0);
+        boolean corePlaced =
+            teamManager.placeCoreAndVerify(
+                slot,
+                Blocks.coreShard,
+                attackerTeam,
+                "capture"
+            );
 
         /**
          * Do not clear capturedCore.items here.
@@ -313,17 +310,27 @@ final class CaptureManager {
          * A captured shard adds no bonus resources; it simply joins the
          * attacker's already shared core inventory.
          */
-        slot.ownerTeamId = attackerTeam.id;
-        slot.pendingCaptureTeamId = attackerTeam.id;
+        slot.ownerTeamId = corePlaced ? attackerTeam.id : Team.derelict.id;
+        slot.pendingCaptureTeamId =
+            corePlaced ? attackerTeam.id : Team.derelict.id;
         slot.capturing = false;
 
-        Log.info(
-            "[EvictMapGenerator] Capture complete at hex (@,@): team #@ -> team #@ with a Core Shard and no bonus items.",
-            slot.col,
-            slot.row,
-            defenderTeam.id,
-            attackerTeam.id
-        );
+        if (corePlaced) {
+            Log.info(
+                "[EvictMapGenerator] Capture complete at hex (@,@): team #@ -> team #@ with a Core Shard and no bonus items.",
+                slot.col,
+                slot.row,
+                defenderTeam.id,
+                attackerTeam.id
+            );
+        } else {
+            Log.err(
+                "[EvictMapGenerator] Capture at hex (@,@) could not place a verified Core Shard for team #@. The hex is now unowned so it cannot block victory as a phantom core.",
+                slot.col,
+                slot.row,
+                attackerTeam.id
+            );
+        }
 
     }
 
