@@ -66,7 +66,7 @@ final class RoundTimeCommands {
             joinedAtMillisByPlayerUuid.get(player.uuid());
 
         if (joinedAtMillis == null) {
-            joinedAtMillis = currentMillis;
+            joinedAtMillis = fallbackJoinTimeMillis(currentMillis);
             joinedAtMillisByPlayerUuid.put(player.uuid(), joinedAtMillis);
         }
 
@@ -81,6 +81,19 @@ final class RoundTimeCommands {
                 + formatDuration(currentMillis - joinedAtMillis)
                 + "[]"
         );
+    }
+
+    private long fallbackJoinTimeMillis(long currentMillis) {
+        long roundStartedAtMillis = teamManager.roundStartedAtMillis();
+
+        if (
+            teamManager.isRoundActiveForSystems()
+                && roundStartedAtMillis > 0L
+        ) {
+            return roundStartedAtMillis;
+        }
+
+        return currentMillis;
     }
 
     private String formatDuration(long durationMillis) {

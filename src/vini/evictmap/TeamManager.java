@@ -1682,6 +1682,10 @@ final class TeamManager {
         );
     }
 
+    long roundStartedAtMillis() {
+        return roundStartedAtMillis;
+    }
+
     /**
      * A unit is protected from recurring range attrition while it remains in
      * an owned core hex or one directly neighbouring hex. Entering a hex two
