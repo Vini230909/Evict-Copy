@@ -20,7 +20,7 @@ import java.util.List;
  * - 01:30:00: outermost live ring collapses immediately
  * - every 01:30 afterward: the next live ring collapses
  * - when the center plus its six neighbours remain: four-minute center hold
- * - if the center is still Fallen after four minutes: overtime until captured
+ * - the center owner after four minutes wins, including Fallen
  */
 final class ExtinctionManager {
 
@@ -57,7 +57,6 @@ final class ExtinctionManager {
     private boolean warningOneMinuteSent = false;
     private boolean extinctionStarted = false;
     private boolean finalPhase = false;
-    private boolean overtime = false;
 
     ExtinctionManager(TeamManager teamManager) {
         this.teamManager = teamManager;
@@ -79,8 +78,6 @@ final class ExtinctionManager {
         warningOneMinuteSent = false;
         extinctionStarted = false;
         finalPhase = false;
-        overtime = false;
-
         teamManager.setExtinctionActive(false);
     }
 
@@ -139,28 +136,8 @@ final class ExtinctionManager {
             return;
         }
 
-        if (!overtime && elapsedTicks >= finalPhaseEndTicks) {
-            Team centerOwner = teamManager.centerHexOwner();
-
-            if (validCrownWinner(centerOwner)) {
-                teamManager.finishExtinction(centerOwner, false);
-                return;
-            }
-
-            overtime = true;
-
-            Call.sendMessage(
-                "[scarlet]EXTINCTION OVERTIME: the center core is still Fallen. "
-                    + "Capture it to win immediately.[]"
-            );
-        }
-
-        if (overtime) {
-            Team centerOwner = teamManager.centerHexOwner();
-
-            if (validCrownWinner(centerOwner)) {
-                teamManager.finishExtinction(centerOwner, true);
-            }
+        if (elapsedTicks >= finalPhaseEndTicks) {
+            teamManager.finishExtinction(finalCenterWinner(), false);
         }
     }
 
@@ -339,14 +316,19 @@ final class ExtinctionManager {
             "[accent]FINAL EXTINCTION PHASE: the last outer ring disappeared. "
                 + "Only the middle hex and its six neighbouring hexes remain. "
                 + "You now have 4 minutes to conquer and control the middle "
-                + "core. Its owner when the timer ends wins the round.[]"
+                + "core. Its owner when the timer ends wins the round, "
+                + "including Fallen.[]"
         );
     }
 
-    private boolean validCrownWinner(Team team) {
-        return team != null
-            && team != TeamManager.FALLEN_TEAM
-            && team != Team.derelict;
+    private Team finalCenterWinner() {
+        Team centerOwner = teamManager.centerHexOwner();
+
+        if (centerOwner == null || centerOwner == Team.derelict) {
+            return TeamManager.FALLEN_TEAM;
+        }
+
+        return centerOwner;
     }
 
     private float currentTimelineTicks() {

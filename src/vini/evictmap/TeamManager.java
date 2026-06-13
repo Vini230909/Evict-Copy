@@ -1524,11 +1524,11 @@ final class TeamManager {
 
         if (winner == FALLEN_TEAM) {
             Call.sendMessage(
-                "[scarlet]Fallen[] won EXTINCTION because no active personal team survived."
+                "[scarlet]Fallen[] won EXTINCTION because no active personal team controlled the final center core."
             );
 
             Log.info(
-                "[EvictMapGenerator] Extinction winner: Fallen. No active personal team survived. Starting guarded post-game reset."
+                "[EvictMapGenerator] Extinction winner: Fallen. No active personal team controlled the final center core. Starting guarded post-game reset."
             );
         } else {
             Call.sendMessage(

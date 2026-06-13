@@ -6,7 +6,7 @@ This repository contains a server-side Mindustry plugin for Evict-style persiste
 
 The plugin is intended for a dedicated Mindustry server. Clients do not install the plugin.
 
-Current stable baseline: `1.2.24`.
+Current stable baseline: `1.2.25`.
 
 ## Workflow Rules
 
@@ -293,8 +293,8 @@ Normal timeline:
 Final phase:
 - The center hex and its six neighboring hexes are protected from procedural filling
 - When only those `7` hexes remain, a `4-minute` center-core phase begins
-- The team owning the middle core after `4 minutes` wins
-- If the middle core is still Fallen, overtime continues until a personal team captures it
+- The team owning the middle core after `4 minutes` wins, including Fallen
+- If the middle core is still Fallen after `4 minutes`, Fallen wins and the round resets normally
 
 Admin test command:
 

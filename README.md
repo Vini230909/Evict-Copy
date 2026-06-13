@@ -17,6 +17,7 @@ A server-side Mindustry plugin for Evict-style persistent PvP on a procedurally 
 - `/die` surrender after 10 minutes, with a neutral 10-minute match-player
   status broadcast, and `/over` early round ending
 - Timed Extinction late game with collapsing outer rings and a center-core final phase
+- Fallen can win Extinction by still owning the center core when the final timer ends
 - Async SQLite player data storage for profiles, playtime and FFA results
 - Automatic random-seed round resets
 - Persistent tuning for attrition, walls, ore/water generation and Extinction terrain streaming
