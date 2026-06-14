@@ -4,7 +4,9 @@ import arc.util.Log;
 import mindustry.Vars;
 import mindustry.content.Blocks;
 import mindustry.game.Team;
+import mindustry.gen.Call;
 import mindustry.world.Tile;
+import mindustry.world.Block;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -189,6 +191,7 @@ final class EvictTerrainGenerator {
             );
 
         placeNucleusCores(centers, normalCells);
+        syncGeneratedWorld();
 
         return new GeneratedRound(
             startHexSlots(centers, normalCells, filledCells),
@@ -824,6 +827,72 @@ final class EvictTerrainGenerator {
         }
     }
 
+    private void syncGeneratedWorld() {
+        Map<Block, List<Integer>> floorPositionsByBlock =
+            new LinkedHashMap<>();
+        Map<Block, List<Integer>> overlayPositionsByBlock =
+            new LinkedHashMap<>();
+        Map<BlockSyncKey, List<Integer>> blockPositionsByKey =
+            new LinkedHashMap<>();
+
+        for (Tile tile : Vars.world.tiles) {
+            if (tile == null) {
+                continue;
+            }
+
+            floorPositionsByBlock
+                .computeIfAbsent(tile.floor(), ignored -> new ArrayList<>())
+                .add(tile.pos());
+
+            if (tile.overlay() != Blocks.air) {
+                overlayPositionsByBlock
+                    .computeIfAbsent(tile.overlay(), ignored -> new ArrayList<>())
+                    .add(tile.pos());
+            }
+
+            blockPositionsByKey
+                .computeIfAbsent(
+                    new BlockSyncKey(tile.block(), tile.team()),
+                    ignored -> new ArrayList<>()
+                )
+                .add(tile.pos());
+        }
+
+        for (Map.Entry<Block, List<Integer>> entry : floorPositionsByBlock.entrySet()) {
+            Call.setTileFloors(entry.getKey(), positions(entry.getValue()));
+        }
+
+        for (Map.Entry<Block, List<Integer>> entry : overlayPositionsByBlock.entrySet()) {
+            Call.setTileOverlays(entry.getKey(), positions(entry.getValue()));
+        }
+
+        for (Map.Entry<BlockSyncKey, List<Integer>> entry : blockPositionsByKey.entrySet()) {
+            BlockSyncKey key = entry.getKey();
+            Call.setTileBlocks(
+                key.block,
+                key.team,
+                positions(entry.getValue())
+            );
+        }
+
+        Log.info(
+            "[EvictMapGenerator] Synced generated terrain to clients in @ floor groups, @ overlay groups and @ block groups.",
+            floorPositionsByBlock.size(),
+            overlayPositionsByBlock.size(),
+            blockPositionsByKey.size()
+        );
+    }
+
+    private int[] positions(List<Integer> positions) {
+        int[] result = new int[positions.size()];
+
+        for (int i = 0; i < positions.size(); i++) {
+            result[i] = positions.get(i);
+        }
+
+        return result;
+    }
+
     private List<ResourceGenerator.HexCenter> resourceCenters(
         Map<Cell, Point> centers,
         List<Cell> normalCells
@@ -858,6 +927,7 @@ final class EvictTerrainGenerator {
                 );
             }
 
+            CoreMarkerFloor.place(center.x, center.y);
             tile.setBlock(Blocks.coreNucleus, TeamManager.FALLEN_TEAM);
         }
     }
@@ -1539,6 +1609,9 @@ final class EvictTerrainGenerator {
         THIN,
         OPEN,
         PASSAGE
+    }
+
+    private record BlockSyncKey(Block block, Team team) {
     }
 
     private record Cell(int col, int row) {

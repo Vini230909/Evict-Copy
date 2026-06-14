@@ -6,7 +6,7 @@ This repository contains a server-side Mindustry plugin for Evict-style persiste
 
 The plugin is intended for a dedicated Mindustry server. Clients do not install the plugin.
 
-Current stable baseline: `1.2.27`.
+Current stable baseline: `1.2.28`.
 
 ## Workflow Rules
 

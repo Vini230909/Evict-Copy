@@ -60,6 +60,8 @@ final class StartLoadout {
         Seq<Stile> sortedTiles = START_SCHEMATIC.tiles.copy();
         sortedTiles.sort(stile -> -stile.block.schematicPriority);
 
+        CoreMarkerFloor.place(coreX, coreY);
+
         for (Stile stile : sortedTiles) {
             Tile tile = Vars.world.tile(
                 stile.x + offsetX,

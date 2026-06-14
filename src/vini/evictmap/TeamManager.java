@@ -1278,13 +1278,13 @@ final class TeamManager {
         suppressCoreChangeEvents = true;
 
         try {
-            placeCoreOnce(centerTile, coreBlock, team);
+            placeCoreOnce(slot, centerTile, coreBlock, team, reason);
 
             if (hasExpectedCore(slot, coreBlock, team)) {
                 return true;
             }
 
-            placeCoreOnce(centerTile, coreBlock, team);
+            placeCoreOnce(slot, centerTile, coreBlock, team, reason);
 
             if (hasExpectedCore(slot, coreBlock, team)) {
                 return true;
@@ -1307,12 +1307,113 @@ final class TeamManager {
         return false;
     }
 
-    private void placeCoreOnce(Tile centerTile, Block coreBlock, Team team) {
-        if (centerTile.synthetic()) {
-            centerTile.removeNet();
+    private void placeCoreOnce(
+        HexSlot slot,
+        Tile centerTile,
+        Block coreBlock,
+        Team team,
+        String reason
+    ) {
+        PlacementClearResult cleared =
+            clearCorePlacementFootprint(centerTile, coreBlock);
+
+        if (cleared.anyRemoved()) {
+            Log.info(
+                "[EvictMapGenerator] Forced @ core placement at hex (@,@), tile (@,@): cleared @ overlapping building centers, @ terrain blocks and @ units.",
+                reason,
+                slot.col,
+                slot.row,
+                centerTile.x,
+                centerTile.y,
+                cleared.buildings,
+                cleared.terrainBlocks,
+                cleared.units
+            );
         }
 
+        CoreMarkerFloor.place(centerTile.x, centerTile.y);
         centerTile.setNet(coreBlock, team, 0);
+    }
+
+    private PlacementClearResult clearCorePlacementFootprint(
+        Tile centerTile,
+        Block coreBlock
+    ) {
+        int radius = coreBlock.size / 2;
+        int minX = centerTile.x - radius;
+        int maxX = minX + coreBlock.size - 1;
+        int minY = centerTile.y - radius;
+        int maxY = minY + coreBlock.size - 1;
+
+        List<Tile> footprintTiles = new ArrayList<>();
+        Set<Tile> buildingCenters = new HashSet<>();
+
+        for (int y = minY; y <= maxY; y++) {
+            for (int x = minX; x <= maxX; x++) {
+                Tile tile = Vars.world.tile(x, y);
+
+                if (tile == null) {
+                    continue;
+                }
+
+                footprintTiles.add(tile);
+
+                if (tile.build != null && tile.build.tile != null) {
+                    buildingCenters.add(tile.build.tile);
+                }
+            }
+        }
+
+        int removedBuildings = 0;
+
+        for (Tile tile : buildingCenters) {
+            if (
+                tile.build != null
+                    && tile.isCenter()
+            ) {
+                tile.removeNet();
+                removedBuildings++;
+            }
+        }
+
+        int removedTerrainBlocks = 0;
+
+        for (Tile tile : footprintTiles) {
+            if (tile.block() != Blocks.air) {
+                tile.removeNet();
+                removedTerrainBlocks++;
+            }
+        }
+
+        List<Unit> unitsToKill = new ArrayList<>();
+
+        Groups.unit.each(unit -> {
+            if (
+                unit != null
+                    && unit.isAdded()
+                    && unit.tileX() >= minX
+                    && unit.tileX() <= maxX
+                    && unit.tileY() >= minY
+                    && unit.tileY() <= maxY
+            ) {
+                unitsToKill.add(unit);
+            }
+        });
+
+        int killedUnits = 0;
+
+        for (Unit unit : unitsToKill) {
+            if (unit.isAdded()) {
+                unit.kill();
+                killedUnits++;
+            }
+        }
+
+        return new PlacementClearResult(
+            removedBuildings,
+            removedTerrainBlocks,
+            killedUnits
+        );
     }
 
     private boolean hasExpectedCore(
@@ -1326,6 +1427,16 @@ final class TeamManager {
             && centerTile.block() == coreBlock
             && centerTile.build instanceof CoreBuild core
             && core.team == team;
+    }
+
+    private record PlacementClearResult(
+        int buildings,
+        int terrainBlocks,
+        int units
+    ) {
+        boolean anyRemoved() {
+            return buildings > 0 || terrainBlocks > 0 || units > 0;
+        }
     }
 
     boolean isRoundActivated() {
