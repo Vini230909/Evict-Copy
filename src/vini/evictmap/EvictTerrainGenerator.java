@@ -850,12 +850,14 @@ final class EvictTerrainGenerator {
                     .add(tile.pos());
             }
 
-            blockPositionsByKey
-                .computeIfAbsent(
-                    new BlockSyncKey(tile.block(), tile.team()),
-                    ignored -> new ArrayList<>()
-                )
-                .add(tile.pos());
+            if (shouldSyncBlockPosition(tile)) {
+                blockPositionsByKey
+                    .computeIfAbsent(
+                        new BlockSyncKey(tile.block(), tile.team()),
+                        ignored -> new ArrayList<>()
+                    )
+                    .add(tile.pos());
+            }
         }
 
         for (Map.Entry<Block, List<Integer>> entry : floorPositionsByBlock.entrySet()) {
@@ -891,6 +893,11 @@ final class EvictTerrainGenerator {
         }
 
         return result;
+    }
+
+    private boolean shouldSyncBlockPosition(Tile tile) {
+        Block block = tile.block();
+        return block.size <= 1 || tile.isCenter();
     }
 
     private List<ResourceGenerator.HexCenter> resourceCenters(
