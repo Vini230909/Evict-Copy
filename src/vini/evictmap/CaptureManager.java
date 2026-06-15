@@ -139,7 +139,8 @@ final class CaptureManager {
         Team attackerTeam,
         AttritionManager attritionManager
     ) {
-        TeamManager.HexSlot slot = findSlotByCoreTile(coreTileX, coreTileY);
+        TeamManager.HexSlot slot =
+            teamManager.slotAtCoreTile(coreTileX, coreTileY);
 
         if (slot == null || slot.extinct || slot.capturing) {
             return;
@@ -398,15 +399,5 @@ final class CaptureManager {
         long dy = tileY - slot.y;
 
         return dx * dx + dy * dy;
-    }
-
-    private TeamManager.HexSlot findSlotByCoreTile(int x, int y) {
-        for (TeamManager.HexSlot slot : teamManager.slots()) {
-            if (!slot.extinct && slot.x == x && slot.y == y) {
-                return slot;
-            }
-        }
-
-        return null;
     }
 }

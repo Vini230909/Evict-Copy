@@ -684,20 +684,37 @@ final class TeamManager {
     }
 
     private boolean ownsAnyHex(int teamId) {
-        for (HexSlot slot : slots) {
-            if (effectiveCoreOwnerTeamId(slot) == teamId) {
-                return true;
-            }
-        }
-
-        return false;
+        return countOwnedHexes(teamId) > 0;
     }
 
     private int countOwnedHexes(int teamId) {
+        if (teamId == Team.derelict.id) {
+            return 0;
+        }
+
         int count = 0;
+        Team team = Team.get(teamId);
+
+        if (team != null) {
+            for (CoreBuild core : Vars.state.teams.cores(team)) {
+                if (core == null || core.tile == null) {
+                    continue;
+                }
+
+                HexSlot slot = slotAtCoreTile(core.tile.x, core.tile.y);
+
+                if (slot != null && !slot.extinct && !slot.capturing) {
+                    count++;
+                }
+            }
+        }
 
         for (HexSlot slot : slots) {
-            if (effectiveCoreOwnerTeamId(slot) == teamId) {
+            if (
+                !slot.extinct
+                    && slot.capturing
+                    && slot.pendingCaptureTeamId == teamId
+            ) {
                 count++;
             }
         }
@@ -1238,13 +1255,36 @@ final class TeamManager {
             return slot.pendingCaptureTeamId;
         }
 
+        CoreBuild core = registeredCoreAtSlot(slot);
+
+        return core == null ? Team.derelict.id : core.team.id;
+    }
+
+    private CoreBuild registeredCoreAtSlot(HexSlot slot) {
         Tile tile = Vars.world.tile(slot.x, slot.y);
 
-        if (tile == null || !(tile.build instanceof CoreBuild core)) {
-            return Team.derelict.id;
+        if (tile == null || !(tile.build instanceof CoreBuild centerCore)) {
+            return null;
         }
 
-        return core.team.id;
+        Team team = centerCore.team;
+
+        if (team == null || team == Team.derelict) {
+            return null;
+        }
+
+        for (CoreBuild registeredCore : Vars.state.teams.cores(team)) {
+            if (
+                registeredCore != null
+                    && registeredCore.tile != null
+                    && registeredCore.tile.x == slot.x
+                    && registeredCore.tile.y == slot.y
+            ) {
+                return registeredCore;
+            }
+        }
+
+        return null;
     }
 
     boolean placeCoreAndVerify(
@@ -1768,6 +1808,16 @@ final class TeamManager {
 
     List<HexSlot> slots() {
         return slots;
+    }
+
+    HexSlot slotAtCoreTile(int x, int y) {
+        for (HexSlot slot : slots) {
+            if (!slot.extinct && slot.x == x && slot.y == y) {
+                return slot;
+            }
+        }
+
+        return null;
     }
 
     long roundSerial() {

@@ -191,6 +191,7 @@ final class EvictTerrainGenerator {
             );
 
         placeNucleusCores(centers, normalCells);
+        recomputeStaticDarkness();
         syncGeneratedWorld();
 
         return new GeneratedRound(
@@ -825,6 +826,10 @@ final class EvictTerrainGenerator {
                 tile.setBlock(walls[y][x] ? Blocks.dirtWall : Blocks.air);
             }
         }
+    }
+
+    private void recomputeStaticDarkness() {
+        Vars.world.addDarkness(Vars.world.tiles);
     }
 
     private void syncGeneratedWorld() {
