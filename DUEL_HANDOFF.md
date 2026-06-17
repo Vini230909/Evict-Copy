@@ -98,9 +98,22 @@ detail see `AGENTS.md` (project spec) and `DUEL_ROADMAP.md` (feature planning).
 - Local test config: `evictduelserver 127.0.0.1`. **Public IP only works with
   port forwarding for the whole port range; home IPs are dynamic.**
 
-### Known limitation
-- A worker hosts the **full Evict FFA**, not a real 1v1. The "referee" behaviour
-  (controlled start, return-to-hub, etc.) below is **not built yet**.
+### e) Milestone 1 referee — IMPLEMENTED, UNTESTED (`DuelWorker.java`, commit `2c95411`)
+- Hub writes `duel.properties` (both player UUIDs + `hub.ip`/`hub.port`) into the
+  worker folder at spawn; reads/logs `result.properties` on worker exit.
+- Worker `DuelWorker`: reads the handshake, runs a 5s on-screen countdown
+  (`Call.infoPopup`) once both players are connected, and on an Evict victory
+  writes the result, announces the winner, and `Call.connect`s both players back
+  to the hub; the worker then empties and self-terminates.
+- Victory routed to the referee on a worker (`EvictMapPlugin.handleVictory`).
+- On a worker `/die` has no leader/10-min gate; `/over` is disabled.
+
+### Known limitations / untested
+- The countdown is **cosmetic** — no engine freeze yet, so players can act during
+  it. Real freeze is a fast-follow once pause behaviour is verified on a worker.
+- A worker still hosts the **full Evict FFA map** (no small/mirrored 1v1 map yet);
+  win = own all non-Fallen cores = eliminate the opponent.
+- **Nothing in Milestone 1 has been run live yet** — see the test steps below.
 
 ## 5. Design decisions (locked)
 
@@ -156,10 +169,28 @@ File-based, no live socket, hub stays the single DB writer:
   (unlimited, may chat); `evictduellist` / `evictduelkill <port>` /
   `evictduelkillall`.
 
-## 8. Proposed FIRST code milestone (awaiting user go-ahead)
+## 8. Milestone 1 — IMPLEMENTED (untested). How to test tomorrow
 
-"A duel from start to finish," worker-mode only:
-- Foundation (`duel.properties` + hub registry).
+1. Build and deploy the new jar to the **hub**, then **restart the hub** and
+   **delete `duel-workers/`** so workers re-provision with the new jar:
+   ```
+   ./.tools/gradle-9.2.0/bin/gradle jar
+   ```
+   copy `build/libs/EvictMapGenerator.jar` to the hub `config/mods/`.
+2. Hub console: `evictduelserver 127.0.0.1` (or set ip/ports), check `evictstatus`.
+3. Two clients on the hub → one runs `/play`, picks the other, accept.
+4. Expected:
+   - Hub log: `1v1: sent <A> and <B> to duel worker 127.0.0.1:6568`.
+   - On the worker (see `duel-workers/duel-6568/worker.log`): handshake loaded,
+     then once both are in, a **5-second countdown popup** and "GO".
+   - Play it out (or one types `/die`). When a team owns all non-Fallen cores,
+     both players are sent back to the hub after ~5s and the worker exits.
+   - Hub log on worker exit: `1v1 result on port 6568: winner=... loser=...`.
+5. Watch for: countdown not showing (Call.infoPopup), players not returning
+   (Call.connect back / hub address), worker not exiting, or victory not firing.
+
+Originally proposed scope (now built), worker-mode only:
+- Foundation (`duel.properties` handshake; `result.properties` back to hub).
 - **Start gate:** match starts only when both UUIDs are connected → 5s on-screen
   countdown → play.
 - `/die` always available on the worker; `/over` disabled on the worker.
