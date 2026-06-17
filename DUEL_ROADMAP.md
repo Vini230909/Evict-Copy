@@ -18,6 +18,41 @@ team, and risks.
 Almost everything below is worker-side "referee" behaviour plus hub<->worker
 coordination, so the foundation matters more than any single feature.
 
+## Decisions (resolved 2026-06-17)
+
+These override the per-feature notes further below where they differ.
+
+- **Always ranked.** Every duel is ranked; there is no custom/unranked mode, so
+  map/mode never need to be stored and `duel.properties` needs no ranked flag.
+- **ELO is a placeholder.** Start = 1000 and **does not change yet** — everyone
+  stays at 1000 until a real rating formula is chosen. Matches are still
+  recorded so history works; ELO before/after stay 1000 (delta 0) for now.
+- **Win = own all cores** (Evict's existing victory). `/die` sends a team's
+  cores to Fallen; Fallen cores are placeholders nobody needs to own, so the
+  surviving team then owns all real cores and wins. The 1v1 worker reuses
+  Evict's normal victory check — no separate win logic needed.
+- **No artificial time limit.** Evict Extinction (~1:40:00) is the natural cap.
+- **Disconnect:** pause on leave, resume whenever the player returns (no
+  time-based loss — the opponent just loses time). A never-returning player is
+  cleaned up by the worker max-lifetime backstop; no result recorded.
+- **Remove `/over` completely** (does not fit "own all cores"). Scope to
+  confirm: duel workers only, or the FFA hub too?
+- **Maps:** ranked maps should be **diagonally mirrored** for fairness — later.
+- **Spectators (`/view`):** no cap; spectators may chat normally for now.
+- **`/history`:** match list only, screenshot style (win/loss vs opponent).
+  `/info` already covers normal player stats. ELO columns shown once the real
+  formula exists.
+- **Admin UUID:** hardcoded test admin is fine for now (spoofable — proper
+  solution later).
+
+## Still open (small)
+
+- `/over` removal scope: duel workers only, or remove the command everywhere?
+- Abandoned match (player never returns): rely on the 30-min worker backstop, or
+  add an explicit abandonment rule?
+- `/history` while ELO is frozen: show `1000 -> 1000 (+0)`, or hide ELO until the
+  formula lands?
+
 ## Foundation: hub <-> worker coordination (build first)
 
 Today the hub and worker only share one signal: process exit. To do start
@@ -151,22 +186,10 @@ This is what turns a worker from "an Evict FFA" into a real duel. Needed before
 - **Phase 4 — `/view` spectators (6) + console management (1) polish.**
 - Admin UUID (7) can land any time (tiny), with the security caveat noted.
 
-## Open questions for the team (Discord)
+## Open questions
 
-1. Ranked vs custom: is `/play` always ranked, or is there an unranked option?
-   How is a match marked ranked?
-2. 60s reconnect timeout: present player wins, or match voided (no ELO)?
-3. Win conditions for a 1v1: enemy core destroyed / `/die` / time limit /
-   something else?
-4. 1v1 map: one fixed fair map, or a shrunken Evict generation? Same for ranked
-   and custom?
-5. ELO params: start at 1000 (current DB) or 1500 (screenshot)? K-factor?
-   provisional games? decay?
-6. `/history`: own matches only or look up others? how many rows? chat vs menu?
-7. Spectators: cap per match? may spectators chat to the players?
-8. Ranked direct-challenge abuse (ELO boosting with a friend) — acceptable for
-   now, or add a guard (e.g. cooldown / same-opponent limit)?
-9. Admin: keep the hardcoded test UUID short-term, proper admin list later — ok?
+Answered — see "Decisions (resolved)" above. Only the three "Still open" items
+remain.
 
 ## Risks / notes
 
