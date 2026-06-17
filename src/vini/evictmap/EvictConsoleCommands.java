@@ -64,7 +64,7 @@ final class EvictConsoleCommands {
         handler.register(
             "evictauto",
             "<on/off>",
-            "Enable or disable terrain generation whenever a map is hosted or loaded.",
+            "Enable or disable terrain generation whenever a map is hosted or loaded. Defaults to ON.",
             args -> {
                 String value = args[0].trim().toLowerCase();
 

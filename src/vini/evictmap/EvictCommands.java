@@ -152,13 +152,28 @@ final class EvictCommands {
 
         fullAssaultRefreshTimer %= FULL_ASSAULT_REFRESH_INTERVAL_TICKS;
 
+        if (fullAssaultTeamIds.isEmpty()) {
+            return;
+        }
+
         /**
          * Full assault is a team mode, not a global server mode and not a
-         * per-player unit mode. Every active team updates only its own units.
+         * per-player unit mode. The unit list is swept once and each unit is
+         * dispatched by its own team, instead of re-scanning every unit once
+         * per active team. The existing enemy cores are snapshotted once per
+         * pass so each unit reuses the same positions.
          */
-        for (int teamId : new HashSet<>(fullAssaultTeamIds)) {
-            updateFullAssaultForTeam(Team.get(teamId));
-        }
+        List<CoreBuild> coreSnapshot = teamManager.snapshotSlotCores();
+
+        Groups.unit.each(unit -> {
+            if (
+                unit != null
+                    && fullAssaultTeamIds.contains(unit.team.id)
+                    && eligibleForFullAssault(unit)
+            ) {
+                commandFullAssault(unit, coreSnapshot);
+            }
+        });
     }
 
     private void toggleFullAssault(Player player) {
@@ -177,42 +192,35 @@ final class EvictCommands {
         player.sendMessage("[accent]Full assault: [green]ACTIVE[]");
     }
 
-    private void updateFullAssaultForTeam(Team team) {
-        Groups.unit.each(unit -> {
-            if (!eligibleForFullAssault(unit, team)) {
-                return;
-            }
+    private void commandFullAssault(Unit unit, List<CoreBuild> coreSnapshot) {
+        CommandAI commandAI = (CommandAI)unit.controller();
+        UnitCommand currentCommand = commandAI.currentCommand();
 
-            CommandAI commandAI = (CommandAI)unit.controller();
-            UnitCommand currentCommand = commandAI.currentCommand();
+        if (ignoredCommand(currentCommand)) {
+            return;
+        }
 
-            if (ignoredCommand(currentCommand)) {
-                return;
-            }
+        CoreBuild targetCore = teamManager.closestEnemyCore(unit, coreSnapshot);
 
-            CoreBuild targetCore = teamManager.closestEnemyCore(unit);
+        if (targetCore == null) {
+            return;
+        }
 
-            if (targetCore == null) {
-                return;
-            }
+        if (
+            currentCommand == UnitCommand.moveCommand
+                && commandAI.attackTarget == targetCore
+        ) {
+            return;
+        }
 
-            if (
-                currentCommand == UnitCommand.moveCommand
-                    && commandAI.attackTarget == targetCore
-            ) {
-                return;
-            }
-
-            commandAI.command(UnitCommand.moveCommand);
-            commandAI.clearCommands();
-            commandAI.attackTarget = targetCore;
-        });
+        commandAI.command(UnitCommand.moveCommand);
+        commandAI.clearCommands();
+        commandAI.attackTarget = targetCore;
     }
 
-    private boolean eligibleForFullAssault(Unit unit, Team team) {
+    private boolean eligibleForFullAssault(Unit unit) {
         return unit != null
             && unit.isAdded()
-            && unit.team == team
             && !unit.spawnedByCore
             && !unit.isPlayer()
             && unit.type.canAttack

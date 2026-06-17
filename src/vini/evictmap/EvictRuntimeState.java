@@ -7,7 +7,12 @@ import java.util.Random;
  */
 final class EvictRuntimeState {
 
-    boolean autoGenerate = false;
+    /**
+     * Auto-generation defaults to on so a plain "host evict-map pvp" produces
+     * an Evict round with a random seed. Use "evictauto off" to host a map
+     * without runtime terrain generation.
+     */
+    boolean autoGenerate = true;
     Long nextSeed = null;
     Long lastSeed = null;
 

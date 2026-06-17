@@ -1918,10 +1918,17 @@ final class TeamManager {
             return false;
         }
 
+        int teamId = unit.team.id;
+
         for (HexSlot coreHex : slots) {
+            /**
+             * The adjacency test is pure arithmetic, so it filters first. The
+             * effective-owner lookup reads world/core state and runs only for
+             * the unit hex and its direct neighbours instead of every slot.
+             */
             if (
-                effectiveCoreOwnerTeamId(coreHex) == unit.team.id
-                    && gridDistance(unitHex, coreHex) <= 1
+                isSameOrAdjacentHex(unitHex, coreHex)
+                    && effectiveCoreOwnerTeamId(coreHex) == teamId
             ) {
                 return true;
             }
@@ -1931,11 +1938,54 @@ final class TeamManager {
     }
 
     /**
+     * True when two hex slots are the same hex or share an edge. This matches
+     * {@code gridDistance(a, b) <= 1} on the obstacle-free offset grid without
+     * the BFS allocations, which matters because range attrition runs this for
+     * every unit on a fixed interval.
+     */
+    private static boolean isSameOrAdjacentHex(HexSlot a, HexSlot b) {
+        int colDelta = b.col - a.col;
+        int rowDelta = b.row - a.row;
+
+        if (rowDelta == 0) {
+            return colDelta >= -1 && colDelta <= 1;
+        }
+
+        if (rowDelta == 1 || rowDelta == -1) {
+            return a.row % 2 == 0
+                ? colDelta == 0 || colDelta == 1
+                : colDelta == 0 || colDelta == -1;
+        }
+
+        return false;
+    }
+
+    /**
+     * Snapshot of every core that currently exists on a slot. /fullassault
+     * builds this once per refresh so each unit reuses the same core positions
+     * instead of re-reading the world tile for every slot on every unit.
+     */
+    List<CoreBuild> snapshotSlotCores() {
+        List<CoreBuild> cores = new ArrayList<>();
+
+        for (HexSlot slot : slots) {
+            Tile tile = Vars.world.tile(slot.x, slot.y);
+
+            if (tile != null && tile.build instanceof CoreBuild core) {
+                cores.add(core);
+            }
+        }
+
+        return cores;
+    }
+
+    /**
      * /fullassault targets the globally closest currently existing enemy core
      * for each eligible unit. Pending captures are deliberately skipped until
-     * their delayed Core Shard actually exists.
+     * their delayed Core Shard actually exists, which is why the snapshot only
+     * contains cores that already exist on a slot.
      */
-    CoreBuild closestEnemyCore(Unit unit) {
+    CoreBuild closestEnemyCore(Unit unit, List<CoreBuild> coreSnapshot) {
         if (unit == null) {
             return null;
         }
@@ -1943,14 +1993,8 @@ final class TeamManager {
         CoreBuild closest = null;
         float closestDistanceSquared = Float.POSITIVE_INFINITY;
 
-        for (HexSlot slot : slots) {
-            Tile tile = Vars.world.tile(slot.x, slot.y);
-
-            if (
-                tile == null
-                    || !(tile.build instanceof CoreBuild core)
-                    || core.team == unit.team
-            ) {
+        for (CoreBuild core : coreSnapshot) {
+            if (core.team == unit.team) {
                 continue;
             }
 
