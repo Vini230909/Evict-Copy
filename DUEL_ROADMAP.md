@@ -22,6 +22,9 @@ coordination, so the foundation matters more than any single feature.
 
 These override the per-feature notes further below where they differ.
 
+- **Duel-only scope.** Every duel behaviour in this document is worker-mode
+  (`-Devict.duelWorker=true`) only. Normal Evict (the FFA hub) stays exactly as
+  it is — no gameplay changes there.
 - **Always ranked.** Every duel is ranked; there is no custom/unranked mode, so
   map/mode never need to be stored and `duel.properties` needs no ranked flag.
 - **ELO is a placeholder.** Start = 1000 and **does not change yet** — everyone
@@ -35,19 +38,18 @@ These override the per-feature notes further below where they differ.
 - **Disconnect:** pause on leave, resume whenever the player returns (no
   time-based loss — the opponent just loses time). A never-returning player is
   cleaned up by the worker max-lifetime backstop; no result recorded.
-- **Remove `/over` completely** (does not fit "own all cores"). Scope to
-  confirm: duel workers only, or the FFA hub too?
+- **Remove `/over` on duel workers only.** It does not fit "own all cores". The
+  FFA hub keeps `/over` unchanged.
 - **Maps:** ranked maps should be **diagonally mirrored** for fairness — later.
 - **Spectators (`/view`):** no cap; spectators may chat normally for now.
 - **`/history`:** match list only, screenshot style (win/loss vs opponent).
   `/info` already covers normal player stats. ELO columns shown once the real
   formula exists.
-- **Admin UUID:** hardcoded test admin is fine for now (spoofable — proper
-  solution later).
+- **Admin UUID:** on hold. Implement only when the user reports needing it
+  (spoofable — proper solution later anyway).
 
 ## Still open (small)
 
-- `/over` removal scope: duel workers only, or remove the command everywhere?
 - Abandoned match (player never returns): rely on the 30-min worker backstop, or
   add an explicit abandonment rule?
 - `/history` while ELO is frozen: show `1000 -> 1000 (+0)`, or hide ELO until the
