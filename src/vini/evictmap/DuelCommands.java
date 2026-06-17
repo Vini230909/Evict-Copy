@@ -1,7 +1,6 @@
 package vini.evictmap;
 
 import arc.util.CommandHandler;
-import arc.util.Log;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
@@ -32,7 +31,7 @@ final class DuelCommands {
     private static final int SELECTION_MENU_COLUMNS = 2;
     private static final int ACCEPT_OPTION = 0;
 
-    private final EvictSettings settings;
+    private final DuelServerManager duelManager;
 
     private final int selectionMenuId;
     private final int challengeMenuId;
@@ -45,8 +44,8 @@ final class DuelCommands {
     private final Map<String, String> challengerByOpponentUuid =
         new HashMap<>();
 
-    DuelCommands(EvictSettings settings) {
-        this.settings = settings;
+    DuelCommands(DuelServerManager duelManager) {
+        this.duelManager = duelManager;
         this.selectionMenuId = Menus.registerMenu(this::handleSelection);
         this.challengeMenuId = Menus.registerMenu(this::handleChallengeResponse);
     }
@@ -86,7 +85,7 @@ final class DuelCommands {
             return;
         }
 
-        if (!settings.duelServerConfigured()) {
+        if (!duelManager.isConfigured()) {
             player.sendMessage(
                 "[scarlet]The 1v1 server is not set up yet. Ask an admin.[]"
             );
@@ -204,36 +203,19 @@ final class DuelCommands {
             return;
         }
 
-        sendToDuelServer(challenger, opponent);
-    }
-
-    private void sendToDuelServer(Player challenger, Player opponent) {
-        String ip = settings.duelServerIp();
-        int port = settings.duelServerPort();
-
-        if (ip == null || ip.isBlank()) {
+        /**
+         * The manager reserves a worker and redirects both players once it is
+         * hosting. Spawning happens off the main thread, so this returns right
+         * away; a false result means no free worker slot is available.
+         */
+        if (!duelManager.requestDuel(challenger, opponent)) {
             challenger.sendMessage(
-                "[scarlet]The 1v1 server is not set up yet.[]"
+                "[scarlet]All 1v1 servers are busy right now. Try again shortly.[]"
             );
             opponent.sendMessage(
-                "[scarlet]The 1v1 server is not set up yet.[]"
+                "[scarlet]All 1v1 servers are busy right now. Try again shortly.[]"
             );
-            return;
         }
-
-        challenger.sendMessage("[accent]Connecting you to your 1v1...[]");
-        opponent.sendMessage("[accent]Connecting you to your 1v1...[]");
-
-        Call.connect(challenger.con, ip, port);
-        Call.connect(opponent.con, ip, port);
-
-        Log.info(
-            "[EvictMapGenerator] 1v1: sending @ and @ to duel server @:@.",
-            challenger.plainName(),
-            opponent.plainName(),
-            ip,
-            port
-        );
     }
 
     private List<Player> otherOnlinePlayers(Player self) {

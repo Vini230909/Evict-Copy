@@ -127,7 +127,15 @@ gradle jar
 
 `DuelCommands.java`
 - `/play` and `/p`
-- 1v1 challenge menu, accept/decline, redirect to the duel server
+- 1v1 challenge menu, accept/decline
+- Asks `DuelServerManager` to host a worker and redirect both players
+
+`DuelServerManager.java`
+- On-demand 1v1 worker pool on the hub
+- Reserves a free port, provisions a worker folder from the hub files,
+  spawns a worker process, hosts it, polls readiness, then redirects
+- Frees the slot when the worker process exits; max-lifetime + shutdown cleanup
+- Spawning/readiness run off the main thread; results post back to it
 
 `EvictHelpCommands.java`
 - Filtered `/help`
@@ -281,15 +289,25 @@ config/evict-players.db
 - Opens a menu of other online players, two per row, with a bottom cancel
   button.
 - Selecting a player sends that player an accept/decline challenge menu.
-- On accept, both players are redirected to the configured duel server with
-  `Call.connect`.
-- A single Mindustry process hosts only one game, so the duel itself runs on a
-  separate dedicated server instance; this server only sends the players there.
-- The duel server target is the persistent `evictduelserver [ip] [port]`
-  setting. A blank IP means the feature is not configured and `/play` stays
-  inert with a notice instead of redirecting nowhere.
+- A single Mindustry process hosts only one game, so each duel runs on its own
+  worker server process. Workers are spawned on demand, never kept idle.
+- On accept, `DuelServerManager` reserves a free worker port, provisions the
+  worker folder from the hub's own jar/`config/mods`/`config/maps` if missing,
+  launches `java -Devict.duelWorker=true -jar <jar>`, injects `config port` and
+  `host` over stdin, waits until the port is reachable, then redirects both
+  players with `Call.connect`.
+- Spawning and the readiness wait run on a background thread; player redirects
+  and all slot bookkeeping happen on the main thread.
+- A spawned worker runs Evict normally but shuts itself down (`System.exit`)
+  once it is empty, which frees the hub slot. A startup grace handles a duel
+  where no player ever arrived; a max lifetime and a shutdown hook are backstops.
+- Up to `evictduelserver`'s `maxWorkers` duels run at once (1-10). If all slots
+  are busy, `/play` tells the players to try again shortly.
+- A blank IP means the feature is unconfigured and `/play` stays inert.
 - Closing the menu or losing the opponent cancels the challenge cleanly; stale
   challenges are dropped when a player leaves.
+- The worker folders live under `duel-workers/` next to the hub; delete that
+  folder after updating the plugin so workers re-provision with the new jar.
 
 ### Time
 
@@ -405,11 +423,17 @@ Wall settings:
 - `/wall [full-wall] [small-wall] [open] [passage]`
 
 Duel server:
-- `evictduelserver [ip] [port]`
-- With no argument, shows the current duel server.
-- Sets the dedicated 1v1 server `/play` redirects players to.
+- `evictduelserver [ip] [basePort] [maxWorkers] [map]`
+- With no argument, shows the current pool configuration.
+- `ip` is the address clients reach the spawned workers at.
+- `basePort` is the first worker port; workers use `basePort .. basePort+maxWorkers-1`.
+- `maxWorkers` is how many duels may run at once (`1..10`).
+- `map` is the map the workers host.
+- Omitted values keep their current setting.
 - A blank/unset IP leaves `/play` inert.
-- Default: unset, port `6568`.
+- Defaults: ip unset, basePort `6568`, maxWorkers `4`, map `evict-map`,
+  worker jar `server-release.jar`.
+- Workers are provisioned under `duel-workers/` from the hub's own files.
 
 Persistent settings are stored in:
 

@@ -12,6 +12,7 @@ import mindustry.game.EventType.PlayerLeave;
 import mindustry.game.EventType.Trigger;
 import mindustry.game.EventType.WorldLoadEvent;
 import mindustry.game.Team;
+import mindustry.gen.Groups;
 import mindustry.mod.Plugin;
 
 /**
@@ -63,8 +64,11 @@ public class EvictMapPlugin extends Plugin {
     private final RoundTimeCommands roundTimeCommands =
         new RoundTimeCommands(teamManager);
 
+    private final DuelServerManager duelServerManager =
+        new DuelServerManager(settings);
+
     private final DuelCommands duelCommands =
-        new DuelCommands(settings);
+        new DuelCommands(duelServerManager);
 
     private final EvictHelpCommands helpCommands =
         new EvictHelpCommands();
@@ -92,8 +96,19 @@ public class EvictMapPlugin extends Plugin {
             this::generate
         );
 
+    private static final float DUEL_WORKER_STARTUP_GRACE_TICKS = 90f * 60f;
+    private static final float DUEL_WORKER_EMPTY_GRACE_TICKS = 10f * 60f;
+
     private boolean refreshingWorldIndexes = false;
     private long connectedPlayerScanSerial = 0L;
+
+    /**
+     * When launched with -Devict.duelWorker=true this process is a spawned 1v1
+     * worker. It runs Evict normally but shuts itself down once the match is
+     * empty so the hub can free the slot.
+     */
+    private final boolean duelWorker =
+        "true".equals(System.getProperty("evict.duelWorker"));
 
     @Override
     public void init() {
@@ -136,6 +151,14 @@ public class EvictMapPlugin extends Plugin {
             EvictRules.apply();
             scheduleConnectedPlayerAssignmentScan();
 
+            if (duelWorker) {
+                // No redirected players arrived in time: shut down and free it.
+                Time.run(
+                    DUEL_WORKER_STARTUP_GRACE_TICKS,
+                    this::shutDownDuelWorkerIfEmpty
+                );
+            }
+
             Log.info(
                 "[EvictMapGenerator] Re-applied Evict rules after host-mode initialization."
             );
@@ -152,6 +175,13 @@ public class EvictMapPlugin extends Plugin {
             playerDataManager.handlePlayerLeave(event.player);
             inviteManager.handlePlayerLeave(event.player);
             duelCommands.handlePlayerLeave(event.player);
+
+            if (duelWorker) {
+                Time.run(
+                    DUEL_WORKER_EMPTY_GRACE_TICKS,
+                    this::shutDownDuelWorkerIfEmpty
+                );
+            }
         });
 
         Events.on(
@@ -276,6 +306,18 @@ public class EvictMapPlugin extends Plugin {
         roundTimeCommands.rememberConnectedPlayers();
         teamManager.assignConnectedPlayers();
         playerDataManager.recordConnectedFfaParticipants(teamManager);
+    }
+
+    private void shutDownDuelWorkerIfEmpty() {
+        if (!duelWorker || Groups.player.size() > 0) {
+            return;
+        }
+
+        Log.info(
+            "[EvictMapGenerator] Duel worker is empty; shutting down to free the slot."
+        );
+
+        System.exit(0);
     }
 
     private void refreshWorldIndexes() {

@@ -265,8 +265,8 @@ final class EvictConsoleCommands {
 
         handler.register(
             "evictduelserver",
-            "[ip] [port]",
-            "Show or set the dedicated 1v1 server that /play sends players to. With no argument, show the current value.",
+            "[ip] [basePort] [maxWorkers] [map]",
+            "Show or set the on-demand 1v1 worker pool that /play uses. ip is the address clients reach the workers at; basePort is the first worker port; maxWorkers is how many duels may run at once (1-10); map is the map workers host. Omitted values keep their current setting.",
             args -> {
                 if (args.length == 0) {
                     Log.info(
@@ -276,17 +276,18 @@ final class EvictConsoleCommands {
                     return;
                 }
 
-                if (args.length != 2) {
-                    Log.err(
-                        "[EvictMapGenerator] Use: evictduelserver <ip> <port>"
-                    );
-                    return;
-                }
-
                 try {
-                    int port = Integer.parseInt(args[1]);
+                    int basePort = args.length >= 2
+                        ? Integer.parseInt(args[1])
+                        : settings.duelServerPort();
+                    int maxWorkers = args.length >= 3
+                        ? Integer.parseInt(args[2])
+                        : settings.duelMaxWorkers();
+                    String map = args.length >= 4
+                        ? args[3]
+                        : settings.duelWorkerMap();
 
-                    settings.setDuelServer(args[0], port);
+                    settings.setDuelServer(args[0], basePort, maxWorkers, map);
 
                     Log.info(
                         "[EvictMapGenerator] Duel server saved as @. This applies immediately and after restart.",
@@ -294,7 +295,7 @@ final class EvictConsoleCommands {
                     );
                 } catch (NumberFormatException exception) {
                     Log.err(
-                        "[EvictMapGenerator] Port must be a whole number."
+                        "[EvictMapGenerator] basePort and maxWorkers must be whole numbers."
                     );
                 } catch (IllegalArgumentException exception) {
                     Log.err("[EvictMapGenerator] @", exception.getMessage());
