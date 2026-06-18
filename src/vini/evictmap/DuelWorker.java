@@ -1,8 +1,11 @@
 package vini.evictmap;
 
+import arc.Core;
 import arc.util.Align;
 import arc.util.Log;
 import arc.util.Time;
+import mindustry.Vars;
+import mindustry.core.GameState;
 import mindustry.game.Team;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
@@ -12,32 +15,41 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.util.Properties;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Worker-side 1v1 referee. Only active when the process is launched as a duel
  * worker (-Devict.duelWorker=true); on the hub this class does nothing.
  *
- * Milestone 1 scope:
- * - read the handshake written by the hub (the two player UUIDs + the hub
- *   address to return to),
- * - hold a short on-screen countdown once both players are connected,
- * - on an Evict victory: write a result file, announce the winner, and send
- *   both players back to the hub. The worker then empties and self-terminates
- *   (handled in EvictMapPlugin).
+ * - reads the hub handshake (the two player UUIDs + the hub address to return to),
+ * - once both players are connected, freezes the game and runs a 5-second
+ *   on-screen countdown, then unfreezes ("GO"),
+ * - if a player disconnects mid-match, pauses until they return (the hub bounces
+ *   a reconnecting player straight back here),
+ * - on an Evict victory writes a result file, announces the winner, and sends
+ *   both players back to the hub; the worker then empties and self-terminates.
  *
- * Not yet here (later phases): real engine freeze during the countdown,
- * disconnect pause/auto-rejoin, ELO/history, spectators.
+ * The countdown uses a real-time executor (not the logic timer) because the game
+ * is paused during it, which would otherwise stall logic-timed tasks.
  */
 final class DuelWorker {
 
     private static final File HANDSHAKE_FILE = new File("duel.properties");
     private static final File RESULT_FILE = new File("result.properties");
 
-    private static final float COUNTDOWN_STEP_TICKS = 60f;
     private static final int COUNTDOWN_SECONDS = 5;
     private static final float RETURN_DELAY_TICKS = 5f * 60f;
 
     private final boolean active;
+
+    private final ScheduledExecutorService countdownExecutor =
+        Executors.newSingleThreadScheduledExecutor(runnable -> {
+            Thread thread = new Thread(runnable, "evict-duel-countdown");
+            thread.setDaemon(true);
+            return thread;
+        });
 
     private String hubIp = "";
     private int hubPort = 6567;
@@ -47,6 +59,7 @@ final class DuelWorker {
     private boolean handshakeLoaded = false;
     private boolean countdownStarted = false;
     private boolean matchStarted = false;
+    private boolean pausedForDisconnect = false;
     private boolean resolved = false;
 
     DuelWorker() {
@@ -67,12 +80,45 @@ final class DuelWorker {
     }
 
     void handlePlayerJoin(Player player) {
-        if (!active || matchStarted || countdownStarted) {
+        if (!active) {
             return;
         }
 
-        if (bothPlayersPresent()) {
+        if (matchStarted) {
+            if (pausedForDisconnect && bothPlayersPresent()) {
+                pausedForDisconnect = false;
+                resumeGame();
+                Call.sendMessage(
+                    "[accent]Both players are back. Resuming the 1v1![]"
+                );
+            }
+            return;
+        }
+
+        if (!countdownStarted && bothPlayersPresent()) {
             startCountdown();
+        }
+    }
+
+    void handlePlayerLeave(Player player) {
+        if (
+            !active
+                || !matchStarted
+                || resolved
+                || pausedForDisconnect
+                || player == null
+        ) {
+            return;
+        }
+
+        String uuid = player.uuid();
+
+        if (uuid.equals(player1Uuid) || uuid.equals(player2Uuid)) {
+            pausedForDisconnect = true;
+            pauseGame();
+            Call.sendMessage(
+                "[scarlet]A player disconnected. The 1v1 is paused until they return.[]"
+            );
         }
     }
 
@@ -86,6 +132,13 @@ final class DuelWorker {
         }
 
         resolved = true;
+
+        // A win during a disconnect pause still needs the world running so the
+        // return countdown ticks.
+        if (pausedForDisconnect) {
+            pausedForDisconnect = false;
+            resumeGame();
+        }
 
         Player winnerPlayer = Groups.player.find(
             player -> player != null && player.team() == winner
@@ -138,29 +191,32 @@ final class DuelWorker {
 
     private void startCountdown() {
         countdownStarted = true;
+        pauseGame();
 
         Call.sendMessage("[accent]Both players are here. The 1v1 begins soon![]");
 
         for (int second = COUNTDOWN_SECONDS; second >= 1; second--) {
             int remaining = second;
 
-            Time.run(
-                COUNTDOWN_STEP_TICKS * (COUNTDOWN_SECONDS - second),
-                () -> showCountdown(remaining)
+            countdownExecutor.schedule(
+                () -> Core.app.post(() -> showCountdown(remaining)),
+                COUNTDOWN_SECONDS - second,
+                TimeUnit.SECONDS
             );
         }
 
-        Time.run(
-            COUNTDOWN_STEP_TICKS * COUNTDOWN_SECONDS,
-            this::startMatch
+        countdownExecutor.schedule(
+            () -> Core.app.post(this::startMatch),
+            COUNTDOWN_SECONDS,
+            TimeUnit.SECONDS
         );
     }
 
     private void showCountdown(int remaining) {
         Call.infoPopup(
             "[accent]1v1 starts in [scarlet]" + remaining + "[]",
-            1f,
-            Align.top,
+            1.1f,
+            Align.center,
             0,
             0,
             0,
@@ -170,8 +226,19 @@ final class DuelWorker {
 
     private void startMatch() {
         matchStarted = true;
+        resumeGame();
         Call.infoPopup("[green]GO![]", 2f, Align.center, 0, 0, 0, 0);
         Call.sendMessage("[green]1v1 started. Destroy the enemy core to win![]");
+    }
+
+    private void pauseGame() {
+        Vars.state.set(GameState.State.paused);
+        Log.info("[EvictMapGenerator] Duel worker paused the match.");
+    }
+
+    private void resumeGame() {
+        Vars.state.set(GameState.State.playing);
+        Log.info("[EvictMapGenerator] Duel worker resumed the match.");
     }
 
     private boolean bothPlayersPresent() {

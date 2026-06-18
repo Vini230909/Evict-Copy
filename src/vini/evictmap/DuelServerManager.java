@@ -73,6 +73,12 @@ final class DuelServerManager {
     /** Port -> reserved/running worker. Only mutated on the main thread. */
     private final Map<Integer, WorkerHandle> workers = new HashMap<>();
 
+    /**
+     * Player UUID -> the worker port of their in-progress duel. Lets the hub
+     * bounce a reconnecting player back into their match. Main-thread only.
+     */
+    private final Map<String, Integer> activeDuelByUuid = new HashMap<>();
+
     DuelServerManager(EvictSettings settings) {
         this.settings = settings;
 
@@ -194,6 +200,9 @@ final class DuelServerManager {
         challenger.sendMessage("[accent]Connecting you to your 1v1...[]");
         opponent.sendMessage("[accent]Connecting you to your 1v1...[]");
 
+        activeDuelByUuid.put(challengerUuid, handle.port);
+        activeDuelByUuid.put(opponentUuid, handle.port);
+
         Call.connect(challenger.con, ip, handle.port);
         Call.connect(opponent.con, ip, handle.port);
 
@@ -204,6 +213,38 @@ final class DuelServerManager {
             ip,
             handle.port
         );
+    }
+
+    /**
+     * On the hub: if a reconnecting player is still mid-duel, send them straight
+     * back to their worker. Returns true when the player was bounced. Skips (and
+     * forgets) finished or dead matches so a returning winner stays on the hub.
+     */
+    boolean tryReturnToActiveDuel(Player player) {
+        if (player == null) {
+            return false;
+        }
+
+        Integer port = activeDuelByUuid.get(player.uuid());
+
+        if (port == null) {
+            return false;
+        }
+
+        WorkerHandle handle = workers.get(port);
+        boolean ongoing = handle != null
+            && handle.process != null
+            && handle.process.isAlive()
+            && !new File(workerDir(port), "result.properties").exists();
+
+        if (!ongoing) {
+            activeDuelByUuid.remove(player.uuid());
+            return false;
+        }
+
+        player.sendMessage("[accent]Returning you to your 1v1...[]");
+        Call.connect(player.con, settings.duelServerIp(), port);
+        return true;
     }
 
     private void notifyFailure(String challengerUuid, String opponentUuid) {
@@ -395,6 +436,7 @@ final class DuelServerManager {
     private void releaseSlot(WorkerHandle handle) {
         if (workers.get(handle.port) == handle) {
             workers.remove(handle.port);
+            activeDuelByUuid.values().removeIf(port -> port == handle.port);
             Log.info(
                 "[EvictMapGenerator] 1v1: duel worker on port @ ended; slot is free again.",
                 handle.port

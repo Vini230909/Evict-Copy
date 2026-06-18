@@ -99,7 +99,7 @@ public class EvictMapPlugin extends Plugin {
         );
 
     private static final float DUEL_WORKER_STARTUP_GRACE_TICKS = 90f * 60f;
-    private static final float DUEL_WORKER_EMPTY_GRACE_TICKS = 10f * 60f;
+    private static final float DUEL_WORKER_EMPTY_GRACE_TICKS = 60f * 60f;
 
     private boolean refreshingWorldIndexes = false;
     private long connectedPlayerScanSerial = 0L;
@@ -169,6 +169,15 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Events.on(PlayerJoin.class, event -> {
+            // On the hub: a player who is mid-duel is bounced straight back to
+            // their worker instead of being onboarded into the FFA round.
+            if (
+                !duelWorker
+                    && duelServerManager.tryReturnToActiveDuel(event.player)
+            ) {
+                return;
+            }
+
             playerDataManager.handlePlayerJoin(event.player);
             roundTimeCommands.handlePlayerJoin(event.player);
             teamManager.handlePlayerJoin(event.player);
@@ -180,6 +189,7 @@ public class EvictMapPlugin extends Plugin {
             playerDataManager.handlePlayerLeave(event.player);
             inviteManager.handlePlayerLeave(event.player);
             duelCommands.handlePlayerLeave(event.player);
+            duelWorkerReferee.handlePlayerLeave(event.player);
 
             if (duelWorker) {
                 Time.run(
