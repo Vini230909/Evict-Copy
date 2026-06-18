@@ -1389,14 +1389,22 @@ final class TeamManager {
         }
 
         Log.err(
-            "[EvictMapGenerator] Failed to verify @ core at hex (@,@), tile (@,@), expected @ for team #@. The hex will not count as owned.",
+            "[EvictMapGenerator] Failed to verify @ core at hex (@,@), tile (@,@), expected @ for team #@. The hex will not count as owned. Center tile now holds block=@ floor=@ build=@ buildTeam=@.",
             reason,
             slot.col,
             slot.row,
             slot.x,
             slot.y,
             coreBlock.name,
-            team.id
+            team.id,
+            centerTile.block() == null ? "null" : centerTile.block().name,
+            centerTile.floor() == null ? "null" : centerTile.floor().name,
+            centerTile.build == null || centerTile.build.block == null
+                ? "none"
+                : centerTile.build.block.name,
+            centerTile.build == null || centerTile.build.team == null
+                ? "none"
+                : "#" + centerTile.build.team.id
         );
 
         return false;

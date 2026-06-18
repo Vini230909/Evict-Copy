@@ -21,6 +21,18 @@ final class CaptureManager {
 
     private static final float CAPTURE_DELAY_TICKS = 5f * 60f;
 
+    /**
+     * Replacement-core placement can transiently fail (a unit or building that
+     * reappears on the center tile, a floor change still settling, etc.). When
+     * it does, retry instead of abandoning the hex: an abandoned hex stays
+     * coreless, so the attacker's units standing there immediately start taking
+     * range attrition. Retries keep {@code slot.capturing} set, which keeps the
+     * hex logically the attacker's and attrition-protected until a real core
+     * exists.
+     */
+    private static final int MAX_REPLACEMENT_RETRIES = 10;
+    private static final float REPLACEMENT_RETRY_DELAY_TICKS = 60f;
+
     private static final int CAPTURE_CLEAR_RADIUS = 40;
     private static final int CAPTURE_CLEAR_RADIUS_SQUARED =
         CAPTURE_CLEAR_RADIUS * CAPTURE_CLEAR_RADIUS;
@@ -293,6 +305,30 @@ final class CaptureManager {
             slot.row
         );
 
+        placeReplacementCoreWithRetry(
+            slot,
+            defenderTeam,
+            attackerTeam,
+            scheduledRoundSerial,
+            0
+        );
+    }
+
+    private void placeReplacementCoreWithRetry(
+        TeamManager.HexSlot slot,
+        Team defenderTeam,
+        Team attackerTeam,
+        long scheduledRoundSerial,
+        int attempt
+    ) {
+        if (
+            !teamManager.isRoundActiveForSystems()
+                || scheduledRoundSerial != teamManager.roundSerial()
+                || !slot.capturing
+        ) {
+            return;
+        }
+
         boolean corePlaced =
             teamManager.placeCoreAndVerify(
                 slot,
@@ -301,38 +337,73 @@ final class CaptureManager {
                 "capture"
             );
 
-        /**
-         * Do not clear capturedCore.items here.
-         *
-         * Mindustry intentionally shares one ItemModule between every core of
-         * the same team. Clearing the new Core Shard would therefore erase the
-         * attacker's resources from all existing cores as well.
-         *
-         * A captured shard adds no bonus resources; it simply joins the
-         * attacker's already shared core inventory.
-         */
-        slot.ownerTeamId = corePlaced ? attackerTeam.id : Team.derelict.id;
-        slot.pendingCaptureTeamId =
-            corePlaced ? attackerTeam.id : Team.derelict.id;
-        slot.capturing = false;
-
         if (corePlaced) {
+            /**
+             * Do not clear capturedCore.items here.
+             *
+             * Mindustry intentionally shares one ItemModule between every core
+             * of the same team. Clearing the new Core Shard would therefore
+             * erase the attacker's resources from all existing cores as well.
+             *
+             * A captured shard adds no bonus resources; it simply joins the
+             * attacker's already shared core inventory.
+             */
+            slot.ownerTeamId = attackerTeam.id;
+            slot.pendingCaptureTeamId = attackerTeam.id;
+            slot.capturing = false;
+
             Log.info(
-                "[EvictMapGenerator] Capture complete at hex (@,@): team #@ -> team #@ with a Core Shard and no bonus items.",
+                "[EvictMapGenerator] Capture complete at hex (@,@): team #@ -> team #@ with a Core Shard and no bonus items.@",
                 slot.col,
                 slot.row,
                 defenderTeam.id,
-                attackerTeam.id
+                attackerTeam.id,
+                attempt > 0 ? " (after " + attempt + " retr(y/ies))" : ""
             );
-        } else {
-            Log.err(
-                "[EvictMapGenerator] Capture at hex (@,@) could not place a verified Core Shard for team #@. The hex is now unowned so it cannot block victory as a phantom core.",
-                slot.col,
-                slot.row,
-                attackerTeam.id
-            );
+            return;
         }
 
+        /**
+         * Keep slot.capturing set so the hex stays logically the attacker's and
+         * its units remain attrition-protected while we retry. Abandoning here
+         * would leave the hex coreless, and any attacker units standing in it
+         * would start taking range attrition every five seconds.
+         */
+        if (attempt < MAX_REPLACEMENT_RETRIES) {
+            Log.warn(
+                "[EvictMapGenerator] Capture at hex (@,@): replacement Core Shard for team #@ not verified on attempt @/@; retrying in @ ticks.",
+                slot.col,
+                slot.row,
+                attackerTeam.id,
+                attempt + 1,
+                MAX_REPLACEMENT_RETRIES,
+                (int) REPLACEMENT_RETRY_DELAY_TICKS
+            );
+
+            Time.run(
+                REPLACEMENT_RETRY_DELAY_TICKS,
+                () -> placeReplacementCoreWithRetry(
+                    slot,
+                    defenderTeam,
+                    attackerTeam,
+                    scheduledRoundSerial,
+                    attempt + 1
+                )
+            );
+            return;
+        }
+
+        slot.ownerTeamId = Team.derelict.id;
+        slot.pendingCaptureTeamId = Team.derelict.id;
+        slot.capturing = false;
+
+        Log.err(
+            "[EvictMapGenerator] Capture at hex (@,@) could not place a verified Core Shard for team #@ after @ attempts. The hex is now unowned so it cannot block victory as a phantom core. See the placement diagnostics above for what blocked the center tile.",
+            slot.col,
+            slot.row,
+            attackerTeam.id,
+            MAX_REPLACEMENT_RETRIES + 1
+        );
     }
 
 
