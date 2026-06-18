@@ -12,7 +12,6 @@ import mindustry.game.EventType.PlayerLeave;
 import mindustry.game.EventType.Trigger;
 import mindustry.game.EventType.WorldLoadEvent;
 import mindustry.game.Team;
-import mindustry.gen.Groups;
 import mindustry.mod.Plugin;
 
 /**
@@ -95,11 +94,9 @@ public class EvictMapPlugin extends Plugin {
             terrainGenerator,
             teamManager,
             playerDataManager,
+            duelServerManager,
             this::generate
         );
-
-    private static final float DUEL_WORKER_STARTUP_GRACE_TICKS = 90f * 60f;
-    private static final float DUEL_WORKER_EMPTY_GRACE_TICKS = 60f * 60f;
 
     private boolean refreshingWorldIndexes = false;
     private long connectedPlayerScanSerial = 0L;
@@ -155,12 +152,6 @@ public class EvictMapPlugin extends Plugin {
 
             if (duelWorker) {
                 duelWorkerReferee.begin();
-
-                // No redirected players arrived in time: shut down and free it.
-                Time.run(
-                    DUEL_WORKER_STARTUP_GRACE_TICKS,
-                    this::shutDownDuelWorkerIfEmpty
-                );
             }
 
             Log.info(
@@ -190,13 +181,6 @@ public class EvictMapPlugin extends Plugin {
             inviteManager.handlePlayerLeave(event.player);
             duelCommands.handlePlayerLeave(event.player);
             duelWorkerReferee.handlePlayerLeave(event.player);
-
-            if (duelWorker) {
-                Time.run(
-                    DUEL_WORKER_EMPTY_GRACE_TICKS,
-                    this::shutDownDuelWorkerIfEmpty
-                );
-            }
         });
 
         Events.on(
@@ -336,17 +320,6 @@ public class EvictMapPlugin extends Plugin {
         playerDataManager.recordConnectedFfaParticipants(teamManager);
     }
 
-    private void shutDownDuelWorkerIfEmpty() {
-        if (!duelWorker || Groups.player.size() > 0) {
-            return;
-        }
-
-        Log.info(
-            "[EvictMapGenerator] Duel worker is empty; shutting down to free the slot."
-        );
-
-        System.exit(0);
-    }
 
     private void refreshWorldIndexes() {
         refreshingWorldIndexes = true;

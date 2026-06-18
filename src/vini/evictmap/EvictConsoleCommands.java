@@ -16,6 +16,7 @@ final class EvictConsoleCommands {
     private final EvictTerrainGenerator terrain;
     private final TeamManager teamManager;
     private final PlayerDataManager playerDataManager;
+    private final DuelServerManager duelServerManager;
     private final LongConsumer generate;
 
     EvictConsoleCommands(
@@ -24,6 +25,7 @@ final class EvictConsoleCommands {
         EvictTerrainGenerator terrain,
         TeamManager teamManager,
         PlayerDataManager playerDataManager,
+        DuelServerManager duelServerManager,
         LongConsumer generate
     ) {
         this.runtime = runtime;
@@ -31,6 +33,7 @@ final class EvictConsoleCommands {
         this.terrain = terrain;
         this.teamManager = teamManager;
         this.playerDataManager = playerDataManager;
+        this.duelServerManager = duelServerManager;
         this.generate = generate;
     }
 
@@ -301,6 +304,12 @@ final class EvictConsoleCommands {
                     Log.err("[EvictMapGenerator] @", exception.getMessage());
                 }
             }
+        );
+
+        handler.register(
+            "evictduelstatus",
+            "List the active 1v1 worker servers and who is in them.",
+            args -> duelServerManager.logStatus()
         );
     }
 

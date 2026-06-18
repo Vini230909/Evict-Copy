@@ -109,6 +109,10 @@ final class DuelServerManager {
         }
 
         WorkerHandle handle = new WorkerHandle(port);
+        handle.player1Name = challenger.plainName();
+        handle.player1Uuid = challenger.uuid();
+        handle.player2Name = opponent.plainName();
+        handle.player2Uuid = opponent.uuid();
         workers.put(port, handle);
 
         String challengerUuid = challenger.uuid();
@@ -245,6 +249,52 @@ final class DuelServerManager {
         player.sendMessage("[accent]Returning you to your 1v1...[]");
         Call.connect(player.con, settings.duelServerIp(), port);
         return true;
+    }
+
+    /**
+     * Logs the current worker pool for the console. Uptime is wall-clock since
+     * spawn and the state is hub-inferred; live in-match state (freeze, game
+     * time, who is actually connected) needs a worker status channel later.
+     */
+    void logStatus() {
+        int basePort = settings.duelServerPort();
+        int maxWorkers = settings.duelMaxWorkers();
+
+        Log.info(
+            "[EvictMapGenerator] Duel pool: @ active of @ slots, ip=@, ports @-@.",
+            workers.size(),
+            maxWorkers,
+            isConfigured() ? settings.duelServerIp() : "not set",
+            basePort,
+            basePort + maxWorkers - 1
+        );
+
+        if (workers.isEmpty()) {
+            Log.info("[EvictMapGenerator]   (no active duels)");
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+
+        for (WorkerHandle handle : workers.values()) {
+            boolean alive = handle.process != null && handle.process.isAlive();
+            boolean finished =
+                new File(workerDir(handle.port), "result.properties").exists();
+            String state = !alive
+                ? "starting/closed"
+                : finished ? "finished" : "running";
+
+            Log.info(
+                "[EvictMapGenerator]   port @ [@] uptime=@s : @ (@) vs @ (@)",
+                handle.port,
+                state,
+                (now - handle.spawnedAtMillis) / 1000L,
+                handle.player1Name,
+                handle.player1Uuid,
+                handle.player2Name,
+                handle.player2Uuid
+            );
+        }
     }
 
     private void notifyFailure(String challengerUuid, String opponentUuid) {
@@ -515,7 +565,12 @@ final class DuelServerManager {
 
     private static final class WorkerHandle {
         final int port;
+        final long spawnedAtMillis = System.currentTimeMillis();
         volatile Process process;
+        String player1Name = "?";
+        String player1Uuid = "";
+        String player2Name = "?";
+        String player2Uuid = "";
 
         WorkerHandle(int port) {
             this.port = port;
