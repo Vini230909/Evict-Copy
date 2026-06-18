@@ -331,23 +331,27 @@ final class DuelServerManager {
 
     private File provisionWorkerDir(int port) throws IOException {
         File workerDir = workerDir(port);
-        File jar = new File(workerDir, settings.duelWorkerJarName());
-
-        if (jar.exists()) {
-            return workerDir;
-        }
-
-        Log.info(
-            "[EvictMapGenerator] 1v1: provisioning worker folder @ from the hub files.",
-            workerDir.getPath()
-        );
-
         File workerConfig = new File(workerDir, "config");
         Files.createDirectories(workerConfig.toPath());
 
-        copyFile(new File(settings.duelWorkerJarName()), jar);
+        // The big static files are copied once; the plugin mods are refreshed on
+        // every spawn so a rebuilt plugin is picked up without deleting the
+        // duel-workers folder.
+        File jar = new File(workerDir, settings.duelWorkerJarName());
+        if (!jar.exists()) {
+            Log.info(
+                "[EvictMapGenerator] 1v1: provisioning worker folder @ from the hub files.",
+                workerDir.getPath()
+            );
+            copyFile(new File(settings.duelWorkerJarName()), jar);
+        }
+
+        File maps = new File(workerConfig, "maps");
+        if (!maps.exists()) {
+            copyDirectory(new File("config/maps"), maps);
+        }
+
         copyDirectory(new File("config/mods"), new File(workerConfig, "mods"));
-        copyDirectory(new File("config/maps"), new File(workerConfig, "maps"));
 
         return workerDir;
     }
