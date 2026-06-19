@@ -480,14 +480,40 @@ final class PlayerDataManager {
     ) throws SQLException {
         String uuid = result.getString("uuid");
 
+        /**
+         * Stored playtime is only flushed at round starts, on leave and on
+         * shutdown, so an online player's ongoing session has not reached the
+         * database yet. Add the live unpersisted session time here, otherwise
+         * /info reports a stale total that never appears to count their current
+         * play. Offline players have no active session and read straight from
+         * the database.
+         */
+        long now = System.currentTimeMillis();
+        long liveTotalMillis;
+        long liveFfaMillis;
+
+        synchronized (this) {
+            ActiveSession session = activeSessionsByUuid.get(uuid);
+
+            if (session == null) {
+                liveTotalMillis = 0L;
+                liveFfaMillis = 0L;
+            } else {
+                liveTotalMillis =
+                    Math.max(0L, now - session.startedAtMillis);
+                liveFfaMillis =
+                    session.ffaParticipant ? liveTotalMillis : 0L;
+            }
+        }
+
         return new PlayerInfo(
             uuid,
             result.getString("last_name"),
             playerNames(connection, uuid),
             result.getLong("first_seen_ms"),
             result.getLong("last_seen_ms"),
-            result.getLong("total_playtime_ms"),
-            result.getLong("ffa_playtime_ms"),
+            result.getLong("total_playtime_ms") + liveTotalMillis,
+            result.getLong("ffa_playtime_ms") + liveFfaMillis,
             result.getInt("ffa_played"),
             result.getInt("ffa_won"),
             result.getLong("ranked_playtime_ms"),

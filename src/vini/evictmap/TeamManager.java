@@ -6,6 +6,7 @@ import arc.util.Time;
 import mindustry.Vars;
 import mindustry.content.Blocks;
 import mindustry.game.Team;
+import mindustry.gen.Building;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
@@ -440,8 +441,34 @@ final class TeamManager {
          *
          * Reconnects never reach this method, so the package cannot be claimed
          * twice by the same player.
+         *
+         * The chosen hex still belongs to Fallen, which may have raised
+         * buildings (or a stray neutral structure may sit) inside it. Wipe the
+         * whole hex first so nothing survives under or beside the fresh core,
+         * mirroring the capture cleanup. Suppression keeps the live Fallen
+         * Nucleus removal from being mistaken for a capture.
          */
-        StartLoadout.place(slot.x, slot.y, personalTeam);
+        boolean previousSuppression = suppressCoreChangeEvents;
+        suppressCoreChangeEvents = true;
+
+        try {
+            int clearedBuildings = captureManager.clearBuildingsInsideHex(slot);
+
+            if (clearedBuildings > 0) {
+                Log.info(
+                    "[EvictMapGenerator] Cleared @ building(s) from starting hex (@,@) before placing team #@'s core.",
+                    clearedBuildings,
+                    slot.col,
+                    slot.row,
+                    personalTeam.id
+                );
+            }
+
+            StartLoadout.place(slot.x, slot.y, personalTeam);
+        } finally {
+            suppressCoreChangeEvents = previousSuppression;
+        }
+
         slot.ownerTeamId = personalTeam.id;
         updateMaximumOwnedHexes(personalTeam.id);
     }
@@ -745,7 +772,7 @@ final class TeamManager {
                     continue;
                 }
 
-                HexSlot slot = slotAtCoreTile(core.tile.x, core.tile.y);
+                HexSlot slot = slotForCore(core);
 
                 if (slot != null && !slot.extinct && !slot.capturing) {
                     count++;
@@ -1328,13 +1355,15 @@ final class TeamManager {
             return null;
         }
 
+        /**
+         * Confirm the core covering the hex centre is a genuinely registered
+         * core for its team (guards against a phantom build that has not joined
+         * the team core list yet). Identity is used instead of comparing tile
+         * coordinates so an even-sized Foundation, whose origin tile sits
+         * off-centre, still verifies.
+         */
         for (CoreBuild registeredCore : Vars.state.teams.cores(team)) {
-            if (
-                registeredCore != null
-                    && registeredCore.tile != null
-                    && registeredCore.tile.x == slot.x
-                    && registeredCore.tile.y == slot.y
-            ) {
+            if (registeredCore == centerCore) {
                 return registeredCore;
             }
         }
@@ -1876,6 +1905,41 @@ final class TeamManager {
     HexSlot slotAtCoreTile(int x, int y) {
         for (HexSlot slot : slots) {
             if (!slot.extinct && slot.x == x && slot.y == y) {
+                return slot;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolves the hex a core belongs to by footprint, not by an exact
+     * origin-tile match. Odd-sized cores (Shard 3x3, Nucleus 5x5) anchor their
+     * {@code tile} on the centre, but the even-sized Foundation (4x4) anchors
+     * one tile off-centre, so a plain {@code slot.x == core.tile.x} test misses
+     * an upgraded core. A core covers exactly one hex centre (hexes are 74
+     * tiles apart, cores are at most 5 wide), so the slot whose centre tile is
+     * inside the core footprint is unambiguous.
+     */
+    HexSlot slotForCore(Building core) {
+        if (core == null || core.tile == null || core.block == null) {
+            return null;
+        }
+
+        int size = core.block.size;
+        int minX = core.tile.x - (size - 1) / 2;
+        int minY = core.tile.y - (size - 1) / 2;
+        int maxX = minX + size - 1;
+        int maxY = minY + size - 1;
+
+        for (HexSlot slot : slots) {
+            if (
+                !slot.extinct
+                    && slot.x >= minX
+                    && slot.x <= maxX
+                    && slot.y >= minY
+                    && slot.y <= maxY
+            ) {
                 return slot;
             }
         }

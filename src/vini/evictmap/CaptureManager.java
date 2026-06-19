@@ -56,8 +56,22 @@ final class CaptureManager {
             return;
         }
 
-        int coreTileX = core.tile.x;
-        int coreTileY = core.tile.y;
+        /**
+         * Resolve the hex by core footprint, then drive the rest of the capture
+         * pipeline from the hex centre tile. An even-sized Foundation (4x4)
+         * anchors its {@code tile} one off-centre, so using the raw core tile
+         * here would miss the slot and the destroyed core would never be
+         * captured or replaced. A core not covering any hex centre (a secondary
+         * off-centre core) is intentionally ignored.
+         */
+        TeamManager.HexSlot slot = teamManager.slotForCore(core);
+
+        if (slot == null) {
+            return;
+        }
+
+        int coreTileX = slot.x;
+        int coreTileY = slot.y;
         Team defenderTeam = core.team;
         Team attackerTeam = validCaptureAttacker(core.lastDamage, defenderTeam);
 
@@ -420,6 +434,16 @@ final class CaptureManager {
         }
 
         return lastDamage;
+    }
+
+    /**
+     * Removes every player-built structure inside a hex. Reused when a new
+     * personal team is dropped onto a Fallen hex so that anything the Fallen
+     * team (or a previous owner) raised there is wiped before the start
+     * schematic and its core land.
+     */
+    int clearBuildingsInsideHex(TeamManager.HexSlot slot) {
+        return clearSyntheticBuildingsInsideHex(slot);
     }
 
     private int clearSyntheticBuildingsInsideHex(
