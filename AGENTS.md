@@ -154,6 +154,9 @@ gradle jar
 
 - Fallen team is always team `#14`.
 - New players receive a personal team and one protected starting hex.
+- Every building inside the chosen starting hex is wiped before the start
+  schematic and its core are placed, so anything the Fallen team built there
+  is removed first.
 - Eliminated players become Fallen.
 - Fallen players can still use chat and move their camera.
 - Team leaders are the players who originally created their teams.
@@ -168,6 +171,10 @@ gradle jar
 - `/die` surrender restores Fallen Nucleus cores in surrendered hexes.
 - Replacement cores are verified after placement; an unverified or missing core does not count as owned and cannot block victory as a phantom core.
 - Victory, elimination and `/over` core counts use actual existing core blocks, while pending captures still count immediately for their pending owner.
+- A core is matched to its hex by footprint, not by an exact origin-tile match.
+  This keeps the even-sized Foundation (`4x4`), whose origin tile sits
+  off-centre, correctly tied to its hex so capture, replacement and ownership
+  counting still work after a core is upgraded.
 
 ### Attrition
 
@@ -212,6 +219,9 @@ config/evict-players.db
 - All observed names are stored per UUID in `player_names`.
 - Ranked playtime, ranked wins, ranked losses, ranked matches played, ELO and peak ELO columns exist for later ranked/1v1 features.
 - FFA playtime is counted only after a player receives a personal team in that round.
+- Stored playtime is flushed at round starts, on leave and on shutdown. `/info`
+  and `evictplayerinfo` add the live unpersisted session time so an online
+  player's total and FFA playtime include their current, not-yet-saved session.
 - No IP addresses are stored.
 - `/info` is admin-only and opens a clickable online-player selection menu with two players per row and a bottom cancel button.
 - `/info [name] [team] [#number]` is admin-only and searches online players by partial name. The optional team ID filters duplicate online names; `#number` selects one result from the duplicate list.

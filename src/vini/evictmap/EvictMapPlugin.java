@@ -4,15 +4,19 @@ import arc.Events;
 import arc.util.CommandHandler;
 import arc.util.Log;
 import arc.util.Time;
-import mindustry.game.EventType.CoreChangeEvent;
 import mindustry.game.EventType.GameOverEvent;
 import mindustry.game.EventType.PlayEvent;
 import mindustry.game.EventType.PlayerJoin;
 import mindustry.game.EventType.PlayerLeave;
+import mindustry.game.EventType.TileChangeEvent;
+import mindustry.game.EventType.TilePreChangeEvent;
 import mindustry.game.EventType.Trigger;
 import mindustry.game.EventType.WorldLoadEvent;
 import mindustry.game.Team;
 import mindustry.mod.Plugin;
+import mindustry.world.blocks.storage.CoreBlock;
+
+import java.util.HashMap;
 
 /**
  * Plugin composition root.
@@ -109,6 +113,10 @@ public class EvictMapPlugin extends Plugin {
     private final boolean duelWorker =
         "true".equals(System.getProperty("evict.duelWorker"));
 
+    // prechanging detector
+    private final HashMap<Integer, CoreBlock.CoreBuild> prechanged =
+        new HashMap<>();
+
     @Override
     public void init() {
         settings.load();
@@ -183,13 +191,25 @@ public class EvictMapPlugin extends Plugin {
             duelWorkerReferee.handlePlayerLeave(event.player);
         });
 
-        Events.on(
-            CoreChangeEvent.class,
-            event -> teamManager.handleCoreChange(
-                event.core,
-                attritionManager
-            )
-        );
+        Events.on(TilePreChangeEvent.class, tilePreChangeEvent -> {
+            if (!(tilePreChangeEvent.tile.build instanceof CoreBlock.CoreBuild coreBuild)) {
+                return;
+            }
+            if (coreBuild.health > 0f) {
+                return;
+            }
+
+            prechanged.put(tilePreChangeEvent.tile.pos(), coreBuild);
+        });
+
+        Events.on(TileChangeEvent.class, tileChangeEvent -> {
+            CoreBlock.CoreBuild coreBuild = prechanged.remove(tileChangeEvent.tile.pos());
+            if (coreBuild == null) {
+                return;
+            }
+
+            teamManager.coreCapture().handleCoreChange(coreBuild, attritionManager);
+        });
 
         Events.run(Trigger.update, () -> {
             teamManager.updateExtinctionTerrainQueue();
@@ -199,7 +219,7 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Log.info(
-            "[EvictMapGenerator] Loaded. Code revision 1.2.28. Use 'evictstatus' for commands and current settings."
+            "[EvictMapGenerator] Loaded. Code revision 1.2.31. Use 'evictstatus' for commands and current settings."
         );
     }
 

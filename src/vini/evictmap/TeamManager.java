@@ -6,6 +6,7 @@ import arc.util.Time;
 import mindustry.Vars;
 import mindustry.content.Blocks;
 import mindustry.game.Team;
+import mindustry.gen.Building;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
@@ -76,23 +77,6 @@ final class TeamManager {
     private static final long TEAM_RANDOM_XOR = 0x5445414d2d455649L;
 
     /**
-     * Captures intentionally do not complete instantly. The empty center is
-     * visible for a few seconds before the attacker's small Core Shard appears.
-     */
-    private static final float CAPTURE_DELAY_TICKS = 5f * 60f;
-
-    /**
-     * Capture cleanup follows the real Evict core range exactly.
-     *
-     * Every synthetic building whose center is within 40 tiles of the
-     * destroyed core is removed, including buildings inside the overlap with
-     * a neighbouring hex. This is intentionally core range, not build range.
-     */
-    private static final int CAPTURE_CLEAR_RADIUS = 40;
-    private static final int CAPTURE_CLEAR_RADIUS_SQUARED =
-        CAPTURE_CLEAR_RADIUS * CAPTURE_CLEAR_RADIUS;
-
-    /**
      * The generated playable hex circles use radius 39. Extinction converts
      * each collapsed logical hex circle into space without touching the
      * surviving neighbour selected by the nearest-center check.
@@ -128,7 +112,9 @@ final class TeamManager {
 
     private final Cons<Team> victoryHandler;
     private InviteManager inviteManager;
-    private final CaptureManager captureManager = new CaptureManager(this);
+
+    /** All core-capture and core-placement logic lives in its own file. */
+    private final CoreCapture coreCapture = new CoreCapture(this);
 
     private Random random = new Random();
     private boolean roundActive = false;
@@ -440,17 +426,36 @@ final class TeamManager {
          *
          * Reconnects never reach this method, so the package cannot be claimed
          * twice by the same player.
+         *
+         * The chosen hex still belongs to Fallen, which may have raised
+         * buildings (or a stray neutral structure may sit) inside it. Wipe the
+         * whole hex first so nothing survives under or beside the fresh core,
+         * mirroring the capture cleanup. Suppression keeps the live Fallen
+         * Nucleus removal from being mistaken for a capture.
          */
-        StartLoadout.place(slot.x, slot.y, personalTeam);
+        boolean previousSuppression = suppressCoreChangeEvents;
+        suppressCoreChangeEvents = true;
+
+        try {
+            int clearedBuildings = coreCapture.clearBuildingsInHex(slot);
+
+            if (clearedBuildings > 0) {
+                Log.info(
+                    "[EvictMapGenerator] Cleared @ building(s) from starting hex (@,@) before placing team #@'s core.",
+                    clearedBuildings,
+                    slot.col,
+                    slot.row,
+                    personalTeam.id
+                );
+            }
+
+            StartLoadout.place(slot.x, slot.y, personalTeam);
+        } finally {
+            suppressCoreChangeEvents = previousSuppression;
+        }
+
         slot.ownerTeamId = personalTeam.id;
         updateMaximumOwnedHexes(personalTeam.id);
-    }
-
-    void handleCoreChange(
-        CoreBuild core,
-        AttritionManager attritionManager
-    ) {
-        captureManager.handleCoreChange(core, attritionManager);
     }
 
     void announceEliminationIfNeeded(
@@ -575,7 +580,11 @@ final class TeamManager {
             capturesByDefenderTeamId.get(defenderTeam.id);
 
         if (counts == null || counts.isEmpty()) {
-            return determineGeneralSurrenderClaimantTeam(defenderTeam);
+            // No team ever destroyed this team's cores, so no one earned a
+            // claim by attacking them. Surrender leaves the players as free
+            // Fallen spectators instead of handing them to the map-wide
+            // core-kill leader, which could be a team that never reached them.
+            return null;
         }
 
         int bestCount = Integer.MIN_VALUE;
@@ -590,40 +599,6 @@ final class TeamManager {
             }
 
             int count = entry.getValue();
-
-            if (count > bestCount) {
-                bestCount = count;
-                bestTeam = candidate;
-                tied = false;
-            } else if (count == bestCount) {
-                tied = true;
-            }
-        }
-
-        return tied ? null : bestTeam;
-    }
-
-    private Team determineGeneralSurrenderClaimantTeam(Team surrenderingTeam) {
-        int bestCount = 0;
-        Team bestTeam = null;
-        boolean tied = false;
-
-        for (int teamId : personalTeamCreationOrder) {
-            if (surrenderingTeam != null && teamId == surrenderingTeam.id) {
-                continue;
-            }
-
-            Team candidate = Team.get(teamId);
-
-            if (!validClaimant(candidate)) {
-                continue;
-            }
-
-            int count = nonFallenCoreKills(teamId);
-
-            if (count <= 0) {
-                continue;
-            }
 
             if (count > bestCount) {
                 bestCount = count;
@@ -745,7 +720,7 @@ final class TeamManager {
                     continue;
                 }
 
-                HexSlot slot = slotAtCoreTile(core.tile.x, core.tile.y);
+                HexSlot slot = slotForCore(core);
 
                 if (slot != null && !slot.extinct && !slot.capturing) {
                     count++;
@@ -888,7 +863,7 @@ final class TeamManager {
             }
 
             if (
-                !placeCoreAndVerify(
+                !coreCapture.placeCore(
                     slot,
                     Blocks.coreNucleus,
                     FALLEN_TEAM,
@@ -1328,210 +1303,20 @@ final class TeamManager {
             return null;
         }
 
+        /**
+         * Confirm the core covering the hex centre is a genuinely registered
+         * core for its team (guards against a phantom build that has not joined
+         * the team core list yet). Identity is used instead of comparing tile
+         * coordinates so an even-sized Foundation, whose origin tile sits
+         * off-centre, still verifies.
+         */
         for (CoreBuild registeredCore : Vars.state.teams.cores(team)) {
-            if (
-                registeredCore != null
-                    && registeredCore.tile != null
-                    && registeredCore.tile.x == slot.x
-                    && registeredCore.tile.y == slot.y
-            ) {
+            if (registeredCore == centerCore) {
                 return registeredCore;
             }
         }
 
         return null;
-    }
-
-    boolean placeCoreAndVerify(
-        HexSlot slot,
-        Block coreBlock,
-        Team team,
-        String reason
-    ) {
-        if (
-            slot == null
-                || coreBlock == null
-                || team == null
-                || team == Team.derelict
-        ) {
-            return false;
-        }
-
-        Tile centerTile = Vars.world.tile(slot.x, slot.y);
-
-        if (centerTile == null) {
-            Log.err(
-                "[EvictMapGenerator] Cannot place @ core: missing center tile for hex (@,@).",
-                reason,
-                slot.col,
-                slot.row
-            );
-            return false;
-        }
-
-        boolean previousSuppression = suppressCoreChangeEvents;
-        suppressCoreChangeEvents = true;
-
-        try {
-            placeCoreOnce(slot, centerTile, coreBlock, team, reason);
-
-            if (hasExpectedCore(slot, coreBlock, team)) {
-                return true;
-            }
-
-            placeCoreOnce(slot, centerTile, coreBlock, team, reason);
-
-            if (hasExpectedCore(slot, coreBlock, team)) {
-                return true;
-            }
-        } finally {
-            suppressCoreChangeEvents = previousSuppression;
-        }
-
-        Log.err(
-            "[EvictMapGenerator] Failed to verify @ core at hex (@,@), tile (@,@), expected @ for team #@. The hex will not count as owned.",
-            reason,
-            slot.col,
-            slot.row,
-            slot.x,
-            slot.y,
-            coreBlock.name,
-            team.id
-        );
-
-        return false;
-    }
-
-    private void placeCoreOnce(
-        HexSlot slot,
-        Tile centerTile,
-        Block coreBlock,
-        Team team,
-        String reason
-    ) {
-        PlacementClearResult cleared =
-            clearCorePlacementFootprint(centerTile, coreBlock);
-
-        if (cleared.anyRemoved()) {
-            Log.info(
-                "[EvictMapGenerator] Forced @ core placement at hex (@,@), tile (@,@): cleared @ overlapping building centers, @ terrain blocks and @ units.",
-                reason,
-                slot.col,
-                slot.row,
-                centerTile.x,
-                centerTile.y,
-                cleared.buildings,
-                cleared.terrainBlocks,
-                cleared.units
-            );
-        }
-
-        CoreMarkerFloor.place(centerTile.x, centerTile.y);
-        centerTile.setNet(coreBlock, team, 0);
-    }
-
-    private PlacementClearResult clearCorePlacementFootprint(
-        Tile centerTile,
-        Block coreBlock
-    ) {
-        int radius = coreBlock.size / 2;
-        int minX = centerTile.x - radius;
-        int maxX = minX + coreBlock.size - 1;
-        int minY = centerTile.y - radius;
-        int maxY = minY + coreBlock.size - 1;
-
-        List<Tile> footprintTiles = new ArrayList<>();
-        Set<Tile> buildingCenters = new HashSet<>();
-
-        for (int y = minY; y <= maxY; y++) {
-            for (int x = minX; x <= maxX; x++) {
-                Tile tile = Vars.world.tile(x, y);
-
-                if (tile == null) {
-                    continue;
-                }
-
-                footprintTiles.add(tile);
-
-                if (tile.build != null && tile.build.tile != null) {
-                    buildingCenters.add(tile.build.tile);
-                }
-            }
-        }
-
-        int removedBuildings = 0;
-
-        for (Tile tile : buildingCenters) {
-            if (
-                tile.build != null
-                    && tile.isCenter()
-            ) {
-                tile.removeNet();
-                removedBuildings++;
-            }
-        }
-
-        int removedTerrainBlocks = 0;
-
-        for (Tile tile : footprintTiles) {
-            if (tile.block() != Blocks.air) {
-                tile.removeNet();
-                removedTerrainBlocks++;
-            }
-        }
-
-        List<Unit> unitsToKill = new ArrayList<>();
-
-        Groups.unit.each(unit -> {
-            if (
-                unit != null
-                    && unit.isAdded()
-                    && unit.tileX() >= minX
-                    && unit.tileX() <= maxX
-                    && unit.tileY() >= minY
-                    && unit.tileY() <= maxY
-            ) {
-                unitsToKill.add(unit);
-            }
-        });
-
-        int killedUnits = 0;
-
-        for (Unit unit : unitsToKill) {
-            if (unit.isAdded()) {
-                unit.kill();
-                killedUnits++;
-            }
-        }
-
-        return new PlacementClearResult(
-            removedBuildings,
-            removedTerrainBlocks,
-            killedUnits
-        );
-    }
-
-    private boolean hasExpectedCore(
-        HexSlot slot,
-        Block coreBlock,
-        Team team
-    ) {
-        Tile centerTile = Vars.world.tile(slot.x, slot.y);
-
-        return centerTile != null
-            && centerTile.block() == coreBlock
-            && centerTile.build instanceof CoreBuild core
-            && core.team == team;
-    }
-
-    private record PlacementClearResult(
-        int buildings,
-        int terrainBlocks,
-        int units
-    ) {
-        boolean anyRemoved() {
-            return buildings > 0 || terrainBlocks > 0 || units > 0;
-        }
     }
 
     boolean isRoundActivated() {
@@ -1865,9 +1650,34 @@ final class TeamManager {
         return slots;
     }
 
-    HexSlot slotAtCoreTile(int x, int y) {
+    /**
+     * Resolves the hex a core belongs to by footprint, not by an exact
+     * origin-tile match. Odd-sized cores (Shard 3x3, Nucleus 5x5) anchor their
+     * {@code tile} on the centre, but the even-sized Foundation (4x4) anchors
+     * one tile off-centre, so a plain {@code slot.x == core.tile.x} test misses
+     * an upgraded core. A core covers exactly one hex centre (hexes are 74
+     * tiles apart, cores are at most 5 wide), so the slot whose centre tile is
+     * inside the core footprint is unambiguous.
+     */
+    HexSlot slotForCore(Building core) {
+        if (core == null || core.tile == null || core.block == null) {
+            return null;
+        }
+
+        int size = core.block.size;
+        int minX = core.tile.x - (size - 1) / 2;
+        int minY = core.tile.y - (size - 1) / 2;
+        int maxX = minX + size - 1;
+        int maxY = minY + size - 1;
+
         for (HexSlot slot : slots) {
-            if (!slot.extinct && slot.x == x && slot.y == y) {
+            if (
+                !slot.extinct
+                    && slot.x >= minX
+                    && slot.x <= maxX
+                    && slot.y >= minY
+                    && slot.y <= maxY
+            ) {
                 return slot;
             }
         }
@@ -1879,12 +1689,22 @@ final class TeamManager {
         return roundSerial;
     }
 
+    boolean isRoundActiveForSystems() {
+        return roundActive && !resetting;
+    }
+
+    // --- accessed by CoreCapture (the core-capture/placement file) ---
+
+    CoreCapture coreCapture() {
+        return coreCapture;
+    }
+
     boolean isCaptureSuppressed() {
         return suppressCoreChangeEvents;
     }
 
-    boolean isRoundActiveForSystems() {
-        return roundActive && !resetting;
+    void setCaptureSuppressed(boolean suppressed) {
+        suppressCoreChangeEvents = suppressed;
     }
 
     long roundRuntimeMillis() {
