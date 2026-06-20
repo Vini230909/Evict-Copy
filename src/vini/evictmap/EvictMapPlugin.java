@@ -151,7 +151,7 @@ public class EvictMapPlugin extends Plugin {
 
         Events.on(
             CoreChangeEvent.class,
-            event -> teamManager.handleCoreChange(
+            event -> teamManager.coreCapture().handleCoreChange(
                 event.core,
                 attritionManager
             )
