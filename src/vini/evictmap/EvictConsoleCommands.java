@@ -6,6 +6,7 @@ import mindustry.Vars;
 import mindustry.content.Blocks;
 import mindustry.game.Team;
 import mindustry.gen.Groups;
+import mindustry.gen.Player;
 
 import java.util.function.LongConsumer;
 
@@ -298,6 +299,13 @@ final class EvictConsoleCommands {
         );
 
         handler.register(
+                "evictattritionrange",
+                "[percent]",
+                "Show or set the flat range attrition percentage",
+                this::configureRangeAttrition
+        );
+
+        handler.register(
             "evictduelserver",
             "[ip] [basePort] [maxWorkers] [map]",
             "Show or set the on-demand 1v1 worker pool that /play uses. ip is the address clients reach the workers at; basePort is the first worker port; maxWorkers is how many duels may run at once (1-10); map is the map workers host. Omitted values keep their current setting.",
@@ -469,6 +477,40 @@ final class EvictConsoleCommands {
         } catch (NumberFormatException exception) {
             Log.err(
                     "Core attrition values must be numbers."
+            );
+        } catch (IllegalArgumentException exception) {
+            Log.err(exception.getMessage());
+        }
+    }
+
+    private void configureRangeAttrition(String[] args) {
+        if (args.length == 0) {
+            Log.info(
+                    "Range attrition: "
+                            + attritionManager.compactRangeSettings()
+            );
+            return;
+        }
+
+        if (args.length != 1) {
+            Log.err(
+                    "Use: /attritionrange <percent>"
+            );
+            return;
+        }
+
+        try {
+            attritionManager.setRangeDeathChancePercent(
+                    Double.parseDouble(args[0])
+            );
+
+            Log.info(
+                    "Range attrition saved: "
+                            + attritionManager.compactRangeSettings()
+            );
+        } catch (NumberFormatException exception) {
+            Log.err(
+                    "Range attrition value must be a number."
             );
         } catch (IllegalArgumentException exception) {
             Log.err(exception.getMessage());

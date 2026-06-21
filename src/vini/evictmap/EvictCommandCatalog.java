@@ -16,8 +16,6 @@ final class EvictCommandCatalog {
 
         commands.add("forceend");
         commands.add("extinction");
-        commands.add("attritioncore");
-        commands.add("attritionrange");
         commands.add("spawnunit");
         commands.add("info");
 

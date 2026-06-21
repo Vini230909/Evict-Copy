@@ -89,13 +89,6 @@ final class EvictCommands {
         );
 
         handler.<Player>register(
-            "attritionrange",
-            "[percent]",
-            "Admin only: show or set the flat range attrition percentage, e.g. /attritionrange 20.",
-            (args, player) -> configureRangeAttrition(args, player)
-        );
-
-        handler.<Player>register(
             "spawnunit",
             "<unit> <amount> [team]",
             "Admin only: spawn test units near you. Team defaults to your current team.",
@@ -242,44 +235,6 @@ final class EvictCommands {
                     + "The round must be active, at least one personal team "
                     + "must exist, and EXTINCTION must not already be active.[]"
             );
-        }
-    }
-
-    private void configureRangeAttrition(String[] args, Player player) {
-        if (!requireAdmin(player)) {
-            return;
-        }
-
-        if (args.length == 0) {
-            player.sendMessage(
-                "[accent]Range attrition: []"
-                    + attritionManager.compactRangeSettings()
-            );
-            return;
-        }
-
-        if (args.length != 1) {
-            player.sendMessage(
-                "[scarlet]Use: /attritionrange <percent>[]"
-            );
-            return;
-        }
-
-        try {
-            attritionManager.setRangeDeathChancePercent(
-                Double.parseDouble(args[0])
-            );
-
-            player.sendMessage(
-                "[green]Range attrition saved: []"
-                    + attritionManager.compactRangeSettings()
-            );
-        } catch (NumberFormatException exception) {
-            player.sendMessage(
-                "[scarlet]Range attrition value must be a number.[]"
-            );
-        } catch (IllegalArgumentException exception) {
-            player.sendMessage("[scarlet]" + exception.getMessage() + "[]");
         }
     }
 
