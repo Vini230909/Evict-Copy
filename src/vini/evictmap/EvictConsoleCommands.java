@@ -267,6 +267,13 @@ final class EvictConsoleCommands {
         );
 
         handler.register(
+                "evictwall",
+                "[full-wall] [small-wall] [open] [passage]",
+                "Show or set persistent wall-template percentages",
+                this::configureWalls
+        );
+
+        handler.register(
             "evictduelserver",
             "[ip] [basePort] [maxWorkers] [map]",
             "Show or set the on-demand 1v1 worker pool that /play uses. ip is the address clients reach the workers at; basePort is the first worker port; maxWorkers is how many duels may run at once (1-10); map is the map workers host. Omitted values keep their current setting.",
@@ -313,12 +320,48 @@ final class EvictConsoleCommands {
         );
     }
 
+    private void configureWalls(String[] args) {
+        if (args.length == 0) {
+            Log.info("[accent]Walls: []" + settings.compactWallSettings());
+            return;
+        }
+
+        if (args.length != 4) {
+            Log.info("[scarlet]Use: /wall <full-wall> <small-wall> <open> <passage>[]");
+            return;
+        }
+
+        try {
+            double fullWall = Double.parseDouble(args[0]);
+            double smallWall = Double.parseDouble(args[1]);
+            double open = Double.parseDouble(args[2]);
+            double passage = Double.parseDouble(args[3]);
+
+            settings.setWallPercentages(
+                    fullWall,
+                    smallWall,
+                    open,
+                    passage
+            );
+
+            Log.info(
+                    "[green]Wall settings saved: []"
+                            + settings.compactWallSettings()
+                            + "[green]. Applies to the next generated map.[]"
+            );
+        } catch (NumberFormatException exception) {
+            Log.err("[scarlet]Wall values must be numbers.[]");
+        } catch (IllegalArgumentException exception) {
+            Log.err("[scarlet]" + exception.getMessage() + "[]");
+        }
+    }
+
     private void showStoredPlayerInfo(String query) {
         playerDataManager.searchPlayerInfo(
             query,
             matches -> {
                 if (matches.isEmpty()) {
-                    Log.info(
+                    Log.err(
                         "[EvictMapGenerator] No stored players match '@'.",
                         query
                     );
