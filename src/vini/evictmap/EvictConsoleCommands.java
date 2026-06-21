@@ -336,12 +336,12 @@ final class EvictConsoleCommands {
 
     private void configureWalls(String[] args) {
         if (args.length == 0) {
-            Log.info("[accent]Walls: []" + settings.compactWallSettings());
+            Log.info("Walls: " + settings.compactWallSettings());
             return;
         }
 
         if (args.length != 4) {
-            Log.info("[scarlet]Use: /wall <full-wall> <small-wall> <open> <passage>[]");
+            Log.info("Use: /wall <full-wall> <small-wall> <open> <passage>");
             return;
         }
 
@@ -359,14 +359,14 @@ final class EvictConsoleCommands {
             );
 
             Log.info(
-                    "[green]Wall settings saved: []"
+                    "Wall settings saved: "
                             + settings.compactWallSettings()
-                            + "[green]. Applies to the next generated map.[]"
+                            + ". Applies to the next generated map."
             );
         } catch (NumberFormatException exception) {
-            Log.err("[scarlet]Wall values must be numbers.[]");
+            Log.err("Wall values must be numbers.");
         } catch (IllegalArgumentException exception) {
-            Log.err("[scarlet]" + exception.getMessage() + "[]");
+            Log.err("" + exception.getMessage() + "");
         }
     }
 
