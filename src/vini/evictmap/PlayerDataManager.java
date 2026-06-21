@@ -36,6 +36,13 @@ final class PlayerDataManager {
         new File("config/evict-players.db");
     private static final int DEFAULT_ELO = 1000;
 
+    /**
+     * Database that /history reads from. Defaults to this server's own DB. A duel
+     * worker points this at the hub DB (the worker's own DB has no real matches),
+     * so spectators and players can see real history on a duel server.
+     */
+    private volatile File historyDatabaseFile = DATABASE_FILE;
+
     private final ExecutorService databaseExecutor =
         Executors.newSingleThreadExecutor(task -> {
             Thread thread = new Thread(task, "EvictPlayerDataWriter");
@@ -139,11 +146,17 @@ final class PlayerDataManager {
 
     /**
      * Records a finished 1v1 duel: a win for the winner, a loss for the loser,
-     * and a played match for both. ELO is intentionally left untouched. Called
-     * on the hub once a worker reports its result; no-op if either UUID is
-     * missing (e.g. the worker could not identify a winner).
+     * a played match for both, and one row in the match history. ELO counters
+     * are intentionally left untouched. Called on the hub once a worker reports
+     * its result; no-op if either UUID is missing (e.g. the worker could not
+     * identify a winner).
      */
-    void recordRankedResult(String winnerUuid, String loserUuid) {
+    void recordRankedResult(
+        String winnerUuid,
+        String winnerName,
+        String loserUuid,
+        String loserName
+    ) {
         if (
             winnerUuid == null
                 || winnerUuid.isEmpty()
@@ -153,7 +166,23 @@ final class PlayerDataManager {
             return;
         }
 
-        enqueue(() -> applyRankedResult(winnerUuid, loserUuid));
+        long playedAtMillis = System.currentTimeMillis();
+
+        enqueue(() -> applyRankedResult(
+            winnerUuid,
+            safeName(winnerName),
+            loserUuid,
+            safeName(loserName),
+            playedAtMillis
+        ));
+    }
+
+    /** A player's 1v1 matches, most recent first. */
+    void findDuelHistory(
+        String uuid,
+        Consumer<List<DuelMatch>> callback
+    ) {
+        enqueue(() -> deliver(callback, loadDuelHistory(uuid)));
     }
 
     void findPlayerInfoByUuid(
@@ -306,6 +335,34 @@ final class PlayerDataManager {
                     + "PRIMARY KEY(uuid, name)"
                     + ")"
             );
+
+            // One row per finished 1v1. Names are the colored display names at
+            // match time so /history can render them without the players being
+            // online. The elo columns default to 0 until the elo feature lands.
+            statement.executeUpdate(
+                "CREATE TABLE IF NOT EXISTS duel_matches ("
+                    + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    + "played_at_ms INTEGER NOT NULL,"
+                    + "winner_uuid TEXT NOT NULL,"
+                    + "winner_name TEXT NOT NULL,"
+                    + "loser_uuid TEXT NOT NULL,"
+                    + "loser_name TEXT NOT NULL,"
+                    + "winner_elo_before INTEGER NOT NULL DEFAULT 0,"
+                    + "winner_elo_after INTEGER NOT NULL DEFAULT 0,"
+                    + "loser_elo_before INTEGER NOT NULL DEFAULT 0,"
+                    + "loser_elo_after INTEGER NOT NULL DEFAULT 0"
+                    + ")"
+            );
+
+            statement.executeUpdate(
+                "CREATE INDEX IF NOT EXISTS idx_duel_matches_winner "
+                    + "ON duel_matches(winner_uuid)"
+            );
+
+            statement.executeUpdate(
+                "CREATE INDEX IF NOT EXISTS idx_duel_matches_loser "
+                    + "ON duel_matches(loser_uuid)"
+            );
         }
 
         Log.info(
@@ -395,12 +452,85 @@ final class PlayerDataManager {
         }
     }
 
-    private void applyRankedResult(String winnerUuid, String loserUuid)
-        throws SQLException {
+    private void applyRankedResult(
+        String winnerUuid,
+        String winnerName,
+        String loserUuid,
+        String loserName,
+        long playedAtMillis
+    ) throws SQLException {
         try (Connection connection = connect()) {
             updateRankedOutcome(connection, winnerUuid, true);
             updateRankedOutcome(connection, loserUuid, false);
+            insertDuelMatch(
+                connection,
+                playedAtMillis,
+                winnerUuid,
+                winnerName,
+                loserUuid,
+                loserName
+            );
         }
+    }
+
+    private void insertDuelMatch(
+        Connection connection,
+        long playedAtMillis,
+        String winnerUuid,
+        String winnerName,
+        String loserUuid,
+        String loserName
+    ) throws SQLException {
+        try (
+            PreparedStatement statement = connection.prepareStatement(
+                "INSERT INTO duel_matches "
+                    + "(played_at_ms, winner_uuid, winner_name, "
+                    + "loser_uuid, loser_name) "
+                    + "VALUES (?, ?, ?, ?, ?)"
+            )
+        ) {
+            statement.setLong(1, playedAtMillis);
+            statement.setString(2, winnerUuid);
+            statement.setString(3, winnerName);
+            statement.setString(4, loserUuid);
+            statement.setString(5, loserName);
+            statement.executeUpdate();
+        }
+    }
+
+    private List<DuelMatch> loadDuelHistory(String uuid) throws SQLException {
+        List<DuelMatch> result = new ArrayList<>();
+
+        try (
+            Connection connection = connect(historyDatabaseFile);
+            PreparedStatement statement = connection.prepareStatement(
+                "SELECT played_at_ms, winner_uuid, winner_name, "
+                    + "loser_uuid, loser_name FROM duel_matches "
+                    + "WHERE winner_uuid = ? OR loser_uuid = ? "
+                    + "ORDER BY played_at_ms DESC"
+            )
+        ) {
+            statement.setString(1, uuid);
+            statement.setString(2, uuid);
+
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    result.add(new DuelMatch(
+                        rows.getLong("played_at_ms"),
+                        rows.getString("winner_uuid"),
+                        rows.getString("winner_name"),
+                        rows.getString("loser_uuid"),
+                        rows.getString("loser_name")
+                    ));
+                }
+            }
+        }
+
+        return result;
+    }
+
+    private static String safeName(String name) {
+        return name == null || name.isBlank() ? "?" : name;
     }
 
     private void updateRankedOutcome(
@@ -619,11 +749,21 @@ final class PlayerDataManager {
         return names;
     }
 
+    void useHistoryDatabase(File file) {
+        if (file != null) {
+            historyDatabaseFile = file;
+        }
+    }
+
     private Connection connect() throws SQLException {
+        return connect(DATABASE_FILE);
+    }
+
+    private Connection connect(File file) throws SQLException {
         ensureSqliteDriver();
 
         return DriverManager.getConnection(
-            "jdbc:sqlite:" + DATABASE_FILE.getPath()
+            "jdbc:sqlite:" + file.getPath()
         );
     }
 
@@ -666,6 +806,15 @@ final class PlayerDataManager {
         int rankedMatchesPlayed,
         int elo,
         int peakElo
+    ) {
+    }
+
+    record DuelMatch(
+        long playedAtMillis,
+        String winnerUuid,
+        String winnerName,
+        String loserUuid,
+        String loserName
     ) {
     }
 }

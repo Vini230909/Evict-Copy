@@ -155,7 +155,7 @@ final class DuelServerManager {
 
             process.onExit().thenRun(
                 () -> Core.app.post(() -> {
-                    logResult(handle.port);
+                    logResult(handle);
                     releaseSlot(handle);
                 })
             );
@@ -573,7 +573,8 @@ final class DuelServerManager {
         return Core.settings.getInt("port", 6567);
     }
 
-    private void logResult(int port) {
+    private void logResult(WorkerHandle handle) {
+        int port = handle.port;
         File resultFile = new File(workerDir(port), "result.properties");
 
         if (!resultFile.exists()) {
@@ -596,9 +597,16 @@ final class DuelServerManager {
                 properties.getProperty("reason", "?")
             );
 
-            // Credit the ranked record on the hub's database; the worker runs in
-            // its own process and cannot reach this DB itself.
-            playerDataManager.recordRankedResult(winnerUuid, loserUuid);
+            // Credit the ranked record and match history on the hub's database;
+            // the worker runs in its own process and cannot reach this DB. The
+            // colored display names captured at match start let /history render
+            // them later without the players being online.
+            playerDataManager.recordRankedResult(
+                winnerUuid,
+                displayNameFor(handle, winnerUuid),
+                loserUuid,
+                displayNameFor(handle, loserUuid)
+            );
         } catch (Exception exception) {
             Log.err(
                 "[EvictMapGenerator] Could not read the duel result on port "
@@ -609,6 +617,18 @@ final class DuelServerManager {
 
         // Drop it so a reused worker folder never reports a stale result.
         resultFile.delete();
+    }
+
+    private static String displayNameFor(WorkerHandle handle, String uuid) {
+        if (uuid.equals(handle.player1Uuid)) {
+            return handle.player1Display;
+        }
+
+        if (uuid.equals(handle.player2Uuid)) {
+            return handle.player2Display;
+        }
+
+        return uuid;
     }
 
     private File workerDir(int port) {

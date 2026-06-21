@@ -123,6 +123,14 @@ final class TeamManager {
     private boolean resetting = false;
     private boolean suppressCoreChangeEvents = false;
     private boolean extinctionActive = false;
+
+    /**
+     * 1v1 duel-worker mode. In a duel only the two players matter: Fallen cores
+     * neither block nor win (they are not a playable team), surrender/elimination
+     * never restores Fallen backup cores or moves the loser to Fallen, and the
+     * match ends the instant only one of the two players is left.
+     */
+    private boolean duelMode = false;
     private int extinctionTerrainChangesPerTick =
         DEFAULT_EXTINCTION_TERRAIN_CHANGES_PER_TICK;
     private long roundSerial = 0L;
@@ -134,6 +142,10 @@ final class TeamManager {
 
     void setInviteManager(InviteManager inviteManager) {
         this.inviteManager = inviteManager;
+    }
+
+    void setDuelMode(boolean duelMode) {
+        this.duelMode = duelMode;
     }
 
     void beginRound(List<HexSlot> newSlots, long seed) {
@@ -679,6 +691,12 @@ final class TeamManager {
     ) {
         List<String> affectedUuids = new ArrayList<>();
 
+        // In a duel the loser stays on their own (now core-less) team rather than
+        // becoming Fallen, which is not a playable team in 1v1.
+        if (duelMode) {
+            return affectedUuids;
+        }
+
         for (Map.Entry<String, Integer> entry : teamIdByPlayerUuid.entrySet()) {
             if (entry.getValue() != previousTeam.id) {
                 continue;
@@ -813,11 +831,15 @@ final class TeamManager {
          */
         List<HexSlot> surrenderedSlots = new ArrayList<>();
 
+        // In a duel the surrendered hexes become derelict, not Fallen, so no
+        // Fallen backup core is left behind.
+        int surrenderedOwnerId = duelMode ? Team.derelict.id : FALLEN_TEAM_ID;
+
         for (HexSlot slot : slots) {
             if (effectiveOwnerTeamId(slot) == team.id) {
                 surrenderedSlots.add(slot);
-                slot.ownerTeamId = FALLEN_TEAM_ID;
-                slot.pendingCaptureTeamId = FALLEN_TEAM_ID;
+                slot.ownerTeamId = surrenderedOwnerId;
+                slot.pendingCaptureTeamId = surrenderedOwnerId;
                 slot.capturing = false;
             }
         }
@@ -826,7 +848,10 @@ final class TeamManager {
 
         try {
             clearSurrenderedTeamAssets(team);
-            placeFallenCoresAfterSurrender(surrenderedSlots);
+
+            if (!duelMode) {
+                placeFallenCoresAfterSurrender(surrenderedSlots);
+            }
         } finally {
             suppressCoreChangeEvents = false;
         }
@@ -1048,6 +1073,15 @@ final class TeamManager {
         }
 
         /**
+         * In a duel the result can only be decided once both players have taken
+         * a start core. Otherwise, while only one has joined, ignoring Fallen
+         * would make that lone player an instant "winner".
+         */
+        if (duelMode && personalTeamCreationOrder.size() < 2) {
+            return;
+        }
+
+        /**
          * Pending captures count as ownership immediately. The delayed Core
          * Shard is only the visible replacement block, not the moment at which
          * the round result is decided.
@@ -1085,6 +1119,12 @@ final class TeamManager {
             int ownerTeamId = effectiveCoreOwnerTeamId(slot);
 
             if (ownerTeamId == Team.derelict.id) {
+                continue;
+            }
+
+            // In a duel, Fallen cores are neutral scenery: they neither block
+            // the winner nor count as a survivor.
+            if (duelMode && ownerTeamId == FALLEN_TEAM_ID) {
                 continue;
             }
 

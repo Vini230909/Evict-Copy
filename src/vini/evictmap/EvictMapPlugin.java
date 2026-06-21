@@ -4,6 +4,8 @@ import arc.Events;
 import arc.util.CommandHandler;
 import arc.util.Log;
 import arc.util.Time;
+import mindustry.Vars;
+import mindustry.gen.Groups;
 import mindustry.game.EventType.GameOverEvent;
 import mindustry.game.EventType.PlayEvent;
 import mindustry.game.EventType.PlayerJoin;
@@ -82,6 +84,9 @@ public class EvictMapPlugin extends Plugin {
             this::restartDuelMatch
         );
 
+    private final HistoryCommands historyCommands =
+        new HistoryCommands(playerDataManager);
+
     private final EvictHelpCommands helpCommands =
         new EvictHelpCommands();
 
@@ -92,6 +97,7 @@ public class EvictMapPlugin extends Plugin {
             roundEndCommands,
             roundTimeCommands,
             duelCommands,
+            historyCommands,
             helpCommands
         );
 
@@ -130,12 +136,24 @@ public class EvictMapPlugin extends Plugin {
         settings.load();
         rankManager.load();
         playerDataManager.start();
+
+        // A duel worker's own DB has no real matches; point /history at the hub
+        // DB (the worker runs in duel-workers/duel-<port>/, so the hub config is
+        // two levels up) so spectators and players still see real history.
+        if (duelWorker) {
+            playerDataManager.useHistoryDatabase(
+                new java.io.File("../../config/evict-players.db")
+            );
+
+            installDuelChatFilter();
+        }
         coreUnitDamageManager.apply();
         buildingDamageManager.apply();
         teamManager.setExtinctionTerrainChangesPerTick(
             settings.extinctionTerrainChangesPerTick()
         );
         teamManager.setInviteManager(inviteManager);
+        teamManager.setDuelMode(duelWorker);
 
         Events.on(WorldLoadEvent.class, event -> {
             if (!runtime.autoGenerate || refreshingWorldIndexes) {
@@ -222,6 +240,7 @@ public class EvictMapPlugin extends Plugin {
             playerDataManager.handlePlayerLeave(event.player);
             inviteManager.handlePlayerLeave(event.player);
             duelCommands.handlePlayerLeave(event.player);
+            historyCommands.handlePlayerLeave(event.player);
             duelWorkerReferee.handlePlayerLeave(event.player);
         });
 
@@ -372,6 +391,44 @@ public class EvictMapPlugin extends Plugin {
         roundTimeCommands.rememberConnectedPlayers();
         teamManager.assignConnectedPlayers(this::isDuelSpectator);
         playerDataManager.recordConnectedFfaParticipants(teamManager);
+    }
+
+    /**
+     * On a duel worker, global chat is for the two players plus commentators and
+     * admins (the casters). Viewers have their normal messages routed to their
+     * own team chat instead, so they never need to type /t.
+     */
+    private void installDuelChatFilter() {
+        if (Vars.netServer == null) {
+            return;
+        }
+
+        Vars.netServer.admins.addChatFilter((player, message) -> {
+            if (player == null || message == null) {
+                return message;
+            }
+
+            if (
+                duelWorkerReferee.isParticipant(player.uuid())
+                    || rankManager.canRestartMatches(player)
+            ) {
+                return message;
+            }
+
+            sendDuelTeamChat(player, message);
+            return null;
+        });
+    }
+
+    private void sendDuelTeamChat(Player sender, String message) {
+        String line = "[#" + sender.team().color + "]<T>[] "
+            + sender.name + "[white]: " + message;
+
+        Groups.player.each(target -> {
+            if (target != null && target.team() == sender.team()) {
+                target.sendMessage(line);
+            }
+        });
     }
 
     /** On a duel worker, anyone who is not one of the two duelists is a viewer. */

@@ -42,7 +42,7 @@ final class DuelWorker {
     private static final File STATUS_FILE = new File("status.properties");
 
     private static final int COUNTDOWN_SECONDS = 5;
-    private static final int REJOIN_SECONDS = 60;
+    private static final int REJOIN_SECONDS = 120;
     private static final int STARTUP_GRACE_SECONDS = 90;
     private static final int EMPTY_GRACE_SECONDS = 60;
     private static final int STATUS_INTERVAL_SECONDS = 2;
@@ -142,8 +142,12 @@ final class DuelWorker {
             startFreezeApplied = true;
         }
 
-        if (!countdownStarted && bothPlayersPresent()) {
-            startCountdown();
+        if (!countdownStarted) {
+            if (bothPlayersPresent()) {
+                startCountdown();
+            } else {
+                showWaitingHud();
+            }
         }
     }
 
@@ -243,8 +247,6 @@ final class DuelWorker {
         countdownStarted = true;
         int serial = ++matchSerial;
 
-        Call.sendMessage("[accent]Both players are here. The 1v1 begins soon![]");
-
         for (int second = COUNTDOWN_SECONDS; second >= 1; second--) {
             int remaining = second;
 
@@ -280,7 +282,6 @@ final class DuelWorker {
         matchStartMillis = System.currentTimeMillis();
         resumeGame();
         Call.setHudText("[green]GO![]");
-        Call.sendMessage("[green]1v1 started. Destroy the enemy core to win![]");
 
         scheduler.schedule(
             () -> Core.app.post(Call::hideHudText),
@@ -315,6 +316,8 @@ final class DuelWorker {
 
         if (bothPlayersPresent()) {
             startCountdown();
+        } else {
+            showWaitingHud();
         }
     }
 
@@ -351,6 +354,30 @@ final class DuelWorker {
             "[scarlet]" + disconnectedName
                 + "[scarlet] left  -  [accent]" + remaining
                 + "s[scarlet] to rejoin, or the match continues[]"
+        );
+    }
+
+    /**
+     * Central HUD shown while the match is frozen waiting for players: before
+     * the countdown when not both are present, and after a mid-match leave. Sits
+     * in the same HUD slot as the start countdown.
+     */
+    private void showWaitingHud() {
+        StringBuilder names = new StringBuilder();
+
+        Groups.player.each(connected -> {
+            if (connected != null) {
+                if (names.length() > 0) {
+                    names.append("[white], ");
+                }
+                names.append(PlayerNameFormatter.displayName(connected));
+            }
+        });
+
+        Call.setHudText(
+            names.length() > 0
+                ? "[accent]Waiting for players\n[white]" + names + "[]"
+                : "[accent]Waiting for players...[]"
         );
     }
 
