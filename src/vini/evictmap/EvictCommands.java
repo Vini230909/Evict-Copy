@@ -6,7 +6,6 @@ import arc.util.Time;
 import mindustry.Vars;
 import mindustry.ai.UnitCommand;
 import mindustry.ai.types.CommandAI;
-import mindustry.content.Blocks;
 import mindustry.game.Team;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
@@ -42,9 +41,7 @@ final class EvictCommands {
     private static final int INFO_MENU_COLUMNS = 2;
 
     private final TeamManager teamManager;
-    private final AttritionManager attritionManager;
     private final ExtinctionManager extinctionManager;
-    private final EvictSettings settings;
     private final PlayerDataManager playerDataManager;
     private final int playerInfoMenuId;
     private final Set<Integer> fullAssaultTeamIds = new HashSet<>();
@@ -55,15 +52,11 @@ final class EvictCommands {
 
     EvictCommands(
         TeamManager teamManager,
-        AttritionManager attritionManager,
         ExtinctionManager extinctionManager,
-        EvictSettings settings,
         PlayerDataManager playerDataManager
     ) {
         this.teamManager = teamManager;
-        this.attritionManager = attritionManager;
         this.extinctionManager = extinctionManager;
-        this.settings = settings;
         this.playerDataManager = playerDataManager;
         this.playerInfoMenuId =
             Menus.registerMenu(this::handleInfoMenuSelection);
@@ -82,24 +75,24 @@ final class EvictCommands {
             (args, player) -> forceEnd(player)
         );
 
-        handler.<Player>register(
+        handler.register(
             "extinction",
             "Admin only: start EXTINCTION immediately for testing or an early event.",
-            (args, player) -> forceExtinction(args, player)
+            this::forceExtinction
         );
 
-        handler.<Player>register(
+        handler.register(
             "spawnunit",
             "<unit> <amount> [team]",
             "Admin only: spawn test units near you. Team defaults to your current team.",
-            (args, player) -> spawnUnits(args, player)
+            this::spawnUnits
         );
 
-        handler.<Player>register(
+        handler.register(
             "info",
             "[online-player]",
             "Admin only: show stored stats for one online player.",
-            (args, player) -> showOnlinePlayerInfo(args, player)
+            this::showOnlinePlayerInfo
         );
     }
 

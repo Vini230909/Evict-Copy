@@ -6,7 +6,6 @@ import mindustry.Vars;
 import mindustry.content.Blocks;
 import mindustry.game.Team;
 import mindustry.gen.Groups;
-import mindustry.gen.Player;
 
 import java.util.function.LongConsumer;
 
@@ -61,7 +60,7 @@ final class EvictConsoleCommands {
                     return;
                 }
 
-                if (Groups.player.size() > 0) {
+                if (!Groups.player.isEmpty()) {
                     Log.warn(
                         "[EvictMapGenerator] Players are connected. Immediate generation is intended for testing. Reconnect clients afterwards if terrain is not refreshed."
                     );
@@ -386,7 +385,7 @@ final class EvictConsoleCommands {
         } catch (NumberFormatException exception) {
             Log.err("Wall values must be numbers.");
         } catch (IllegalArgumentException exception) {
-            Log.err("" + exception.getMessage() + "");
+            Log.err(exception.getMessage());
         }
     }
 

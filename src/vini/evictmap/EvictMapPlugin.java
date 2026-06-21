@@ -57,9 +57,7 @@ public class EvictMapPlugin extends Plugin {
     private final EvictCommands evictCommands =
         new EvictCommands(
             teamManager,
-            attritionManager,
             extinctionManager,
-            settings,
             playerDataManager
         );
 
