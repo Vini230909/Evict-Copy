@@ -351,6 +351,8 @@ final class EvictConsoleCommands {
             double open = Double.parseDouble(args[2]);
             double passage = Double.parseDouble(args[3]);
 
+            // TODO: is this bugged? `evictwall 100 0 0 0`
+            //  doesn't seem to work as expected
             settings.setWallPercentages(
                     fullWall,
                     smallWall,
