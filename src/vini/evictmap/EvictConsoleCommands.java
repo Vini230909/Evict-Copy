@@ -2,6 +2,9 @@ package vini.evictmap;
 
 import arc.util.CommandHandler;
 import arc.util.Log;
+import mindustry.Vars;
+import mindustry.content.Blocks;
+import mindustry.game.Team;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
 
@@ -21,6 +24,11 @@ final class EvictConsoleCommands {
     private final DuelServerManager duelServerManager;
     private final RankManager rankManager;
     private final LongConsumer generate;
+    private final AttritionManager attritionManager;
+
+    private static final int MAX_CORECAP_INCREMENT = 10000;
+
+    private int extraCoreCapPerCore = 0;
 
     EvictConsoleCommands(
         EvictRuntimeState runtime,
@@ -30,7 +38,8 @@ final class EvictConsoleCommands {
         PlayerDataManager playerDataManager,
         DuelServerManager duelServerManager,
         RankManager rankManager,
-        LongConsumer generate
+        LongConsumer generate,
+        AttritionManager attritionManager
     ) {
         this.runtime = runtime;
         this.settings = settings;
@@ -40,6 +49,7 @@ final class EvictConsoleCommands {
         this.duelServerManager = duelServerManager;
         this.rankManager = rankManager;
         this.generate = generate;
+        this.attritionManager = attritionManager;
     }
 
     void register(CommandHandler handler) {
@@ -55,7 +65,7 @@ final class EvictConsoleCommands {
                     return;
                 }
 
-                if (Groups.player.size() > 0) {
+                if (!Groups.player.isEmpty()) {
                     Log.warn(
                         "[EvictMapGenerator] Players are connected. Immediate generation is intended for testing. Reconnect clients afterwards if terrain is not refreshed."
                     );
@@ -272,6 +282,34 @@ final class EvictConsoleCommands {
         );
 
         handler.register(
+                "evictwall",
+                "[full-wall] [small-wall] [open] [passage]",
+                "Show or set persistent wall-template percentages",
+                this::configureWalls
+        );
+
+        handler.register(
+                "evictcorecap",
+                "<additional-per-core>",
+                "Add unit-cap capacity to every core",
+                this::addCoreCap
+        );
+
+        handler.register(
+                "evictattritioncore",
+                "[t1-3] [t4] [t5]",
+                "Show or set capture attrition percentages",
+                this::configureCoreAttrition
+        );
+
+        handler.register(
+                "evictattritionrange",
+                "[percent]",
+                "Show or set the flat range attrition percentage",
+                this::configureRangeAttrition
+        );
+
+        handler.register(
             "evictduelserver",
             "[ip] [basePort] [maxWorkers] [map]",
             "Show or set the on-demand 1v1 worker pool that /play uses. ip is the address clients reach the workers at; basePort is the first worker port; maxWorkers is how many duels may run at once (1-10); map is the map workers host. Omitted values keep their current setting.",
@@ -432,12 +470,177 @@ final class EvictConsoleCommands {
         }
     }
 
+    private void configureWalls(String[] args) {
+        if (args.length == 0) {
+            Log.info("Walls: " + settings.compactWallSettings());
+            return;
+        }
+
+        if (args.length != 4) {
+            Log.info("Use: /wall <full-wall> <small-wall> <open> <passage>");
+            return;
+        }
+
+        try {
+            double fullWall = Double.parseDouble(args[0]);
+            double smallWall = Double.parseDouble(args[1]);
+            double open = Double.parseDouble(args[2]);
+            double passage = Double.parseDouble(args[3]);
+
+            // TODO: is this bugged? `evictwall 100 0 0 0`
+            //  doesn't seem to work as expected
+            settings.setWallPercentages(
+                    fullWall,
+                    smallWall,
+                    open,
+                    passage
+            );
+
+            Log.info(
+                    "Wall settings saved: "
+                            + settings.compactWallSettings()
+                            + ". Applies to the next generated map."
+            );
+        } catch (NumberFormatException exception) {
+            Log.err("Wall values must be numbers.");
+        } catch (IllegalArgumentException exception) {
+            Log.err(exception.getMessage());
+        }
+    }
+
+    private void addCoreCap(String[] args) {
+        if (args.length != 1) {
+            Log.err("Use: /corecap <additional-per-core>");
+            return;
+        }
+
+        final int additional;
+
+        try {
+            additional = Integer.parseInt(args[0]);
+        } catch (NumberFormatException exception) {
+            Log.err("Core-cap increment must be a whole number.");
+            return;
+        }
+
+        if (additional <= 0 || additional > MAX_CORECAP_INCREMENT) {
+            Log.info(
+                    "Core-cap increment must be between 1 and "
+                            + MAX_CORECAP_INCREMENT
+                            + "."
+            );
+            return;
+        }
+
+        /**
+         * Vanilla calculates the final cap from the base rule plus the team's
+         * accumulated per-building modifiers. Increase all three vanilla core
+         * blocks for future captures and adjust already existing cores once.
+         */
+        Blocks.coreShard.unitCapModifier += additional;
+        Blocks.coreFoundation.unitCapModifier += additional;
+        Blocks.coreNucleus.unitCapModifier += additional;
+
+        for (Team team : Team.all) {
+            int existingCoreCount = team.data().cores.size;
+
+            if (existingCoreCount > 0) {
+                team.data().unitCap += existingCoreCount * additional;
+            }
+        }
+
+        Vars.state.rules.unitCapVariable = true;
+        extraCoreCapPerCore += additional;
+
+        Log.info(
+                "Added "
+                        + additional
+                        + " unit cap per core. Total added bonus per core: "
+                        + extraCoreCapPerCore
+                        + "."
+        );
+    }
+    private void configureCoreAttrition(String[] args) {
+
+        if (args.length == 0) {
+            Log.info(
+                    "Core attrition: "
+                            + attritionManager.compactCoreSettings()
+            );
+            return;
+        }
+
+        if (args.length != 3) {
+            Log.err(
+                    "Use: /attritioncore <t1-3> <t4> <t5>"
+            );
+            return;
+        }
+
+        try {
+            double tier1To3 = Double.parseDouble(args[0]);
+            double tier4 = Double.parseDouble(args[1]);
+            double tier5 = Double.parseDouble(args[2]);
+
+            attritionManager.setCoreDeathChancesPercent(
+                    tier1To3,
+                    tier4,
+                    tier5
+            );
+
+            Log.info(
+                    "Core attrition saved: "
+                            + attritionManager.compactCoreSettings()
+            );
+        } catch (NumberFormatException exception) {
+            Log.err(
+                    "Core attrition values must be numbers."
+            );
+        } catch (IllegalArgumentException exception) {
+            Log.err(exception.getMessage());
+        }
+    }
+
+    private void configureRangeAttrition(String[] args) {
+        if (args.length == 0) {
+            Log.info(
+                    "Range attrition: "
+                            + attritionManager.compactRangeSettings()
+            );
+            return;
+        }
+
+        if (args.length != 1) {
+            Log.err(
+                    "Use: /attritionrange <percent>"
+            );
+            return;
+        }
+
+        try {
+            attritionManager.setRangeDeathChancePercent(
+                    Double.parseDouble(args[0])
+            );
+
+            Log.info(
+                    "Range attrition saved: "
+                            + attritionManager.compactRangeSettings()
+            );
+        } catch (NumberFormatException exception) {
+            Log.err(
+                    "Range attrition value must be a number."
+            );
+        } catch (IllegalArgumentException exception) {
+            Log.err(exception.getMessage());
+        }
+    }
+
     private void showStoredPlayerInfo(String query) {
         playerDataManager.searchPlayerInfo(
             query,
             matches -> {
                 if (matches.isEmpty()) {
-                    Log.info(
+                    Log.err(
                         "[EvictMapGenerator] No stored players match '@'.",
                         query
                     );
