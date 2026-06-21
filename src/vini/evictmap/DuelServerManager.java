@@ -2,9 +2,11 @@ package vini.evictmap;
 
 import arc.Core;
 import arc.util.Log;
+import mindustry.Vars;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
+import mindustry.net.Administration;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -122,6 +124,7 @@ final class DuelServerManager {
         handle.player2Name = opponent.plainName();
         handle.player2Uuid = opponent.uuid();
         handle.player2Display = PlayerNameFormatter.displayName(opponent);
+        handle.adminUuids = snapshotAdminUuids();
         workers.put(port, handle);
 
         String challengerUuid = challenger.uuid();
@@ -143,7 +146,7 @@ final class DuelServerManager {
         String opponentUuid
     ) {
         try {
-            File workerDir = provisionWorkerDir(handle.port);
+            File workerDir = provisionWorkerDir(handle);
 
             writeHandshake(workerDir, challengerUuid, opponentUuid);
 
@@ -453,8 +456,8 @@ final class DuelServerManager {
         return -1;
     }
 
-    private File provisionWorkerDir(int port) throws IOException {
-        File workerDir = workerDir(port);
+    private File provisionWorkerDir(WorkerHandle handle) throws IOException {
+        File workerDir = workerDir(handle.port);
         File workerConfig = new File(workerDir, "config");
         Files.createDirectories(workerConfig.toPath());
 
@@ -477,7 +480,67 @@ final class DuelServerManager {
 
         copyDirectory(new File("config/mods"), new File(workerConfig, "mods"));
 
+        // Refreshed every spawn so the worker knows the current commentators
+        // (name tags + /restart permission) and hub admins.
+        copyRanksFile(workerConfig);
+        writeAdminsFile(workerConfig, handle.adminUuids);
+
         return workerDir;
+    }
+
+    private static void copyRanksFile(File workerConfig) throws IOException {
+        File source = new File("config/evict-ranks.properties");
+
+        if (!source.exists()) {
+            return;
+        }
+
+        Files.copy(
+            source.toPath(),
+            new File(workerConfig, "evict-ranks.properties").toPath(),
+            StandardCopyOption.REPLACE_EXISTING
+        );
+    }
+
+    /**
+     * Writes the hub's admins into the worker so it can recognise them; the file
+     * is rewritten (even when empty) every spawn so a reused worker folder never
+     * keeps stale admins.
+     */
+    private static void writeAdminsFile(
+        File workerConfig,
+        List<String> adminUuids
+    ) throws IOException {
+        Properties properties = new Properties();
+
+        for (String uuid : adminUuids) {
+            if (uuid != null && !uuid.isBlank()) {
+                properties.setProperty(uuid, "admin");
+            }
+        }
+
+        try (FileOutputStream output = new FileOutputStream(
+            new File(workerConfig, "evict-admins.properties")
+        )) {
+            properties.store(output, "Evict synced hub admins (uuid = admin)");
+        }
+    }
+
+    /** Snapshot of the hub's admin UUIDs. Must run on the main thread. */
+    private static List<String> snapshotAdminUuids() {
+        List<String> uuids = new ArrayList<>();
+
+        if (Vars.netServer == null || Vars.netServer.admins == null) {
+            return uuids;
+        }
+
+        for (Administration.PlayerInfo info : Vars.netServer.admins.getAdmins()) {
+            if (info != null && info.id != null) {
+                uuids.add(info.id);
+            }
+        }
+
+        return uuids;
     }
 
     private void writeHandshake(
@@ -716,6 +779,7 @@ final class DuelServerManager {
         String player2Name = "?";
         String player2Uuid = "";
         String player2Display = "?";
+        List<String> adminUuids = new ArrayList<>();
 
         WorkerHandle(int port) {
             this.port = port;

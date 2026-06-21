@@ -13,6 +13,7 @@ import mindustry.game.EventType.TilePreChangeEvent;
 import mindustry.game.EventType.Trigger;
 import mindustry.game.EventType.WorldLoadEvent;
 import mindustry.game.Team;
+import mindustry.gen.Player;
 import mindustry.mod.Plugin;
 import mindustry.world.blocks.storage.CoreBlock;
 
@@ -39,6 +40,7 @@ public class EvictMapPlugin extends Plugin {
         new BuildingDamageManager();
     private final PlayerDataManager playerDataManager =
         new PlayerDataManager();
+    private final RankManager rankManager = new RankManager();
 
     private final TeamManager teamManager =
         new TeamManager(this::handleVictory);
@@ -73,7 +75,12 @@ public class EvictMapPlugin extends Plugin {
         new DuelServerManager(settings, playerDataManager);
 
     private final DuelCommands duelCommands =
-        new DuelCommands(duelServerManager, duelWorkerReferee);
+        new DuelCommands(
+            duelServerManager,
+            duelWorkerReferee,
+            rankManager,
+            this::restartDuelMatch
+        );
 
     private final EvictHelpCommands helpCommands =
         new EvictHelpCommands();
@@ -99,6 +106,7 @@ public class EvictMapPlugin extends Plugin {
             teamManager,
             playerDataManager,
             duelServerManager,
+            rankManager,
             this::generate
         );
 
@@ -120,6 +128,7 @@ public class EvictMapPlugin extends Plugin {
     @Override
     public void init() {
         settings.load();
+        rankManager.load();
         playerDataManager.start();
         coreUnitDamageManager.apply();
         buildingDamageManager.apply();
@@ -168,6 +177,16 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Events.on(PlayerJoin.class, event -> {
+            // Re-apply any tournament name tag ([C] etc.); client names reset to
+            // the player's own choice on every reconnect.
+            rankManager.applyNameTag(event.player);
+
+            // On a duel worker, restore admin for players the hub synced over;
+            // the worker has no access to the hub's own admin list.
+            if (duelWorker) {
+                rankManager.markSyncedAdmin(event.player);
+            }
+
             // On the hub: a player who is mid-duel is bounced straight back to
             // their worker instead of being onboarded into the FFA round.
             if (
@@ -351,8 +370,45 @@ public class EvictMapPlugin extends Plugin {
 
     private void assignConnectedPlayersAndRecordStats() {
         roundTimeCommands.rememberConnectedPlayers();
-        teamManager.assignConnectedPlayers();
+        teamManager.assignConnectedPlayers(this::isDuelSpectator);
         playerDataManager.recordConnectedFfaParticipants(teamManager);
+    }
+
+    /** On a duel worker, anyone who is not one of the two duelists is a viewer. */
+    private boolean isDuelSpectator(Player player) {
+        return duelWorker
+            && player != null
+            && !duelWorkerReferee.isParticipant(player.uuid());
+    }
+
+    /**
+     * Commentator/admin /restart on a duel worker: regenerate a fresh map and
+     * re-run the countdown without ending the duel or moving anyone, so the two
+     * players and the spectators stay connected.
+     */
+    private void restartDuelMatch() {
+        if (!duelWorker) {
+            return;
+        }
+
+        long seed = runtime.randomSeed();
+
+        Log.info(
+            "[EvictMapGenerator] Duel restart requested. Regenerating with seed @.",
+            seed
+        );
+
+        try {
+            generate(seed);
+        } catch (Exception exception) {
+            Log.err(
+                "[EvictMapGenerator] Duel restart generation failed.",
+                exception
+            );
+            return;
+        }
+
+        duelWorkerReferee.restartMatch();
     }
 
 

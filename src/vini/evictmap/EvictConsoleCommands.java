@@ -3,7 +3,9 @@ package vini.evictmap;
 import arc.util.CommandHandler;
 import arc.util.Log;
 import mindustry.gen.Groups;
+import mindustry.gen.Player;
 
+import java.util.Map;
 import java.util.function.LongConsumer;
 
 /**
@@ -17,6 +19,7 @@ final class EvictConsoleCommands {
     private final TeamManager teamManager;
     private final PlayerDataManager playerDataManager;
     private final DuelServerManager duelServerManager;
+    private final RankManager rankManager;
     private final LongConsumer generate;
 
     EvictConsoleCommands(
@@ -26,6 +29,7 @@ final class EvictConsoleCommands {
         TeamManager teamManager,
         PlayerDataManager playerDataManager,
         DuelServerManager duelServerManager,
+        RankManager rankManager,
         LongConsumer generate
     ) {
         this.runtime = runtime;
@@ -34,6 +38,7 @@ final class EvictConsoleCommands {
         this.teamManager = teamManager;
         this.playerDataManager = playerDataManager;
         this.duelServerManager = duelServerManager;
+        this.rankManager = rankManager;
         this.generate = generate;
     }
 
@@ -311,6 +316,120 @@ final class EvictConsoleCommands {
             "List the active 1v1 worker servers and who is in them.",
             args -> duelServerManager.logStatus()
         );
+
+        handler.register(
+            "evictrank",
+            "[list/add/remove] [uuid] [rank]",
+            "Manage tournament ranks by UUID. 'add <uuid> [commentator]' grants (default commentator), 'remove <uuid>' revokes, no args lists. Commentators get a [C] tag and may /restart 1v1s they spectate.",
+            this::handleRankCommand
+        );
+    }
+
+    private void handleRankCommand(String[] args) {
+        if (args.length == 0 || args[0].equalsIgnoreCase("list")) {
+            listRanks();
+            return;
+        }
+
+        String action = args[0].trim().toLowerCase();
+
+        if (action.equals("add") || action.equals("grant") || action.equals("set")) {
+            addRank(args);
+            return;
+        }
+
+        if (
+            action.equals("remove")
+                || action.equals("revoke")
+                || action.equals("delete")
+        ) {
+            removeRank(args);
+            return;
+        }
+
+        Log.err(
+            "[EvictMapGenerator] Use: evictrank [list/add/remove] [uuid] [rank]"
+        );
+    }
+
+    private void addRank(String[] args) {
+        if (args.length < 2) {
+            Log.err("[EvictMapGenerator] Use: evictrank add <uuid> [commentator]");
+            return;
+        }
+
+        String uuid = args[1].trim();
+        RankManager.Rank rank = args.length >= 3
+            ? RankManager.Rank.parse(args[2])
+            : RankManager.Rank.COMMENTATOR;
+
+        if (rank == null) {
+            Log.err(
+                "[EvictMapGenerator] Unknown rank '@'. Known ranks: commentator.",
+                args[2]
+            );
+            return;
+        }
+
+        if (!rankManager.grant(uuid, rank)) {
+            Log.err(
+                "[EvictMapGenerator] Could not grant the rank; check the UUID."
+            );
+            return;
+        }
+
+        applyTagToOnline(uuid);
+
+        Log.info(
+            "[EvictMapGenerator] Granted @ to @. Applies to 1v1 matches started from now on.",
+            rank.title,
+            uuid
+        );
+    }
+
+    private void removeRank(String[] args) {
+        if (args.length < 2) {
+            Log.err("[EvictMapGenerator] Use: evictrank remove <uuid>");
+            return;
+        }
+
+        String uuid = args[1].trim();
+
+        if (!rankManager.revoke(uuid)) {
+            Log.info("[EvictMapGenerator] @ had no rank to remove.", uuid);
+            return;
+        }
+
+        applyTagToOnline(uuid);
+        Log.info("[EvictMapGenerator] Removed the rank from @.", uuid);
+    }
+
+    private void listRanks() {
+        Map<String, RankManager.Rank> ranks = rankManager.snapshot();
+
+        if (ranks.isEmpty()) {
+            Log.info("[EvictMapGenerator] No tournament ranks are granted.");
+            return;
+        }
+
+        Log.info("[EvictMapGenerator] Tournament ranks (@):", ranks.size());
+
+        for (Map.Entry<String, RankManager.Rank> entry : ranks.entrySet()) {
+            Log.info(
+                "[EvictMapGenerator]   @ = @",
+                entry.getKey(),
+                entry.getValue().title
+            );
+        }
+    }
+
+    private void applyTagToOnline(String uuid) {
+        Player player =
+            Groups.player.find(target -> target != null && target.uuid().equals(uuid));
+
+        if (player != null) {
+            rankManager.applyNameTag(player);
+        }
     }
 
     private void showStoredPlayerInfo(String query) {

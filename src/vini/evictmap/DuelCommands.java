@@ -33,6 +33,8 @@ final class DuelCommands {
 
     private final DuelServerManager duelManager;
     private final DuelWorker worker;
+    private final RankManager rankManager;
+    private final Runnable restartMatch;
 
     private final int selectionMenuId;
     private final int challengeMenuId;
@@ -50,9 +52,16 @@ final class DuelCommands {
     private final Map<String, List<Integer>> viewTargetsByViewerUuid =
         new HashMap<>();
 
-    DuelCommands(DuelServerManager duelManager, DuelWorker worker) {
+    DuelCommands(
+        DuelServerManager duelManager,
+        DuelWorker worker,
+        RankManager rankManager,
+        Runnable restartMatch
+    ) {
         this.duelManager = duelManager;
         this.worker = worker;
+        this.rankManager = rankManager;
+        this.restartMatch = restartMatch;
         this.selectionMenuId = Menus.registerMenu(this::handleSelection);
         this.challengeMenuId = Menus.registerMenu(this::handleChallengeResponse);
         this.viewMenuId = Menus.registerMenu(this::handleViewSelection);
@@ -81,6 +90,12 @@ final class DuelCommands {
             "v",
             "Alias for /view.",
             (args, player) -> handleViewCommand(player)
+        );
+
+        handler.<Player>register(
+            "restart",
+            "Commentator/admin: restart the 1v1 you are spectating with a fresh map.",
+            (args, player) -> handleRestartCommand(player)
         );
     }
 
@@ -321,6 +336,39 @@ final class DuelCommands {
                 "[scarlet]That match is no longer available.[]"
             );
         }
+    }
+
+    /**
+     * Restarts the current duel with a fresh map. Only on a worker, only for an
+     * admin or commentator, and only for a spectator (never one of the players).
+     */
+    private void handleRestartCommand(Player player) {
+        if (player == null) {
+            return;
+        }
+
+        if (!worker.isActive()) {
+            player.sendMessage(
+                "[scarlet]/restart can only be used on a 1v1 server.[]"
+            );
+            return;
+        }
+
+        if (!rankManager.canRestartMatches(player)) {
+            player.sendMessage(
+                "[scarlet]Only commentators and admins can restart a 1v1.[]"
+            );
+            return;
+        }
+
+        if (worker.isParticipant(player.uuid())) {
+            player.sendMessage(
+                "[scarlet]You can't restart a 1v1 you are playing in.[]"
+            );
+            return;
+        }
+
+        restartMatch.run();
     }
 
     private List<Player> otherOnlinePlayers(Player self) {

@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * Phase 1 of the Evict round system.
@@ -176,6 +177,16 @@ final class TeamManager {
     }
 
     void assignConnectedPlayers() {
+        assignConnectedPlayers(null);
+    }
+
+    /**
+     * Assigns every not-yet-registered connected player. Players the optional
+     * spectator predicate accepts are parked on derelict instead of claiming a
+     * personal team; duel workers use this so /view spectators are kept out of
+     * the match across a regenerate.
+     */
+    void assignConnectedPlayers(Predicate<Player> spectator) {
         if (!roundActive || resetting) {
             return;
         }
@@ -187,9 +198,15 @@ final class TeamManager {
          */
         Groups.player.each(player -> {
             if (
-                player != null
-                    && !teamIdByPlayerUuid.containsKey(player.uuid())
+                player == null
+                    || teamIdByPlayerUuid.containsKey(player.uuid())
             ) {
+                return;
+            }
+
+            if (spectator != null && spectator.test(player)) {
+                assignSpectator(player);
+            } else {
                 handlePlayerJoin(player);
             }
         });

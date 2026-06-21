@@ -71,6 +71,7 @@ final class DuelWorker {
 
     private long matchStartMillis = 0L;
     private int disconnectSerial = 0;
+    private int matchSerial = 0;
     private String disconnectedName = "A player";
 
     DuelWorker() {
@@ -240,6 +241,7 @@ final class DuelWorker {
 
     private void startCountdown() {
         countdownStarted = true;
+        int serial = ++matchSerial;
 
         Call.sendMessage("[accent]Both players are here. The 1v1 begins soon![]");
 
@@ -247,24 +249,32 @@ final class DuelWorker {
             int remaining = second;
 
             scheduler.schedule(
-                () -> Core.app.post(() -> showCountdown(remaining)),
+                () -> Core.app.post(() -> showCountdown(serial, remaining)),
                 COUNTDOWN_SECONDS - second,
                 TimeUnit.SECONDS
             );
         }
 
         scheduler.schedule(
-            () -> Core.app.post(this::startMatch),
+            () -> Core.app.post(() -> startMatch(serial)),
             COUNTDOWN_SECONDS,
             TimeUnit.SECONDS
         );
     }
 
-    private void showCountdown(int remaining) {
+    private void showCountdown(int serial, int remaining) {
+        if (serial != matchSerial) {
+            return;
+        }
+
         Call.setHudText("[accent]1v1 starts in [scarlet]" + remaining + "[]");
     }
 
-    private void startMatch() {
+    private void startMatch(int serial) {
+        if (serial != matchSerial) {
+            return;
+        }
+
         matchStarted = true;
         startFreezeApplied = false;
         matchStartMillis = System.currentTimeMillis();
@@ -277,6 +287,35 @@ final class DuelWorker {
             2,
             TimeUnit.SECONDS
         );
+    }
+
+    /**
+     * Resets the match back to the pre-countdown state after the world has been
+     * regenerated, so a commentator's /restart re-freezes both duelists and runs
+     * a fresh countdown. Bumping the serial invalidates any countdown still in
+     * flight from the previous match.
+     */
+    void restartMatch() {
+        if (!active) {
+            return;
+        }
+
+        matchSerial++;
+        disconnectSerial++;
+        countdownStarted = false;
+        matchStarted = false;
+        pausedForDisconnect = false;
+        resolved = false;
+        matchStartMillis = 0L;
+
+        Call.hideHudText();
+        pauseGame();
+        startFreezeApplied = true;
+        Call.sendMessage("[accent]The 1v1 was restarted by a commentator.[]");
+
+        if (bothPlayersPresent()) {
+            startCountdown();
+        }
     }
 
     private void beginDisconnectPause(Player player) {
