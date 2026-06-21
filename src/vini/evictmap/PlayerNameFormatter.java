@@ -1,6 +1,5 @@
 package vini.evictmap;
 
-import arc.graphics.Color;
 import mindustry.gen.Player;
 
 import java.util.Locale;
@@ -31,12 +30,14 @@ final class PlayerNameFormatter {
 
         String color = explicitNameColor(player.name);
 
-        if (color == null && player.team() != null) {
-            color = colorHex(player.team().color);
-        }
-
+        /*
+         * Only an explicit [#rrggbb] tag the player put in their own name is
+         * trusted. Everything else - team colour, the colour swatch picked in
+         * the multiplayer menu - is ignored and the name is shown white, so a
+         * player without a coloured name never appears in an unrelated colour.
+         */
         return color == null
-            ? name
+            ? "[white]" + name + "[]"
             : "[#" + color + "]" + name + "[]";
     }
 
@@ -50,27 +51,5 @@ final class PlayerNameFormatter {
         return matcher.find()
             ? matcher.group(1).toLowerCase(Locale.ROOT)
             : null;
-    }
-
-    private static String colorHex(Color color) {
-        if (color == null) {
-            return null;
-        }
-
-        int red = Math.round(color.r * 255f);
-        int green = Math.round(color.g * 255f);
-        int blue = Math.round(color.b * 255f);
-
-        return String.format(
-            Locale.ROOT,
-            "%02x%02x%02x",
-            clampColor(red),
-            clampColor(green),
-            clampColor(blue)
-        );
-    }
-
-    private static int clampColor(int value) {
-        return Math.max(0, Math.min(255, value));
     }
 }

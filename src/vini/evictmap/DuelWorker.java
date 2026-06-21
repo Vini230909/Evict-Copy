@@ -45,6 +45,10 @@ final class DuelWorker {
     private static final int REJOIN_SECONDS = 120;
     private static final int STARTUP_GRACE_SECONDS = 90;
     private static final int EMPTY_GRACE_SECONDS = 60;
+    // Once the match is decided there is nothing to wait for, so shut down soon
+    // after the players have been sent back. The hub records the result on worker
+    // exit, so this is what gets a finished match into /history within seconds.
+    private static final int RESOLVED_GRACE_SECONDS = 5;
     private static final int STATUS_INTERVAL_SECONDS = 2;
     private static final float RETURN_DELAY_TICKS = 5f * 60f;
 
@@ -156,7 +160,9 @@ final class DuelWorker {
             return;
         }
 
-        scheduleShutdownIfEmpty(EMPTY_GRACE_SECONDS);
+        scheduleShutdownIfEmpty(
+            resolved ? RESOLVED_GRACE_SECONDS : EMPTY_GRACE_SECONDS
+        );
 
         if (
             !matchStarted

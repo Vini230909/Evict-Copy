@@ -2,25 +2,29 @@ package vini.evictmap;
 
 import arc.util.CommandHandler;
 import mindustry.gen.Call;
+import mindustry.gen.Groups;
 import mindustry.gen.Player;
 import mindustry.ui.Menus;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * /history (alias /h): a paginated menu of the player's own 1v1 matches.
+ * /history (alias /h): first pick a player, then page through that player's 1v1
+ * matches.
  *
- * Every match is one entry: win/lose from the viewer's perspective, the
- * opponent's name, and an elo line. ELO is not computed yet, so the line shows
- * a zero delta for now. Because this server only runs ranked Evict 1v1s, the
- * map/mode line and the player/map/time filters from the reference design are
- * intentionally left out.
+ * Every match is one entry: win/lose from the picked player's perspective, both
+ * names, and an elo line. ELO is not computed yet, so the line shows a zero
+ * delta for now. Because this server only runs ranked Evict 1v1s, the map/mode
+ * line and the map/time filters from the reference design are left out.
  */
 final class HistoryCommands {
 
     private static final int ENTRIES_PER_PAGE = 10;
+    private static final int PICKER_MENU_COLUMNS = 2;
 
     // Pagination button option indices (row-major across the button grid).
     private static final int OPTION_FIRST = 0;
@@ -31,47 +35,112 @@ final class HistoryCommands {
     private static final int OPTION_CLOSE = 5;
 
     private final PlayerDataManager playerDataManager;
+    private final int pickerMenuId;
     private final int historyMenuId;
 
-    /** Viewer UUID -> their open history view (cached list + current page). */
+    /** Viewer UUID -> ordered player UUIDs shown in their picker. */
+    private final Map<String, List<String>> pickerTargetsByViewerUuid =
+        new HashMap<>();
+
+    /** Viewer UUID -> their open history view (subject + cached list + page). */
     private final Map<String, HistoryView> viewsByViewerUuid = new HashMap<>();
 
     HistoryCommands(PlayerDataManager playerDataManager) {
         this.playerDataManager = playerDataManager;
+        this.pickerMenuId = Menus.registerMenu(this::handlePicker);
         this.historyMenuId = Menus.registerMenu(this::handleMenu);
     }
 
     void registerClientCommands(CommandHandler handler) {
         handler.<Player>register(
             "history",
-            "Show your 1v1 match history.",
-            (args, player) -> openHistory(player)
+            "Pick a player and view their 1v1 match history.",
+            (args, player) -> openPicker(player)
         );
 
         handler.<Player>register(
             "h",
             "Alias for /history.",
-            (args, player) -> openHistory(player)
+            (args, player) -> openPicker(player)
         );
     }
 
     void handlePlayerLeave(Player player) {
         if (player != null) {
+            pickerTargetsByViewerUuid.remove(player.uuid());
             viewsByViewerUuid.remove(player.uuid());
         }
     }
 
-    private void openHistory(Player player) {
+    private void openPicker(Player player) {
         if (player == null) {
             return;
         }
 
-        String uuid = player.uuid();
+        List<Player> players = onlinePlayers();
 
-        playerDataManager.findDuelHistory(uuid, matches -> {
-            // Always open the menu, even when empty, instead of a chat line.
-            HistoryView view = new HistoryView(matches);
-            viewsByViewerUuid.put(uuid, view);
+        if (players.isEmpty()) {
+            player.sendMessage("[scarlet]No players are online.[]");
+            return;
+        }
+
+        List<String> targetUuids = new ArrayList<>();
+        List<String[]> rows = new ArrayList<>();
+        List<String> currentRow = new ArrayList<>();
+
+        for (Player target : players) {
+            targetUuids.add(target.uuid());
+            currentRow.add(PlayerNameFormatter.displayName(target));
+
+            if (currentRow.size() == PICKER_MENU_COLUMNS) {
+                rows.add(currentRow.toArray(new String[0]));
+                currentRow.clear();
+            }
+        }
+
+        if (!currentRow.isEmpty()) {
+            rows.add(currentRow.toArray(new String[0]));
+        }
+
+        rows.add(new String[] {"[red]Cancel"});
+        pickerTargetsByViewerUuid.put(player.uuid(), targetUuids);
+
+        Call.menu(
+            player.con,
+            pickerMenuId,
+            "[orange]History",
+            "Select a player to view their 1v1 history.",
+            rows.toArray(new String[0][])
+        );
+    }
+
+    private void handlePicker(Player player, int option) {
+        if (player == null) {
+            return;
+        }
+
+        List<String> targetUuids =
+            pickerTargetsByViewerUuid.remove(player.uuid());
+
+        if (
+            targetUuids == null
+                || option < 0
+                || option >= targetUuids.size()
+        ) {
+            return;
+        }
+
+        String subjectUuid = targetUuids.get(option);
+        Player subject = Groups.player.find(
+            online -> online != null && online.uuid().equals(subjectUuid)
+        );
+        String subjectName = subject != null
+            ? PlayerNameFormatter.displayName(subject)
+            : subjectUuid;
+
+        playerDataManager.findDuelHistory(subjectUuid, matches -> {
+            HistoryView view = new HistoryView(subjectUuid, subjectName, matches);
+            viewsByViewerUuid.put(player.uuid(), view);
             showPage(player, view);
         });
     }
@@ -120,7 +189,7 @@ final class HistoryCommands {
         StringBuilder message = new StringBuilder();
 
         if (matches.isEmpty()) {
-            message.append("[gray]You have no 1v1 matches yet.[]");
+            message.append("[gray]No 1v1 matches yet.[]");
         }
 
         for (int index = start; index < end; index++) {
@@ -128,7 +197,7 @@ final class HistoryCommands {
                 message.append("\n\n");
             }
 
-            message.append(formatMatch(player.uuid(), matches.get(index)));
+            message.append(formatMatch(view.subjectUuid, matches.get(index)));
         }
 
         String[][] buttons = {
@@ -145,24 +214,43 @@ final class HistoryCommands {
         Call.menu(
             player.con,
             historyMenuId,
-            "[orange]History",
+            "[orange]History: []" + view.subjectName,
             message.toString(),
             buttons
         );
     }
 
     private String formatMatch(
-        String viewerUuid,
+        String subjectUuid,
         PlayerDataManager.DuelMatch match
     ) {
-        boolean won = viewerUuid.equals(match.winnerUuid());
-        String you = won ? match.winnerName() : match.loserName();
+        boolean won = subjectUuid.equals(match.winnerUuid());
+        String subject = won ? match.winnerName() : match.loserName();
         String opponent = won ? match.loserName() : match.winnerName();
         String result = won ? "[green]win[]" : "[scarlet]lose[]";
         String eloDelta = won ? "[green]+0[]" : "[scarlet]-0[]";
 
-        return result + "\n" + you + " [white]vs[] " + opponent
+        return result + "\n" + subject + " [white]vs[] " + opponent
             + "\n[gray]elo: []" + eloDelta;
+    }
+
+    private List<Player> onlinePlayers() {
+        List<Player> players = new ArrayList<>();
+
+        Groups.player.each(player -> {
+            if (player != null) {
+                players.add(player);
+            }
+        });
+
+        players.sort(
+            Comparator.comparing(
+                Player::plainName,
+                String.CASE_INSENSITIVE_ORDER
+            )
+        );
+
+        return players;
     }
 
     private static int pageCount(int matchCount) {
@@ -170,10 +258,18 @@ final class HistoryCommands {
     }
 
     private static final class HistoryView {
+        final String subjectUuid;
+        final String subjectName;
         final List<PlayerDataManager.DuelMatch> matches;
         int page;
 
-        HistoryView(List<PlayerDataManager.DuelMatch> matches) {
+        HistoryView(
+            String subjectUuid,
+            String subjectName,
+            List<PlayerDataManager.DuelMatch> matches
+        ) {
+            this.subjectUuid = subjectUuid;
+            this.subjectName = subjectName;
             this.matches = matches;
         }
     }
