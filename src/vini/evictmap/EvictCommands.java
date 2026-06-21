@@ -39,7 +39,6 @@ final class EvictCommands {
 
     private static final float FULL_ASSAULT_REFRESH_INTERVAL_TICKS = 5f * 60f;
     private static final int MAX_SPAWNUNIT_AMOUNT = 1000;
-    private static final int MAX_CORECAP_INCREMENT = 10000;
     private static final int INFO_MENU_COLUMNS = 2;
 
     private final TeamManager teamManager;
@@ -53,7 +52,6 @@ final class EvictCommands {
         new HashMap<>();
 
     private float fullAssaultRefreshTimer = 0f;
-    private int extraCoreCapPerCore = 0;
 
     EvictCommands(
         TeamManager teamManager,
@@ -102,13 +100,6 @@ final class EvictCommands {
             "[percent]",
             "Admin only: show or set the flat range attrition percentage, e.g. /attritionrange 20.",
             (args, player) -> configureRangeAttrition(args, player)
-        );
-
-        handler.<Player>register(
-            "corecap",
-            "<additional-per-core>",
-            "Admin only: add unit-cap capacity to every core, e.g. /corecap 10.",
-            (args, player) -> addCoreCap(args, player)
         );
 
         handler.<Player>register(
@@ -341,63 +332,6 @@ final class EvictCommands {
         } catch (IllegalArgumentException exception) {
             player.sendMessage("[scarlet]" + exception.getMessage() + "[]");
         }
-    }
-
-    private void addCoreCap(String[] args, Player player) {
-        if (!requireAdmin(player)) {
-            return;
-        }
-
-        if (args.length != 1) {
-            player.sendMessage("[scarlet]Use: /corecap <additional-per-core>[]");
-            return;
-        }
-
-        final int additional;
-
-        try {
-            additional = Integer.parseInt(args[0]);
-        } catch (NumberFormatException exception) {
-            player.sendMessage("[scarlet]Core-cap increment must be a whole number.[]");
-            return;
-        }
-
-        if (additional <= 0 || additional > MAX_CORECAP_INCREMENT) {
-            player.sendMessage(
-                "[scarlet]Core-cap increment must be between 1 and "
-                    + MAX_CORECAP_INCREMENT
-                    + ".[]"
-            );
-            return;
-        }
-
-        /**
-         * Vanilla calculates the final cap from the base rule plus the team's
-         * accumulated per-building modifiers. Increase all three vanilla core
-         * blocks for future captures and adjust already existing cores once.
-         */
-        Blocks.coreShard.unitCapModifier += additional;
-        Blocks.coreFoundation.unitCapModifier += additional;
-        Blocks.coreNucleus.unitCapModifier += additional;
-
-        for (Team team : Team.all) {
-            int existingCoreCount = team.data().cores.size;
-
-            if (existingCoreCount > 0) {
-                team.data().unitCap += existingCoreCount * additional;
-            }
-        }
-
-        Vars.state.rules.unitCapVariable = true;
-        extraCoreCapPerCore += additional;
-
-        player.sendMessage(
-            "[green]Added "
-                + additional
-                + " unit cap per core. Total added bonus per core: "
-                + extraCoreCapPerCore
-                + ".[]"
-        );
     }
 
     private void spawnUnits(String[] args, Player player) {

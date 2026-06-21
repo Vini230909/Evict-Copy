@@ -2,6 +2,9 @@ package vini.evictmap;
 
 import arc.util.CommandHandler;
 import arc.util.Log;
+import mindustry.Vars;
+import mindustry.content.Blocks;
+import mindustry.game.Team;
 import mindustry.gen.Groups;
 
 import java.util.function.LongConsumer;
@@ -18,6 +21,10 @@ final class EvictConsoleCommands {
     private final PlayerDataManager playerDataManager;
     private final DuelServerManager duelServerManager;
     private final LongConsumer generate;
+
+    private static final int MAX_CORECAP_INCREMENT = 10000;
+
+    private int extraCoreCapPerCore = 0;
 
     EvictConsoleCommands(
         EvictRuntimeState runtime,
@@ -274,6 +281,13 @@ final class EvictConsoleCommands {
         );
 
         handler.register(
+                "evictcorecap",
+                "<additional-per-core>",
+                "Add unit-cap capacity to every core",
+                this::addCoreCap
+        );
+
+        handler.register(
             "evictduelserver",
             "[ip] [basePort] [maxWorkers] [map]",
             "Show or set the on-demand 1v1 worker pool that /play uses. ip is the address clients reach the workers at; basePort is the first worker port; maxWorkers is how many duels may run at once (1-10); map is the map workers host. Omitted values keep their current setting.",
@@ -354,6 +368,59 @@ final class EvictConsoleCommands {
         } catch (IllegalArgumentException exception) {
             Log.err("[scarlet]" + exception.getMessage() + "[]");
         }
+    }
+
+    private void addCoreCap(String[] args) {
+        if (args.length != 1) {
+            Log.err("Use: /corecap <additional-per-core>");
+            return;
+        }
+
+        final int additional;
+
+        try {
+            additional = Integer.parseInt(args[0]);
+        } catch (NumberFormatException exception) {
+            Log.err("Core-cap increment must be a whole number.");
+            return;
+        }
+
+        if (additional <= 0 || additional > MAX_CORECAP_INCREMENT) {
+            Log.info(
+                    "Core-cap increment must be between 1 and "
+                            + MAX_CORECAP_INCREMENT
+                            + "."
+            );
+            return;
+        }
+
+        /**
+         * Vanilla calculates the final cap from the base rule plus the team's
+         * accumulated per-building modifiers. Increase all three vanilla core
+         * blocks for future captures and adjust already existing cores once.
+         */
+        Blocks.coreShard.unitCapModifier += additional;
+        Blocks.coreFoundation.unitCapModifier += additional;
+        Blocks.coreNucleus.unitCapModifier += additional;
+
+        for (Team team : Team.all) {
+            int existingCoreCount = team.data().cores.size;
+
+            if (existingCoreCount > 0) {
+                team.data().unitCap += existingCoreCount * additional;
+            }
+        }
+
+        Vars.state.rules.unitCapVariable = true;
+        extraCoreCapPerCore += additional;
+
+        Log.info(
+                "Added "
+                        + additional
+                        + " unit cap per core. Total added bonus per core: "
+                        + extraCoreCapPerCore
+                        + "."
+        );
     }
 
     private void showStoredPlayerInfo(String query) {

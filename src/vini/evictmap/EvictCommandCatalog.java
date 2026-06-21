@@ -18,8 +18,6 @@ final class EvictCommandCatalog {
         commands.add("extinction");
         commands.add("attritioncore");
         commands.add("attritionrange");
-        commands.add("wall");
-        commands.add("corecap");
         commands.add("spawnunit");
         commands.add("info");
 
