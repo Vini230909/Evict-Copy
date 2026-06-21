@@ -21,6 +21,7 @@ final class EvictConsoleCommands {
     private final PlayerDataManager playerDataManager;
     private final DuelServerManager duelServerManager;
     private final LongConsumer generate;
+    private final AttritionManager attritionManager;
 
     private static final int MAX_CORECAP_INCREMENT = 10000;
 
@@ -33,7 +34,8 @@ final class EvictConsoleCommands {
         TeamManager teamManager,
         PlayerDataManager playerDataManager,
         DuelServerManager duelServerManager,
-        LongConsumer generate
+        LongConsumer generate,
+        AttritionManager attritionManager
     ) {
         this.runtime = runtime;
         this.settings = settings;
@@ -42,6 +44,7 @@ final class EvictConsoleCommands {
         this.playerDataManager = playerDataManager;
         this.duelServerManager = duelServerManager;
         this.generate = generate;
+        this.attritionManager = attritionManager;
     }
 
     void register(CommandHandler handler) {
@@ -288,6 +291,13 @@ final class EvictConsoleCommands {
         );
 
         handler.register(
+                "evictattritioncore",
+                "[t1-3] [t4] [t5]",
+                "Show or set capture attrition percentages",
+                this::configureCoreAttrition
+        );
+
+        handler.register(
             "evictduelserver",
             "[ip] [basePort] [maxWorkers] [map]",
             "Show or set the on-demand 1v1 worker pool that /play uses. ip is the address clients reach the workers at; basePort is the first worker port; maxWorkers is how many duels may run at once (1-10); map is the map workers host. Omitted values keep their current setting.",
@@ -423,6 +433,46 @@ final class EvictConsoleCommands {
                         + extraCoreCapPerCore
                         + "."
         );
+    }
+    private void configureCoreAttrition(String[] args) {
+
+        if (args.length == 0) {
+            Log.info(
+                    "Core attrition: "
+                            + attritionManager.compactCoreSettings()
+            );
+            return;
+        }
+
+        if (args.length != 3) {
+            Log.err(
+                    "Use: /attritioncore <t1-3> <t4> <t5>"
+            );
+            return;
+        }
+
+        try {
+            double tier1To3 = Double.parseDouble(args[0]);
+            double tier4 = Double.parseDouble(args[1]);
+            double tier5 = Double.parseDouble(args[2]);
+
+            attritionManager.setCoreDeathChancesPercent(
+                    tier1To3,
+                    tier4,
+                    tier5
+            );
+
+            Log.info(
+                    "Core attrition saved: "
+                            + attritionManager.compactCoreSettings()
+            );
+        } catch (NumberFormatException exception) {
+            Log.err(
+                    "Core attrition values must be numbers."
+            );
+        } catch (IllegalArgumentException exception) {
+            Log.err(exception.getMessage());
+        }
     }
 
     private void showStoredPlayerInfo(String query) {

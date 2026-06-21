@@ -93,13 +93,14 @@ public class EvictMapPlugin extends Plugin {
 
     private final EvictConsoleCommands consoleCommands =
         new EvictConsoleCommands(
-            runtime,
-            settings,
-            terrainGenerator,
-            teamManager,
-            playerDataManager,
-            duelServerManager,
-            this::generate
+                runtime,
+                settings,
+                terrainGenerator,
+                teamManager,
+                playerDataManager,
+                duelServerManager,
+                this::generate,
+                attritionManager
         );
 
     private boolean refreshingWorldIndexes = false;
