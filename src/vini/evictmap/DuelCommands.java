@@ -32,9 +32,11 @@ final class DuelCommands {
     private static final int ACCEPT_OPTION = 0;
 
     private final DuelServerManager duelManager;
+    private final DuelWorker worker;
 
     private final int selectionMenuId;
     private final int challengeMenuId;
+    private final int viewMenuId;
 
     /** Challenger UUID -> ordered opponent UUIDs shown in their menu. */
     private final Map<String, List<String>> selectionTargetsByChallengerUuid =
@@ -44,10 +46,16 @@ final class DuelCommands {
     private final Map<String, String> challengerByOpponentUuid =
         new HashMap<>();
 
-    DuelCommands(DuelServerManager duelManager) {
+    /** Viewer UUID -> ordered duel ports shown in their /view menu. */
+    private final Map<String, List<Integer>> viewTargetsByViewerUuid =
+        new HashMap<>();
+
+    DuelCommands(DuelServerManager duelManager, DuelWorker worker) {
         this.duelManager = duelManager;
+        this.worker = worker;
         this.selectionMenuId = Menus.registerMenu(this::handleSelection);
         this.challengeMenuId = Menus.registerMenu(this::handleChallengeResponse);
+        this.viewMenuId = Menus.registerMenu(this::handleViewSelection);
     }
 
     void registerClientCommands(CommandHandler handler) {
@@ -61,6 +69,18 @@ final class DuelCommands {
             "p",
             "Alias for /play.",
             (args, player) -> openSelectionMenu(player)
+        );
+
+        handler.<Player>register(
+            "view",
+            "Spectate an ongoing 1v1, or return to the lobby if spectating.",
+            (args, player) -> handleViewCommand(player)
+        );
+
+        handler.<Player>register(
+            "v",
+            "Alias for /view.",
+            (args, player) -> handleViewCommand(player)
         );
     }
 
@@ -78,6 +98,7 @@ final class DuelCommands {
         selectionTargetsByChallengerUuid.remove(uuid);
         challengerByOpponentUuid.remove(uuid);
         challengerByOpponentUuid.values().removeIf(uuid::equals);
+        viewTargetsByViewerUuid.remove(uuid);
     }
 
     private void openSelectionMenu(Player player) {
@@ -214,6 +235,90 @@ final class DuelCommands {
             );
             opponent.sendMessage(
                 "[scarlet]All 1v1 servers are busy right now. Try again shortly.[]"
+            );
+        }
+    }
+
+    /**
+     * On a duel worker /view returns a spectator to the lobby (and refuses the
+     * two duelists). On the hub it opens the menu of matches to spectate.
+     */
+    private void handleViewCommand(Player player) {
+        if (player == null) {
+            return;
+        }
+
+        if (worker.isActive()) {
+            if (worker.isParticipant(player.uuid())) {
+                player.sendMessage(
+                    "[scarlet]You are in this 1v1; you cannot leave it with /v.[]"
+                );
+                return;
+            }
+
+            worker.returnSpectatorToHub(player);
+            return;
+        }
+
+        openViewMenu(player);
+    }
+
+    private void openViewMenu(Player player) {
+        if (!duelManager.isConfigured()) {
+            player.sendMessage(
+                "[scarlet]The 1v1 server is not set up yet. Ask an admin.[]"
+            );
+            return;
+        }
+
+        List<DuelServerManager.ActiveDuel> duels = duelManager.activeDuels();
+
+        if (duels.isEmpty()) {
+            player.sendMessage("[scarlet]No 1v1 matches are in progress.[]");
+            return;
+        }
+
+        List<Integer> targetPorts = new ArrayList<>();
+        List<String[]> rows = new ArrayList<>();
+
+        for (DuelServerManager.ActiveDuel duel : duels) {
+            targetPorts.add(duel.port());
+            rows.add(new String[] {
+                duel.player1Display() + " [white]vs[] " + duel.player2Display()
+            });
+        }
+
+        rows.add(new String[] {"[red]Cancel"});
+        viewTargetsByViewerUuid.put(player.uuid(), targetPorts);
+
+        Call.menu(
+            player.con,
+            viewMenuId,
+            "[accent]Spectate a 1v1",
+            "Select a match to watch. Use /v again to return to the lobby.",
+            rows.toArray(new String[0][])
+        );
+    }
+
+    private void handleViewSelection(Player player, int option) {
+        if (player == null) {
+            return;
+        }
+
+        List<Integer> targetPorts =
+            viewTargetsByViewerUuid.remove(player.uuid());
+
+        if (
+            targetPorts == null
+                || option < 0
+                || option >= targetPorts.size()
+        ) {
+            return;
+        }
+
+        if (!duelManager.viewDuel(player, targetPorts.get(option))) {
+            player.sendMessage(
+                "[scarlet]That match is no longer available.[]"
             );
         }
     }

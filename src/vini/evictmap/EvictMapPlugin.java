@@ -70,10 +70,10 @@ public class EvictMapPlugin extends Plugin {
         new RoundTimeCommands(teamManager);
 
     private final DuelServerManager duelServerManager =
-        new DuelServerManager(settings);
+        new DuelServerManager(settings, playerDataManager);
 
     private final DuelCommands duelCommands =
-        new DuelCommands(duelServerManager);
+        new DuelCommands(duelServerManager, duelWorkerReferee);
 
     private final EvictHelpCommands helpCommands =
         new EvictHelpCommands();
@@ -174,6 +174,21 @@ public class EvictMapPlugin extends Plugin {
                 !duelWorker
                     && duelServerManager.tryReturnToActiveDuel(event.player)
             ) {
+                return;
+            }
+
+            // On a duel worker anyone who is not one of the two duelists is a
+            // /view spectator: park them on derelict (no cores) and skip the
+            // normal FFA onboarding so they only watch.
+            if (
+                duelWorker
+                    && !duelWorkerReferee.isParticipant(event.player.uuid())
+            ) {
+                teamManager.assignSpectator(event.player);
+                duelWorkerReferee.handlePlayerJoin(event.player);
+                event.player.sendMessage(
+                    "[accent]Spectating this 1v1. Use [white]/v[accent] to return to the lobby.[]"
+                );
                 return;
             }
 

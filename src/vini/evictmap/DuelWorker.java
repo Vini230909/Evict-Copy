@@ -81,6 +81,30 @@ final class DuelWorker {
         return active;
     }
 
+    /** True for the two duelists named in the handshake; everyone else spectates. */
+    boolean isParticipant(String uuid) {
+        return handshakeLoaded
+            && uuid != null
+            && (uuid.equals(player1Uuid) || uuid.equals(player2Uuid));
+    }
+
+    /** Sends a spectator back to the hub this worker was launched from. */
+    void returnSpectatorToHub(Player player) {
+        if (!active || player == null) {
+            return;
+        }
+
+        if (hubIp == null || hubIp.isBlank()) {
+            player.sendMessage(
+                "[scarlet]Cannot find the lobby to return you to.[]"
+            );
+            return;
+        }
+
+        player.sendMessage("[accent]Returning you to the lobby...[]");
+        Call.connect(player.con, hubIp, hubPort);
+    }
+
     /** Called once the worker has hosted its round. */
     void begin() {
         if (!active) {

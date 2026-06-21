@@ -18,7 +18,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -55,6 +57,7 @@ final class DuelServerManager {
     private static final long MAX_WORKER_LIFETIME_MINUTES = 30L;
 
     private final EvictSettings settings;
+    private final PlayerDataManager playerDataManager;
 
     private final ExecutorService spawnExecutor =
         Executors.newCachedThreadPool(runnable -> {
@@ -79,8 +82,12 @@ final class DuelServerManager {
      */
     private final Map<String, Integer> activeDuelByUuid = new HashMap<>();
 
-    DuelServerManager(EvictSettings settings) {
+    DuelServerManager(
+        EvictSettings settings,
+        PlayerDataManager playerDataManager
+    ) {
         this.settings = settings;
+        this.playerDataManager = playerDataManager;
 
         Runtime.getRuntime().addShutdownHook(
             new Thread(this::destroyAllWorkers, "evict-duel-shutdown")
@@ -111,8 +118,10 @@ final class DuelServerManager {
         WorkerHandle handle = new WorkerHandle(port);
         handle.player1Name = challenger.plainName();
         handle.player1Uuid = challenger.uuid();
+        handle.player1Display = PlayerNameFormatter.displayName(challenger);
         handle.player2Name = opponent.plainName();
         handle.player2Uuid = opponent.uuid();
+        handle.player2Display = PlayerNameFormatter.displayName(opponent);
         workers.put(port, handle);
 
         String challengerUuid = challenger.uuid();
@@ -236,12 +245,8 @@ final class DuelServerManager {
         }
 
         WorkerHandle handle = workers.get(port);
-        boolean ongoing = handle != null
-            && handle.process != null
-            && handle.process.isAlive()
-            && !new File(workerDir(port), "result.properties").exists();
 
-        if (!ongoing) {
+        if (!isOngoing(handle)) {
             activeDuelByUuid.remove(player.uuid());
             return false;
         }
@@ -249,6 +254,55 @@ final class DuelServerManager {
         player.sendMessage("[accent]Returning you to your 1v1...[]");
         Call.connect(player.con, settings.duelServerIp(), port);
         return true;
+    }
+
+    /**
+     * Snapshot of the duels in progress for the /view menu. Main-thread only.
+     * Finished or not-yet-hosting workers are skipped so a viewer is never sent
+     * to a match that is wrapping up or not ready, ordered by port for a stable
+     * menu.
+     */
+    List<ActiveDuel> activeDuels() {
+        List<ActiveDuel> duels = new ArrayList<>();
+
+        for (WorkerHandle handle : workers.values()) {
+            if (isOngoing(handle)) {
+                duels.add(new ActiveDuel(
+                    handle.port,
+                    handle.player1Display,
+                    handle.player2Display
+                ));
+            }
+        }
+
+        duels.sort((first, second) -> Integer.compare(first.port(), second.port()));
+        return duels;
+    }
+
+    /**
+     * Connects a viewer to an ongoing duel worker as a spectator. Returns false
+     * if that match is no longer available so the caller can tell the player.
+     */
+    boolean viewDuel(Player viewer, int port) {
+        if (viewer == null || !isOngoing(workers.get(port))) {
+            return false;
+        }
+
+        viewer.sendMessage(
+            "[accent]Connecting you to the 1v1 as a spectator...[]"
+        );
+        Call.connect(viewer.con, settings.duelServerIp(), port);
+        return true;
+    }
+
+    private boolean isOngoing(WorkerHandle handle) {
+        return handle != null
+            && handle.process != null
+            && handle.process.isAlive()
+            && !new File(
+                workerDir(handle.port),
+                "result.properties"
+            ).exists();
     }
 
     /**
@@ -468,13 +522,20 @@ final class DuelServerManager {
         try (FileInputStream input = new FileInputStream(resultFile)) {
             properties.load(input);
 
+            String winnerUuid = properties.getProperty("winner.uuid", "").trim();
+            String loserUuid = properties.getProperty("loser.uuid", "").trim();
+
             Log.info(
                 "[EvictMapGenerator] 1v1 result on port @: winner=@ loser=@ reason=@.",
                 port,
-                properties.getProperty("winner.uuid", "?"),
-                properties.getProperty("loser.uuid", "?"),
+                winnerUuid.isEmpty() ? "?" : winnerUuid,
+                loserUuid.isEmpty() ? "?" : loserUuid,
                 properties.getProperty("reason", "?")
             );
+
+            // Credit the ranked record on the hub's database; the worker runs in
+            // its own process and cannot reach this DB itself.
+            playerDataManager.recordRankedResult(winnerUuid, loserUuid);
         } catch (Exception exception) {
             Log.err(
                 "[EvictMapGenerator] Could not read the duel result on port "
@@ -637,14 +698,24 @@ final class DuelServerManager {
         );
     }
 
+    /** One in-progress duel exposed to the /view menu. */
+    record ActiveDuel(
+        int port,
+        String player1Display,
+        String player2Display
+    ) {
+    }
+
     private static final class WorkerHandle {
         final int port;
         final long spawnedAtMillis = System.currentTimeMillis();
         volatile Process process;
         String player1Name = "?";
         String player1Uuid = "";
+        String player1Display = "?";
         String player2Name = "?";
         String player2Uuid = "";
+        String player2Display = "?";
 
         WorkerHandle(int port) {
             this.port = port;

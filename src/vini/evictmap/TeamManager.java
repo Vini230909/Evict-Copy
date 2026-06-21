@@ -195,6 +195,21 @@ final class TeamManager {
         });
     }
 
+    /**
+     * Parks a player on Team.derelict so they spectate without a starting hex
+     * or core. Registering them in teamIdByPlayerUuid keeps the connected-player
+     * assignment scan from later handing them a personal team. Used on duel
+     * workers for /view spectators.
+     */
+    void assignSpectator(Player player) {
+        if (player == null) {
+            return;
+        }
+
+        teamIdByPlayerUuid.put(player.uuid(), Team.derelict.id);
+        assignPlayerToTeam(player, Team.derelict);
+    }
+
     void handlePlayerJoin(Player player) {
         if (!roundActive || resetting || player == null) {
             return;

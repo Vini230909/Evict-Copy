@@ -137,6 +137,25 @@ final class PlayerDataManager {
         }
     }
 
+    /**
+     * Records a finished 1v1 duel: a win for the winner, a loss for the loser,
+     * and a played match for both. ELO is intentionally left untouched. Called
+     * on the hub once a worker reports its result; no-op if either UUID is
+     * missing (e.g. the worker could not identify a winner).
+     */
+    void recordRankedResult(String winnerUuid, String loserUuid) {
+        if (
+            winnerUuid == null
+                || winnerUuid.isEmpty()
+                || loserUuid == null
+                || loserUuid.isEmpty()
+        ) {
+            return;
+        }
+
+        enqueue(() -> applyRankedResult(winnerUuid, loserUuid));
+    }
+
     void findPlayerInfoByUuid(
         String uuid,
         Consumer<PlayerInfo> callback
@@ -368,6 +387,33 @@ final class PlayerDataManager {
             Connection connection = connect();
             PreparedStatement statement = connection.prepareStatement(
                 "UPDATE players SET ffa_won = ffa_won + 1 "
+                    + "WHERE uuid = ?"
+            )
+        ) {
+            statement.setString(1, uuid);
+            statement.executeUpdate();
+        }
+    }
+
+    private void applyRankedResult(String winnerUuid, String loserUuid)
+        throws SQLException {
+        try (Connection connection = connect()) {
+            updateRankedOutcome(connection, winnerUuid, true);
+            updateRankedOutcome(connection, loserUuid, false);
+        }
+    }
+
+    private void updateRankedOutcome(
+        Connection connection,
+        String uuid,
+        boolean won
+    ) throws SQLException {
+        try (
+            PreparedStatement statement = connection.prepareStatement(
+                "UPDATE players SET "
+                    + (won ? "ranked_wins = ranked_wins + 1, "
+                           : "ranked_losses = ranked_losses + 1, ")
+                    + "ranked_matches_played = ranked_matches_played + 1 "
                     + "WHERE uuid = ?"
             )
         ) {
