@@ -485,6 +485,11 @@ final class DuelServerManager {
         copyRanksFile(workerConfig);
         writeAdminsFile(workerConfig, handle.adminUuids);
 
+        // Refreshed every spawn so the worker's terrain/ore/water generation
+        // matches the hub's live tuning (e.g. ore presets changed with the
+        // evictcopper/evictlead/... console commands).
+        copySettingsFile(workerConfig);
+
         return workerDir;
     }
 
@@ -500,6 +505,36 @@ final class DuelServerManager {
             new File(workerConfig, "evict-ranks.properties").toPath(),
             StandardCopyOption.REPLACE_EXISTING
         );
+    }
+
+    /**
+     * Copies the hub's persistent tuning file into the worker so its ore, water,
+     * wall and extinction generation matches the hub. The duel target is cleared
+     * in the copy so a worker never inherits the hub's duel config and tries to
+     * spawn nested duels of its own.
+     */
+    private static void copySettingsFile(File workerConfig) throws IOException {
+        File source = new File("config/evict-map-generator.properties");
+
+        if (!source.exists()) {
+            return;
+        }
+
+        Properties properties = new Properties();
+
+        try (FileInputStream input = new FileInputStream(source)) {
+            properties.load(input);
+        }
+
+        // Keep the worker non-duel-configured: it hosts a single match and must
+        // not relay /play to another instance.
+        properties.setProperty("duel.server.ip", "");
+
+        try (FileOutputStream output = new FileOutputStream(
+            new File(workerConfig, "evict-map-generator.properties")
+        )) {
+            properties.store(output, "Evict synced hub generation settings");
+        }
     }
 
     /**
