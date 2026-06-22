@@ -181,7 +181,7 @@ public class EvictMapPlugin extends Plugin {
                 return;
             }
 
-            EvictRules.apply();
+            EvictRules.apply((float) settings.unitBuildSpeedMultiplier());
             scheduleConnectedPlayerAssignmentScan();
 
             if (duelWorker) {
@@ -286,7 +286,7 @@ public class EvictMapPlugin extends Plugin {
     }
 
     private void generate(long seed) {
-        EvictRules.apply();
+        EvictRules.apply((float) settings.unitBuildSpeedMultiplier());
 
         EvictTerrainGenerator.GeneratedRound round =
             terrainGenerator.generate(seed);

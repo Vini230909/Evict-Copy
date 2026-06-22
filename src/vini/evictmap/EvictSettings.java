@@ -64,6 +64,9 @@ final class EvictSettings {
 
     private static final File SETTINGS_FILE =
         new File("config/evict-map-generator.properties");
+    private static final double DEFAULT_UNIT_BUILD_SPEED_MULTIPLIER = 1.4d;
+    private static final double MIN_UNIT_BUILD_SPEED_MULTIPLIER = 0d;
+    private static final double MAX_UNIT_BUILD_SPEED_MULTIPLIER = 100d;
     private static final int DEFAULT_EXTINCTION_TERRAIN_CHANGES_PER_TICK = 120;
     private static final int MIN_EXTINCTION_TERRAIN_CHANGES_PER_TICK = 1;
     private static final int MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK = 4096;
@@ -99,6 +102,13 @@ final class EvictSettings {
     private double passagePercent = 25d;
     private int extinctionTerrainChangesPerTick =
         DEFAULT_EXTINCTION_TERRAIN_CHANGES_PER_TICK;
+
+    /**
+     * Multiplier applied to unit factory build speed every round via
+     * {@link EvictRules}. Vanilla PvP hosting uses 1x/2x; Evict tunes this here
+     * so the value persists and is carried into every spawned duel worker.
+     */
+    private double unitBuildSpeedMultiplier = DEFAULT_UNIT_BUILD_SPEED_MULTIPLIER;
 
     /**
      * Dedicated 1v1 server that /play redirects to. A blank IP means the duel
@@ -219,6 +229,14 @@ final class EvictSettings {
                 )
             );
 
+            setUnitBuildSpeedMultiplierWithoutSaving(
+                readDouble(
+                    properties,
+                    "rules.unitBuildSpeedMultiplier",
+                    unitBuildSpeedMultiplier
+                )
+            );
+
             setWaterSettingsWithoutSaving(
                 readDouble(
                     properties,
@@ -283,12 +301,13 @@ final class EvictSettings {
             save();
 
             Log.info(
-                "[EvictMapGenerator] Loaded persistent settings: coreAttrition=@; rangeAttrition=@; walls=@; water=@; extinctionTerrain=@; ores=@",
+                "[EvictMapGenerator] Loaded persistent settings: coreAttrition=@; rangeAttrition=@; walls=@; water=@; extinctionTerrain=@; unitBuildSpeed=@; ores=@",
                 compactCoreAttritionSettings(),
                 compactRangeAttritionSettings(),
                 compactWallSettings(),
                 compactWaterSettings(),
                 compactExtinctionTerrainSettings(),
+                compactUnitBuildSpeedSettings(),
                 compactOreSettings()
             );
         } catch (Exception exception) {
@@ -330,6 +349,11 @@ final class EvictSettings {
 
     void setExtinctionTerrainChangesPerTick(int amount) {
         setExtinctionTerrainChangesPerTickWithoutSaving(amount);
+        save();
+    }
+
+    void setUnitBuildSpeedMultiplier(double multiplier) {
+        setUnitBuildSpeedMultiplierWithoutSaving(multiplier);
         save();
     }
 
@@ -479,6 +503,10 @@ final class EvictSettings {
         return extinctionTerrainChangesPerTick;
     }
 
+    double unitBuildSpeedMultiplier() {
+        return unitBuildSpeedMultiplier;
+    }
+
     String compactCoreAttritionSettings() {
         return "T1-T3=" + formatPercent(coreAttritionTier1To3Percent)
             + "%, T4=" + formatPercent(coreAttritionTier4Percent)
@@ -498,6 +526,10 @@ final class EvictSettings {
 
     String compactExtinctionTerrainSettings() {
         return Integer.toString(extinctionTerrainChangesPerTick);
+    }
+
+    String compactUnitBuildSpeedSettings() {
+        return formatNumber(unitBuildSpeedMultiplier) + "x";
     }
 
     String compactWaterSettings() {
@@ -595,6 +627,15 @@ final class EvictSettings {
         }
 
         extinctionTerrainChangesPerTick = amount;
+    }
+
+    private void setUnitBuildSpeedMultiplierWithoutSaving(double multiplier) {
+        unitBuildSpeedMultiplier = validateRange(
+            "Unit build speed multiplier",
+            multiplier,
+            MIN_UNIT_BUILD_SPEED_MULTIPLIER,
+            MAX_UNIT_BUILD_SPEED_MULTIPLIER
+        );
     }
 
     private void setWaterSettingsWithoutSaving(
@@ -846,6 +887,10 @@ final class EvictSettings {
         properties.setProperty(
             "extinction.terrainChangesPerTick",
             Integer.toString(extinctionTerrainChangesPerTick)
+        );
+        properties.setProperty(
+            "rules.unitBuildSpeedMultiplier",
+            Double.toString(unitBuildSpeedMultiplier)
         );
         properties.setProperty(
             "duel.server.ip",

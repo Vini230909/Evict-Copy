@@ -432,6 +432,16 @@ evictwater [tries-per-hex] [normal-patch-tiles] [large-patch-percent] [large-pat
 Wall settings:
 - `/wall [full-wall] [small-wall] [open] [passage]`
 
+Unit build speed:
+- `evictbuildspeed [multiplier]`
+- Multiplier applied to unit factory build speed in the Evict rules each round.
+- With no argument, shows the current multiplier.
+- Default: `1.4` (vanilla PvP hosting uses 1x/2x).
+- Persisted in `config/evict-map-generator.properties` as
+  `rules.unitBuildSpeedMultiplier` and copied into every spawned duel worker,
+  so duels run with the same build speed as the hub.
+- Applies to the next generated match.
+
 Duel server:
 - `evictduelserver [ip] [basePort] [maxWorkers] [map]`
 - With no argument, shows the current pool configuration.

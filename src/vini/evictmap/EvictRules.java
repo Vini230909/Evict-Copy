@@ -14,7 +14,7 @@ final class EvictRules {
     private EvictRules() {
     }
 
-    static void apply() {
+    static void apply(float unitBuildSpeedMultiplier) {
         Vars.state.rules.pvp = true;
         Vars.state.rules.pvpAutoPause = false;
 
@@ -26,8 +26,9 @@ final class EvictRules {
         Vars.state.rules.infiniteResources = false;
         Vars.state.rules.attackMode = false;
 
-        // Vanilla PvP hosting changes this to 2x. Evict intentionally uses 1x.
-        Vars.state.rules.unitBuildSpeedMultiplier = 1f;
+        // Vanilla PvP hosting changes this to 2x. Evict uses the persisted,
+        // duel-synced multiplier from EvictSettings (default 1.4x).
+        Vars.state.rules.unitBuildSpeedMultiplier = unitBuildSpeedMultiplier;
 
         // /corecap is based on the variable per-core cap system.
         Vars.state.rules.unitCapVariable = true;
@@ -41,7 +42,8 @@ final class EvictRules {
         Vars.state.rules.loadout.clear();
 
         Log.info(
-            "[EvictMapGenerator] Applied Evict rules: pvp=ON, pvpAutoPause=OFF, waves=OFF, vanillaGameOver=OFF, unitFactorySpeed=1x, defaultTeam=Fallen #@.",
+            "[EvictMapGenerator] Applied Evict rules: pvp=ON, pvpAutoPause=OFF, waves=OFF, vanillaGameOver=OFF, unitFactorySpeed=@x, defaultTeam=Fallen #@.",
+            unitBuildSpeedMultiplier,
             TeamManager.FALLEN_TEAM_ID
         );
     }

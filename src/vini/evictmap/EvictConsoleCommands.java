@@ -166,6 +166,11 @@ final class EvictConsoleCommands {
                 );
 
                 Log.info(
+                    "[EvictMapGenerator] unit build speed: @",
+                    settings.compactUnitBuildSpeedSettings()
+                );
+
+                Log.info(
                     "[EvictMapGenerator] duel server: @",
                     settings.compactDuelServerSettings()
                 );
@@ -217,6 +222,48 @@ final class EvictConsoleCommands {
                 } catch (NumberFormatException exception) {
                     Log.err(
                         "[EvictMapGenerator] Extinction terrain changes per tick must be a whole number."
+                    );
+                } catch (IllegalArgumentException exception) {
+                    Log.err(
+                        "[EvictMapGenerator] @",
+                        exception.getMessage()
+                    );
+                }
+            }
+        );
+
+        handler.register(
+            "evictbuildspeed",
+            "[multiplier]",
+            "Show or persist the unit factory build-speed multiplier applied each round. Defaults to 1.4 and is synced to spawned duel workers. Applies to the next generated match.",
+            args -> {
+                if (args.length == 0) {
+                    Log.info(
+                        "[EvictMapGenerator] unit build speed: @",
+                        settings.compactUnitBuildSpeedSettings()
+                    );
+
+                    return;
+                }
+
+                if (args.length != 1) {
+                    Log.err(
+                        "[EvictMapGenerator] Use: evictbuildspeed <multiplier>"
+                    );
+
+                    return;
+                }
+
+                try {
+                    settings.setUnitBuildSpeedMultiplier(parseDecimal(args[0]));
+
+                    Log.info(
+                        "[EvictMapGenerator] Unit build speed saved as @. Applies to the next generated match and to spawned duel workers.",
+                        settings.compactUnitBuildSpeedSettings()
+                    );
+                } catch (NumberFormatException exception) {
+                    Log.err(
+                        "[EvictMapGenerator] Build speed multiplier must be a number."
                     );
                 } catch (IllegalArgumentException exception) {
                     Log.err(
