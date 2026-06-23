@@ -1,6 +1,7 @@
 package vini.evictmap;
 
 import arc.Core;
+import arc.util.Align;
 import arc.util.Log;
 import arc.util.Time;
 import mindustry.Vars;
@@ -77,6 +78,16 @@ final class DuelWorker {
     private int disconnectSerial = 0;
     private int matchSerial = 0;
     private String disconnectedName = "A player";
+
+    /** Shared id so each duel HUD update replaces the previous popup instead of stacking. */
+    private static final String HUD_ID = "duel-hud";
+    /**
+     * How far above screen centre the duel HUD sits, in UI units. This is bottom
+     * padding on a centre-aligned popup, so a larger value lifts the text higher.
+     * Kept just above centre so it reads above Mindustry's own status text without
+     * drifting up to the out-of-focus top of the screen.
+     */
+    private static final int HUD_RAISE = 220;
 
     DuelWorker() {
         this.active = "true".equals(System.getProperty("evict.duelWorker"));
@@ -198,7 +209,7 @@ final class DuelWorker {
             resumeGame();
         }
 
-        Call.hideHudText();
+        hideHud();
 
         Player winnerPlayer = Groups.player.find(
             player -> player != null && player.team() == winner
@@ -275,7 +286,21 @@ final class DuelWorker {
             return;
         }
 
-        Call.setHudText("[accent]1v1 starts in [scarlet]" + remaining + "[]");
+        showHud("[accent]1v1 starts in [scarlet]" + remaining + "[]");
+    }
+
+    /**
+     * Shows the duel HUD text slightly above screen centre. Replaces any existing
+     * duel popup (same {@link #HUD_ID}) so repeated calls during the countdown do
+     * not stack. Height is controlled by {@link #HUD_RAISE}.
+     */
+    private void showHud(String text) {
+        Call.infoPopup(text, HUD_ID, 3600f, Align.center, 0, 0, HUD_RAISE, 0);
+    }
+
+    /** Removes the duel HUD popup. */
+    private void hideHud() {
+        Call.infoPopup((String) null, HUD_ID, 0f, Align.center, 0, 0, HUD_RAISE, 0);
     }
 
     private void startMatch(int serial) {
@@ -287,10 +312,10 @@ final class DuelWorker {
         startFreezeApplied = false;
         matchStartMillis = System.currentTimeMillis();
         resumeGame();
-        Call.setHudText("[green]GO![]");
+        showHud("[green]GO![]");
 
         scheduler.schedule(
-            () -> Core.app.post(Call::hideHudText),
+            () -> Core.app.post(this::hideHud),
             2,
             TimeUnit.SECONDS
         );
@@ -315,7 +340,7 @@ final class DuelWorker {
         resolved = false;
         matchStartMillis = 0L;
 
-        Call.hideHudText();
+        hideHud();
         pauseGame();
         startFreezeApplied = true;
         Call.sendMessage("[accent]The 1v1 was restarted by a commentator.[]");
@@ -356,7 +381,7 @@ final class DuelWorker {
             return;
         }
 
-        Call.setHudText(
+        showHud(
             "[scarlet]" + disconnectedName
                 + "[scarlet] left  -  [accent]" + remaining
                 + "s[scarlet] to rejoin, or the match continues[]"
@@ -380,7 +405,7 @@ final class DuelWorker {
             }
         });
 
-        Call.setHudText(
+        showHud(
             names.length() > 0
                 ? "[accent]Waiting for players\n[white]" + names + "[]"
                 : "[accent]Waiting for players...[]"
@@ -394,7 +419,7 @@ final class DuelWorker {
 
         pausedForDisconnect = false;
         resumeGame();
-        Call.hideHudText();
+        hideHud();
         Call.sendMessage(
             "[scarlet]" + disconnectedName
                 + "[scarlet] did not return. The match continues.[]"
@@ -405,7 +430,7 @@ final class DuelWorker {
         pausedForDisconnect = false;
         disconnectSerial++;
         resumeGame();
-        Call.hideHudText();
+        hideHud();
         Call.sendMessage("[accent]Both players are back. Resuming the 1v1![]");
     }
 
