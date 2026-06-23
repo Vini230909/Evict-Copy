@@ -24,7 +24,10 @@ import java.util.concurrent.TimeUnit;
  * (-Devict.duelWorker=true); on the hub this class does nothing.
  *
  * - reads the hub handshake (the two player UUIDs + hub address),
- * - freezes the match as soon as the first player joins,
+ * - lets the world run for a brief settle window when a duelist joins so their
+ *   unit spawns at their core and their client camera snaps onto it, then
+ *   freezes the match (an instant freeze leaves the camera stuck at the map
+ *   origin until the first unpause, because the spawn resolves on a world tick),
  * - once both are present, runs a 5-second countdown (HUD text), then unfreezes,
  * - if a player disconnects mid-match, pauses and shows a "Xs to rejoin"
  *   countdown; resumes when they return, or after the window if they do not,
@@ -52,6 +55,14 @@ final class DuelWorker {
     private static final int RESOLVED_GRACE_SECONDS = 5;
     private static final int STATUS_INTERVAL_SECONDS = 2;
     private static final float RETURN_DELAY_TICKS = 5f * 60f;
+    /**
+     * How long the world keeps ticking after a duelist joins before the match is
+     * (re-)frozen. The client camera follows its unit even while paused, but on a
+     * join that lands during the freeze it never receives the target; a couple of
+     * live ticks let the server hand it over so the camera hops onto the player.
+     * Kept tiny so the window of free movement is imperceptible (~0.08s at 60tps).
+     */
+    private static final float CAMERA_SETTLE_TICKS = 5f;
 
     private final boolean active;
 
@@ -77,6 +88,8 @@ final class DuelWorker {
     private long matchStartMillis = 0L;
     private int disconnectSerial = 0;
     private int matchSerial = 0;
+    private int settleSerial = 0;
+    private boolean settlePending = false;
     private String disconnectedName = "A player";
 
     /** Shared id so each duel HUD update replaces the previous popup instead of stacking. */
@@ -150,20 +163,64 @@ final class DuelWorker {
             return;
         }
 
-        // Freeze the world the moment anyone is here, so the first player to
-        // arrive cannot move before the second one does.
-        if (!startFreezeApplied) {
+        if (countdownStarted) {
+            return;
+        }
+
+        if (player != null && isParticipant(player.uuid())) {
+            // A duelist arrived: let the world settle their camera before the
+            // freeze (see settleCamerasThenFreeze).
+            settleCamerasThenFreeze();
+            return;
+        }
+
+        // A spectator joined while the duel is still gathering. Keep the match
+        // frozen and waiting, but don't slam the freeze on mid-settle and strand
+        // a duelist's camera at the origin.
+        if (!settlePending && !startFreezeApplied) {
             pauseGame();
             startFreezeApplied = true;
         }
+        showWaitingHud();
+    }
 
-        if (!countdownStarted) {
+    /**
+     * Keeps the world ticking for a brief window so a freshly joined duelist
+     * spawns at their core and their client camera snaps onto the unit, then
+     * re-freezes the match (or starts the countdown once both duelists are
+     * present). Freezing instantly would block the spawn tick, leaving the
+     * camera parked at the map origin (0,0) until the first unpause. Each call
+     * supersedes the previous one via {@link #settleSerial} so rapid joins do
+     * not stack conflicting freeze/start tasks.
+     */
+    private void settleCamerasThenFreeze() {
+        // The first duelist arrives unpaused, but the second joins while the
+        // first is frozen and waiting; resume so their camera settles too.
+        if (Vars.state.isPaused()) {
+            resumeGame();
+        }
+        startFreezeApplied = false;
+        settlePending = true;
+        showWaitingHud();
+
+        int serial = ++settleSerial;
+        Time.run(CAMERA_SETTLE_TICKS, () -> {
+            if (serial != settleSerial) {
+                return;
+            }
+            settlePending = false;
+
+            if (matchStarted || countdownStarted) {
+                return;
+            }
+
             if (bothPlayersPresent()) {
                 startCountdown();
             } else {
-                showWaitingHud();
+                pauseGame();
+                startFreezeApplied = true;
             }
-        }
+        });
     }
 
     void handlePlayerLeave(Player player) {
@@ -262,6 +319,13 @@ final class DuelWorker {
 
     private void startCountdown() {
         countdownStarted = true;
+
+        // The camera-settle window leaves the world running, so freeze it now to
+        // hold both duelists still through the "starts in N" countdown. Harmless
+        // if it is already paused (e.g. a commentator /restart).
+        pauseGame();
+        startFreezeApplied = true;
+
         int serial = ++matchSerial;
 
         for (int second = COUNTDOWN_SECONDS; second >= 1; second--) {
