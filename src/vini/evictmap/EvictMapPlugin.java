@@ -181,7 +181,10 @@ public class EvictMapPlugin extends Plugin {
                 return;
             }
 
-            EvictRules.apply((float) settings.unitBuildSpeedMultiplier());
+            EvictRules.apply(
+                (float) settings.unitBuildSpeedMultiplier(),
+                syncedBannedBlocks()
+            );
             scheduleConnectedPlayerAssignmentScan();
 
             if (duelWorker) {
@@ -285,8 +288,20 @@ public class EvictMapPlugin extends Plugin {
         consoleCommands.register(handler);
     }
 
+    /**
+     * Banned blocks to enforce in the round rules. A duel worker mirrors the
+     * hub's banned set, synced into its settings file at spawn. The hub returns
+     * null so {@link EvictRules} leaves its live bans (map / admin) untouched.
+     */
+    private java.util.Set<String> syncedBannedBlocks() {
+        return duelWorker ? settings.bannedBlockNames() : null;
+    }
+
     private void generate(long seed) {
-        EvictRules.apply((float) settings.unitBuildSpeedMultiplier());
+        EvictRules.apply(
+            (float) settings.unitBuildSpeedMultiplier(),
+            syncedBannedBlocks()
+        );
 
         EvictTerrainGenerator.GeneratedRound round =
             terrainGenerator.generate(seed);

@@ -1,5 +1,13 @@
 package vini.evictmap;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.util.Properties;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
 import arc.Core;
 import arc.util.Align;
 import arc.util.Log;
@@ -10,14 +18,6 @@ import mindustry.game.Team;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
-
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.util.Properties;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Worker-side 1v1 referee. Only active when launched as a duel worker
@@ -62,7 +62,7 @@ final class DuelWorker {
      * live ticks let the server hand it over so the camera hops onto the player.
      * Kept tiny so the window of free movement is imperceptible (~0.08s at 60tps).
      */
-    private static final float CAMERA_SETTLE_TICKS = 5f;
+    private static final float CAMERA_SETTLE_TICKS = 18f;
 
     private final boolean active;
 

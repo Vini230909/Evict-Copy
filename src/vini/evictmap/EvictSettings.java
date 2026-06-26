@@ -6,8 +6,11 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.Collection;
 import java.util.EnumMap;
+import java.util.LinkedHashSet;
 import java.util.Properties;
+import java.util.Set;
 
 /**
  * Persistent Evict server tuning values.
@@ -120,6 +123,14 @@ final class EvictSettings {
     private int duelMaxWorkers = DEFAULT_DUEL_MAX_WORKERS;
     private String duelWorkerJarName = DEFAULT_DUEL_WORKER_JAR;
     private String duelWorkerMap = DEFAULT_DUEL_WORKER_MAP;
+
+    /**
+     * Internal block ids players may not build (e.g. {@code router}). Stored as
+     * names rather than {@code Block} objects so this class stays free of
+     * Mindustry content; {@link EvictRules} resolves them at round start. Carried
+     * into every spawned duel worker via the synced settings file.
+     */
+    private final LinkedHashSet<String> bannedBlockNames = new LinkedHashSet<>();
     private WaterSettings waterSettings =
         new WaterSettings(
             DEFAULT_WATER_PATCH_ATTEMPTS_PER_HEX,
@@ -297,17 +308,24 @@ final class EvictSettings {
             duelWorkerJarName =
                 readString(properties, "duel.worker.jar", duelWorkerJarName);
 
+            setBannedBlockNamesWithoutSaving(
+                splitBannedBlockNames(
+                    readString(properties, "rules.bannedBlocks", "")
+                )
+            );
+
             // Backfill newly introduced properties after plugin upgrades.
             save();
 
             Log.info(
-                "[EvictMapGenerator] Loaded persistent settings: coreAttrition=@; rangeAttrition=@; walls=@; water=@; extinctionTerrain=@; unitBuildSpeed=@; ores=@",
+                "[EvictMapGenerator] Loaded persistent settings: coreAttrition=@; rangeAttrition=@; walls=@; water=@; extinctionTerrain=@; unitBuildSpeed=@; bannedBlocks=@; ores=@",
                 compactCoreAttritionSettings(),
                 compactRangeAttritionSettings(),
                 compactWallSettings(),
                 compactWaterSettings(),
                 compactExtinctionTerrainSettings(),
                 compactUnitBuildSpeedSettings(),
+                compactBannedBlockSettings(),
                 compactOreSettings()
             );
         } catch (Exception exception) {
@@ -385,6 +403,22 @@ final class EvictSettings {
 
     String duelWorkerMap() {
         return duelWorkerMap;
+    }
+
+    /**
+     * The block ids players may not build. On a duel worker this is the hub's
+     * live banned set, synced in via the settings file at spawn; on the hub it is
+     * normally empty (the hub's own bans live in {@code state.rules}, untouched by
+     * this plugin).
+     */
+    Set<String> bannedBlockNames() {
+        return new LinkedHashSet<>(bannedBlockNames);
+    }
+
+    String compactBannedBlockSettings() {
+        return bannedBlockNames.isEmpty()
+            ? "none"
+            : String.join(", ", bannedBlockNames);
     }
 
     boolean duelServerConfigured() {
@@ -697,6 +731,44 @@ final class EvictSettings {
         );
     }
 
+    private void setBannedBlockNamesWithoutSaving(Collection<String> names) {
+        bannedBlockNames.clear();
+
+        if (names == null) {
+            return;
+        }
+
+        for (String name : names) {
+            String normalized = normalizeBlockName(name);
+
+            if (!normalized.isEmpty()) {
+                bannedBlockNames.add(normalized);
+            }
+        }
+    }
+
+    private LinkedHashSet<String> splitBannedBlockNames(String packed) {
+        LinkedHashSet<String> names = new LinkedHashSet<>();
+
+        if (packed == null || packed.isBlank()) {
+            return names;
+        }
+
+        for (String entry : packed.split(",")) {
+            String normalized = normalizeBlockName(entry);
+
+            if (!normalized.isEmpty()) {
+                names.add(normalized);
+            }
+        }
+
+        return names;
+    }
+
+    private String normalizeBlockName(String name) {
+        return name == null ? "" : name.trim();
+    }
+
     private double validatePositiveFinite(String name, double value) {
         if (
             Double.isNaN(value)
@@ -906,6 +978,10 @@ final class EvictSettings {
         );
         properties.setProperty("duel.worker.map", duelWorkerMap);
         properties.setProperty("duel.worker.jar", duelWorkerJarName);
+        properties.setProperty(
+            "rules.bannedBlocks",
+            String.join(",", bannedBlockNames)
+        );
         properties.setProperty(
             "water.patchAttemptsPerHex",
             Double.toString(waterSettings.patchAttemptsPerHex())

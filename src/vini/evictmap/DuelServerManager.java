@@ -7,6 +7,7 @@ import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
 import mindustry.net.Administration;
+import mindustry.world.Block;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -125,6 +126,7 @@ final class DuelServerManager {
         handle.player2Uuid = opponent.uuid();
         handle.player2Display = PlayerNameFormatter.displayName(opponent);
         handle.adminUuids = snapshotAdminUuids();
+        handle.bannedBlocks = snapshotBannedBlockNames();
         workers.put(port, handle);
 
         String challengerUuid = challenger.uuid();
@@ -485,10 +487,10 @@ final class DuelServerManager {
         copyRanksFile(workerConfig);
         writeAdminsFile(workerConfig, handle.adminUuids);
 
-        // Refreshed every spawn so the worker's terrain/ore/water generation
-        // matches the hub's live tuning (e.g. ore presets changed with the
-        // evictcopper/evictlead/... console commands).
-        copySettingsFile(workerConfig);
+        // Refreshed every spawn so the worker's terrain/ore/water generation and
+        // rules (build speed) match the hub's live tuning, and so the worker bans
+        // exactly the blocks the hub currently bans.
+        copySettingsFile(workerConfig, handle.bannedBlocks);
 
         return workerDir;
     }
@@ -509,11 +511,16 @@ final class DuelServerManager {
 
     /**
      * Copies the hub's persistent tuning file into the worker so its ore, water,
-     * wall and extinction generation matches the hub. The duel target is cleared
-     * in the copy so a worker never inherits the hub's duel config and tries to
-     * spawn nested duels of its own.
+     * wall and extinction generation and build speed match the hub. The duel
+     * target is cleared in the copy so a worker never inherits the hub's duel
+     * config and tries to spawn nested duels of its own. The banned-block list is
+     * overwritten with the hub's live bans (snapshotted at spawn) so the worker
+     * bans exactly those blocks - the hub's own settings file does not track them.
      */
-    private static void copySettingsFile(File workerConfig) throws IOException {
+    private static void copySettingsFile(
+        File workerConfig,
+        List<String> bannedBlocks
+    ) throws IOException {
         File source = new File("config/evict-map-generator.properties");
 
         if (!source.exists()) {
@@ -529,6 +536,10 @@ final class DuelServerManager {
         // Keep the worker non-duel-configured: it hosts a single match and must
         // not relay /play to another instance.
         properties.setProperty("duel.server.ip", "");
+        properties.setProperty(
+            "rules.bannedBlocks",
+            String.join(",", bannedBlocks)
+        );
 
         try (FileOutputStream output = new FileOutputStream(
             new File(workerConfig, "evict-map-generator.properties")
@@ -559,6 +570,27 @@ final class DuelServerManager {
         )) {
             properties.store(output, "Evict synced hub admins (uuid = admin)");
         }
+    }
+
+    /**
+     * Snapshot of the blocks currently banned on the hub (internal ids). Read
+     * straight from the live rules so a worker bans exactly what the hub bans,
+     * however those bans were set (map rules / admin actions). Main-thread only.
+     */
+    private static List<String> snapshotBannedBlockNames() {
+        List<String> names = new ArrayList<>();
+
+        if (Vars.state == null || Vars.state.rules == null) {
+            return names;
+        }
+
+        for (Block block : Vars.state.rules.bannedBlocks) {
+            if (block != null && block.name != null) {
+                names.add(block.name);
+            }
+        }
+
+        return names;
     }
 
     /** Snapshot of the hub's admin UUIDs. Must run on the main thread. */
@@ -835,6 +867,7 @@ final class DuelServerManager {
         String player2Uuid = "";
         String player2Display = "?";
         List<String> adminUuids = new ArrayList<>();
+        List<String> bannedBlocks = new ArrayList<>();
 
         WorkerHandle(int port) {
             this.port = port;
