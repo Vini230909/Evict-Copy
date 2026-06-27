@@ -117,7 +117,20 @@ final class EvictTerrainGenerator {
     private static final int CHAIN_MAX_LENGTH = 3;
 
 
-    GeneratedRound generate(long seed) {
+    /**
+     * Generates a round onto the currently loaded world.
+     *
+     * @param syncToClients when {@code true}, the freshly generated terrain is
+     *     pushed to connected clients tile-by-tile via {@code Call.setTile*}.
+     *     Pass {@code false} when generation runs inside a world (re)load: the
+     *     server's own world snapshot already carries the generated terrain to
+     *     clients, so the extra per-tile flood is redundant and - layered on top
+     *     of the snapshot stream - is what overflows client connections and
+     *     drops them with "(error)" at match end. Only in-place regeneration
+     *     (duel /restart, evictgen on a live map) needs the per-tile push,
+     *     because no fresh snapshot is sent there.
+     */
+    GeneratedRound generate(long seed, boolean syncToClients) {
         if (
             Vars.world == null
                 || Vars.world.width() <= 0
@@ -192,7 +205,14 @@ final class EvictTerrainGenerator {
 
         placeNucleusCores(centers, normalCells);
         recomputeStaticDarkness();
-        syncGeneratedWorld();
+
+        if (syncToClients) {
+            syncGeneratedWorld();
+        } else {
+            Log.info(
+                "[EvictMapGenerator] Skipped per-tile client sync; the world (re)load snapshot carries the generated terrain."
+            );
+        }
 
         return new GeneratedRound(
             startHexSlots(centers, normalCells, filledCells),

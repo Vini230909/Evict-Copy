@@ -111,7 +111,9 @@ public class EvictMapPlugin extends Plugin {
             playerDataManager,
             duelServerManager,
             rankManager,
-            this::generate,
+            // evictgen regenerates the live map in place with no fresh snapshot,
+            // so connected clients only see the new terrain via the per-tile sync.
+            seed -> generate(seed, true),
             attritionManager
         );
 
@@ -167,7 +169,11 @@ public class EvictMapPlugin extends Plugin {
             );
 
             try {
-                generate(seed);
+                // World (re)load: the vanilla world snapshot already carries the
+                // generated terrain to clients, so skip the per-tile client sync.
+                // That redundant flood, layered on the snapshot stream, is what
+                // dropped connected players with "(error)" at match end.
+                generate(seed, false);
             } catch (Exception exception) {
                 Log.err(
                     "[EvictMapGenerator] Generation failed.",
@@ -297,14 +303,22 @@ public class EvictMapPlugin extends Plugin {
         return duelWorker ? settings.bannedBlockNames() : null;
     }
 
-    private void generate(long seed) {
+    /**
+     * @param syncToClients whether the generated terrain is pushed to connected
+     *     clients tile-by-tile. Pass {@code false} for generation triggered by a
+     *     world (re)load - the vanilla world snapshot already carries the terrain,
+     *     and the extra per-tile flood is what dropped connected players with
+     *     "(error)" at match end. Pass {@code true} for in-place regeneration
+     *     (duel restart, evictgen) where no fresh snapshot is sent.
+     */
+    private void generate(long seed, boolean syncToClients) {
         EvictRules.apply(
             (float) settings.unitBuildSpeedMultiplier(),
             syncedBannedBlocks()
         );
 
         EvictTerrainGenerator.GeneratedRound round =
-            terrainGenerator.generate(seed);
+            terrainGenerator.generate(seed, syncToClients);
 
         refreshWorldIndexes();
 
@@ -470,7 +484,10 @@ public class EvictMapPlugin extends Plugin {
         );
 
         try {
-            generate(seed);
+            // In-place duel restart keeps both duelists and spectators connected
+            // (no world reload / snapshot), so the new terrain must be pushed to
+            // them tile-by-tile.
+            generate(seed, true);
         } catch (Exception exception) {
             Log.err(
                 "[EvictMapGenerator] Duel restart generation failed.",
