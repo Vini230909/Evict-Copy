@@ -1,20 +1,10 @@
 package vini.evictmap;
 
-import arc.Core;
-import arc.util.Log;
-import mindustry.Vars;
-import mindustry.gen.Call;
-import mindustry.gen.Groups;
-import mindustry.gen.Player;
-import mindustry.net.Administration;
-import mindustry.world.Block;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.Properties;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -25,11 +15,21 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
+
+import arc.Core;
+import arc.util.Log;
+import mindustry.Vars;
+import mindustry.gen.Call;
+import mindustry.gen.Groups;
+import mindustry.gen.Player;
+import mindustry.net.Administration;
+import mindustry.world.Block;
 
 /**
  * On-demand 1v1 worker orchestration for the hub server.
@@ -57,7 +57,7 @@ final class DuelServerManager {
     private static final long READINESS_TIMEOUT_MILLIS = 45_000L;
     private static final long READINESS_POLL_MILLIS = 500L;
     private static final int READINESS_CONNECT_TIMEOUT_MILLIS = 1_000;
-    private static final long MAX_WORKER_LIFETIME_MINUTES = 30L;
+    private static final long MAX_WORKER_LIFETIME_MINUTES = 110L;
 
     private final EvictSettings settings;
     private final PlayerDataManager playerDataManager;

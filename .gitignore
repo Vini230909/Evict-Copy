@@ -5,3 +5,4 @@ config/*.db
 config/*.db-shm
 config/*.db-wal
 duel-workers/
+bin/
