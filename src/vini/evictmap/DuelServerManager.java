@@ -11,11 +11,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -33,11 +29,9 @@ import mindustry.world.Block;
 
 /**
  * On-demand 1v1 worker orchestration for the hub server.
- *
  * Each duel runs on its own Mindustry server process, because a single process
  * hosts only one game. A worker is spawned only when a match is requested and
  * terminates itself once the match empties, so idle duels cost no CPU.
- *
  * Flow per match:
  * 1. Reserve a free port from the configured range (main thread, no locking).
  * 2. On a background thread: provision the worker folder if missing, launch
@@ -45,7 +39,6 @@ import mindustry.world.Block;
  *    command on stdin, then poll the port until it accepts connections.
  * 3. Back on the main thread: redirect both players, or release the slot and
  *    notify them on failure.
- *
  * The slot map is only ever touched on the main thread; background work posts
  * results back with {@link Core#app}.
  */
@@ -280,7 +273,7 @@ final class DuelServerManager {
             }
         }
 
-        duels.sort((first, second) -> Integer.compare(first.port(), second.port()));
+        duels.sort(Comparator.comparingInt(ActiveDuel::port));
         return duels;
     }
 
@@ -391,7 +384,7 @@ final class DuelServerManager {
         for (String entry : packed.split(",")) {
             String[] parts = entry.split("\\|", 2);
 
-            if (result.length() > 0) {
+            if (!result.isEmpty()) {
                 result.append(", ");
             }
 
@@ -549,7 +542,7 @@ final class DuelServerManager {
     }
 
     /**
-     * Writes the hub's admins into the worker so it can recognise them; the file
+     * Writes the hub's admins into the worker so it can recognize them; the file
      * is rewritten (even when empty) every spawn so a reused worker folder never
      * keeps stale admins.
      */
@@ -683,6 +676,7 @@ final class DuelServerManager {
         }
 
         // Drop it so a reused worker folder never reports a stale result.
+        //noinspection ResultOfMethodCallIgnored
         resultFile.delete();
     }
 
@@ -745,7 +739,7 @@ final class DuelServerManager {
                 );
                 return true;
             } catch (IOException ignored) {
-                sleepQuietly(READINESS_POLL_MILLIS);
+                sleepQuietly();
             }
         }
 
@@ -834,9 +828,9 @@ final class DuelServerManager {
         Files.copy(source.toPath(), target.toPath());
     }
 
-    private static void sleepQuietly(long millis) {
+    private static void sleepQuietly() {
         try {
-            Thread.sleep(millis);
+            Thread.sleep(DuelServerManager.READINESS_POLL_MILLIS);
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
         }
