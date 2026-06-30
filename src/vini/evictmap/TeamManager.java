@@ -50,7 +50,7 @@ import java.util.function.Predicate;
  * - Fallen can win only after at least one personal start core was assigned
  * - one guarded automatic random-seed round reset
  */
-final class TeamManager {
+public final class TeamManager {
 
     static final int FALLEN_TEAM_ID = 14;
     static final Team FALLEN_TEAM = Team.get(FALLEN_TEAM_ID);
@@ -1722,7 +1722,7 @@ final class TeamManager {
         return roundSerial;
     }
 
-    boolean isRoundActiveForSystems() {
+    public boolean isRoundActiveForSystems() {
         return roundActive && !resetting;
     }
 
@@ -1760,7 +1760,7 @@ final class TeamManager {
      * an owned core hex or one directly neighboring hex. Entering a hex two
      * graph steps away is the first point at which recurring attrition applies.
      */
-    boolean isWithinOneHexOfOwnedCore(Unit unit) {
+    public boolean isWithinOneHexOfOwnedCore(Unit unit) {
         if (unit == null || slots.isEmpty()) {
             return false;
         }

@@ -9,6 +9,7 @@ import mindustry.world.Block;
 import mindustry.world.Tile;
 import mindustry.world.blocks.storage.CoreBlock.CoreBuild;
 import vini.evictmap.TeamManager.HexSlot;
+import vini.evictmap.gameplay.AttritionManager;
 
 import java.util.ArrayList;
 import java.util.List;

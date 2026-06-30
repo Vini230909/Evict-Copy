@@ -17,7 +17,7 @@ import java.util.Set;
  * Stored relative to the server working directory so values survive terminal
  * closes, full Java restarts and normal plugin updates.
  */
-final class EvictSettings {
+public final class EvictSettings {
 
     enum OreKind {
         COPPER("copper", 29.94d, 0.82d, 3.10d, 0.13d),
@@ -335,7 +335,7 @@ final class EvictSettings {
         }
     }
 
-    void setCoreAttritionPercentages(
+    public void setCoreAttritionPercentages(
             double tier1To3,
             double tier4,
             double tier5
@@ -344,7 +344,7 @@ final class EvictSettings {
         save();
     }
 
-    void setRangeAttritionPercent(double percent) {
+    public void setRangeAttritionPercent(double percent) {
         setRangeAttritionPercentWithoutSaving(percent);
         save();
     }
@@ -500,19 +500,19 @@ final class EvictSettings {
         return waterSettings;
     }
 
-    double coreAttritionTier1To3Chance() {
+    public double coreAttritionTier1To3Chance() {
         return coreAttritionTier1To3Percent / 100d;
     }
 
-    double coreAttritionTier4Chance() {
+    public double coreAttritionTier4Chance() {
         return coreAttritionTier4Percent / 100d;
     }
 
-    double coreAttritionTier5Chance() {
+    public double coreAttritionTier5Chance() {
         return coreAttritionTier5Percent / 100d;
     }
 
-    double rangeAttritionChance() {
+    public double rangeAttritionChance() {
         return rangeAttritionPercent / 100d;
     }
 
@@ -540,13 +540,13 @@ final class EvictSettings {
         return unitBuildSpeedMultiplier;
     }
 
-    String compactCoreAttritionSettings() {
+    public String compactCoreAttritionSettings() {
         return "T1-T3=" + formatPercent(coreAttritionTier1To3Percent)
                 + "%, T4=" + formatPercent(coreAttritionTier4Percent)
                 + "%, T5=" + formatPercent(coreAttritionTier5Percent) + "%";
     }
 
-    String compactRangeAttritionSettings() {
+    public String compactRangeAttritionSettings() {
         return formatPercent(rangeAttritionPercent) + "%";
     }
 

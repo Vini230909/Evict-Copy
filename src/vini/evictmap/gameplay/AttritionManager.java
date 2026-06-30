@@ -1,4 +1,4 @@
-package vini.evictmap;
+package vini.evictmap.gameplay;
 
 import arc.math.Mathf;
 import arc.struct.Seq;
@@ -10,9 +10,12 @@ import mindustry.gen.Groups;
 import mindustry.gen.Unit;
 import mindustry.gen.Unitc;
 import mindustry.type.UnitType;
+import vini.evictmap.EvictSettings;
+import vini.evictmap.TeamManager;
 
-import java.util.IdentityHashMap;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * Evict unit attrition:
@@ -22,101 +25,86 @@ import java.util.Map;
  * owned core hex receive one flat range-attrition roll, regardless of tier.
  * - Player/core units spawned by a core are always immune.
  */
-final class AttritionManager {
+public final class AttritionManager implements GameplayManagerInterface {
 
     private static final float RANGE_ATTRITION_INTERVAL_TICKS = 5f * 60f;
     private static final int CAPTURE_ATTRITION_RADIUS_TILES = 40;
 
 
-    private static final Map<UnitType, Integer> VANILLA_TIERS =
-            new IdentityHashMap<>();
+    private static final Map<UnitType, Integer> UNIT_TIER_MAP =
+            new HashMap<>();
 
     /**
      * Plugins may be instantiated before vanilla content has finished loading.
      * Resolve the UnitTypes lazily so an early class load cannot permanently
      * leave this table empty.
      */
-    private static void ensureTierMap() {
-        if (!VANILLA_TIERS.isEmpty() || UnitTypes.dagger == null) {
+    private static void ensureUnitTierMapIsPopulated() {
+        if (!UNIT_TIER_MAP.isEmpty() || UnitTypes.dagger == null) {
             return;
         }
 
-        registerTier(
-                1,
-                UnitTypes.dagger,
-                UnitTypes.crawler,
-                UnitTypes.nova,
-                UnitTypes.flare,
-                UnitTypes.mono,
-                UnitTypes.risso,
-                UnitTypes.retusa,
-                UnitTypes.stell,
-                UnitTypes.merui,
-                UnitTypes.elude
-        );
+        UNIT_TIER_MAP.put(UnitTypes.dagger, 1);
+        UNIT_TIER_MAP.put(UnitTypes.crawler, 1);
+        UNIT_TIER_MAP.put(UnitTypes.nova, 1);
+        UNIT_TIER_MAP.put(UnitTypes.flare, 1);
+        UNIT_TIER_MAP.put(UnitTypes.mono, 1);
+        UNIT_TIER_MAP.put(UnitTypes.risso, 1);
+        UNIT_TIER_MAP.put(UnitTypes.retusa, 1);
+        UNIT_TIER_MAP.put(UnitTypes.stell, 1);
+        UNIT_TIER_MAP.put(UnitTypes.merui, 1);
+        UNIT_TIER_MAP.put(UnitTypes.elude, 1);
 
-        registerTier(
-                2,
-                UnitTypes.mace,
-                UnitTypes.atrax,
-                UnitTypes.pulsar,
-                UnitTypes.horizon,
-                UnitTypes.poly,
-                UnitTypes.minke,
-                UnitTypes.oxynoe,
-                UnitTypes.locus,
-                UnitTypes.cleroi,
-                UnitTypes.avert
-        );
+        UNIT_TIER_MAP.put(UnitTypes.mace, 2);
+        UNIT_TIER_MAP.put(UnitTypes.atrax, 2);
+        UNIT_TIER_MAP.put(UnitTypes.pulsar, 2);
+        UNIT_TIER_MAP.put(UnitTypes.horizon, 2);
+        UNIT_TIER_MAP.put(UnitTypes.poly, 2);
+        UNIT_TIER_MAP.put(UnitTypes.minke, 2);
+        UNIT_TIER_MAP.put(UnitTypes.oxynoe, 2);
+        UNIT_TIER_MAP.put(UnitTypes.locus, 2);
+        UNIT_TIER_MAP.put(UnitTypes.cleroi, 2);
+        UNIT_TIER_MAP.put(UnitTypes.avert, 2);
 
-        registerTier(
-                3,
-                UnitTypes.fortress,
-                UnitTypes.spiroct,
-                UnitTypes.quasar,
-                UnitTypes.zenith,
-                UnitTypes.mega,
-                UnitTypes.bryde,
-                UnitTypes.cyerce,
-                UnitTypes.precept,
-                UnitTypes.anthicus,
-                UnitTypes.obviate
-        );
+        UNIT_TIER_MAP.put(UnitTypes.fortress, 3);
+        UNIT_TIER_MAP.put(UnitTypes.spiroct, 3);
+        UNIT_TIER_MAP.put(UnitTypes.quasar, 3);
+        UNIT_TIER_MAP.put(UnitTypes.zenith, 3);
+        UNIT_TIER_MAP.put(UnitTypes.mega, 3);
+        UNIT_TIER_MAP.put(UnitTypes.bryde, 3);
+        UNIT_TIER_MAP.put(UnitTypes.cyerce, 3);
+        UNIT_TIER_MAP.put(UnitTypes.precept, 3);
+        UNIT_TIER_MAP.put(UnitTypes.anthicus, 3);
+        UNIT_TIER_MAP.put(UnitTypes.obviate, 3);
 
-        registerTier(
-                4,
-                UnitTypes.scepter,
-                UnitTypes.arkyid,
-                UnitTypes.vela,
-                UnitTypes.antumbra,
-                UnitTypes.quad,
-                UnitTypes.sei,
-                UnitTypes.aegires,
-                UnitTypes.vanquish,
-                UnitTypes.tecta,
-                UnitTypes.quell
-        );
+        UNIT_TIER_MAP.put(UnitTypes.scepter, 4);
+        UNIT_TIER_MAP.put(UnitTypes.arkyid, 4);
+        UNIT_TIER_MAP.put(UnitTypes.vela, 4);
+        UNIT_TIER_MAP.put(UnitTypes.antumbra, 4);
+        UNIT_TIER_MAP.put(UnitTypes.quad, 4);
+        UNIT_TIER_MAP.put(UnitTypes.sei, 4);
+        UNIT_TIER_MAP.put(UnitTypes.aegires, 4);
+        UNIT_TIER_MAP.put(UnitTypes.vanquish, 4);
+        UNIT_TIER_MAP.put(UnitTypes.tecta, 4);
+        UNIT_TIER_MAP.put(UnitTypes.quell, 4);
 
-        registerTier(
-                5,
-                UnitTypes.reign,
-                UnitTypes.toxopid,
-                UnitTypes.corvus,
-                UnitTypes.eclipse,
-                UnitTypes.oct,
-                UnitTypes.omura,
-                UnitTypes.navanax,
-                UnitTypes.conquer,
-                UnitTypes.collaris,
-                UnitTypes.disrupt
-        );
+        UNIT_TIER_MAP.put(UnitTypes.reign, 5);
+        UNIT_TIER_MAP.put(UnitTypes.toxopid, 5);
+        UNIT_TIER_MAP.put(UnitTypes.corvus, 5);
+        UNIT_TIER_MAP.put(UnitTypes.eclipse, 5);
+        UNIT_TIER_MAP.put(UnitTypes.oct, 5);
+        UNIT_TIER_MAP.put(UnitTypes.omura, 5);
+        UNIT_TIER_MAP.put(UnitTypes.navanax, 5);
+        UNIT_TIER_MAP.put(UnitTypes.conquer, 5);
+        UNIT_TIER_MAP.put(UnitTypes.collaris, 5);
+        UNIT_TIER_MAP.put(UnitTypes.disrupt, 5);
     }
 
     private final TeamManager teamManager;
     private final EvictSettings settings;
     private float rangeAttritionTimer = 0f;
 
-    AttritionManager(
+    public AttritionManager(
             TeamManager teamManager,
             EvictSettings settings
     ) {
@@ -124,11 +112,11 @@ final class AttritionManager {
         this.settings = settings;
     }
 
-    void beginRound() {
+    public void beginRound() {
         rangeAttritionTimer = 0f;
     }
 
-    void update() {
+    public void update() {
         if (!teamManager.isRoundActiveForSystems()) {
             rangeAttritionTimer = 0f;
             return;
@@ -144,7 +132,10 @@ final class AttritionManager {
         applyRangeAttrition();
     }
 
-    int applyCaptureAttrition(int coreTileX, int coreTileY) {
+    public void endRound() {
+    }
+
+    public int applyCaptureAttrition(int coreTileX, int coreTileY) {
         float centerX = coreTileX * Vars.tilesize;
         float centerY = coreTileY * Vars.tilesize;
         float radius = CAPTURE_ATTRITION_RADIUS_TILES * Vars.tilesize;
@@ -163,16 +154,16 @@ final class AttritionManager {
     }
 
     private int killMatching(
-            UnitFilter filter,
-            ChanceProvider chanceProvider
+            Function<Unit, Boolean> filter,
+            Function<Unit, Double> chanceProvider
     ) {
         Seq<Unit> toKill = new Seq<>();
 
         Groups.unit.each(unit -> {
             if (
                     !eligibleForAttrition(unit)
-                            || !filter.accept(unit)
-                            || !Mathf.chance(chanceProvider.chance(unit))
+                            || !filter.apply(unit)
+                            || !Mathf.chance(chanceProvider.apply(unit))
             ) {
                 return;
             }
@@ -192,15 +183,7 @@ final class AttritionManager {
                 && unit.type.killable(unit);
     }
 
-    private static void registerTier(int tier, UnitType... types) {
-        for (UnitType type : types) {
-            if (type != null) {
-                VANILLA_TIERS.put(type, tier);
-            }
-        }
-    }
-
-    void setCoreDeathChancesPercent(
+    public void setCoreDeathChancesPercent(
             double tier1To3Percent,
             double tier4Percent,
             double tier5Percent
@@ -212,37 +195,27 @@ final class AttritionManager {
         );
     }
 
-    void setRangeDeathChancePercent(double percent) {
+    public void setRangeDeathChancePercent(double percent) {
         settings.setRangeAttritionPercent(percent);
     }
 
-    String compactCoreSettings() {
+    public String compactCoreSettings() {
         return settings.compactCoreAttritionSettings();
     }
 
-    String compactRangeSettings() {
+    public String compactRangeSettings() {
         return settings.compactRangeAttritionSettings();
     }
 
     private double coreDeathChance(UnitType type) {
-        ensureTierMap();
+        ensureUnitTierMapIsPopulated();
 
-        int tier = VANILLA_TIERS.getOrDefault(type, 1);
+        int tier = UNIT_TIER_MAP.getOrDefault(type, 1);
 
         return switch (tier) {
             case 4 -> settings.coreAttritionTier4Chance();
             case 5 -> settings.coreAttritionTier5Chance();
             default -> settings.coreAttritionTier1To3Chance();
         };
-    }
-
-    @FunctionalInterface
-    private interface UnitFilter {
-        boolean accept(Unit unit);
-    }
-
-    @FunctionalInterface
-    private interface ChanceProvider {
-        double chance(Unit unit);
     }
 }

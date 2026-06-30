@@ -7,6 +7,7 @@ import mindustry.content.Blocks;
 import mindustry.game.Team;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
+import vini.evictmap.gameplay.AttritionManager;
 
 import java.util.Map;
 import java.util.function.LongConsumer;

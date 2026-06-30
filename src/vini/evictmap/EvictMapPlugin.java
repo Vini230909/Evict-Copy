@@ -18,6 +18,7 @@ import mindustry.game.Team;
 import mindustry.gen.Player;
 import mindustry.mod.Plugin;
 import mindustry.world.blocks.storage.CoreBlock;
+import vini.evictmap.gameplay.AttritionManager;
 
 import java.util.HashMap;
 
