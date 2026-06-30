@@ -14,15 +14,12 @@ import java.util.Map;
 
 /**
  * /play (alias /p) 1v1 duel challenges.
- *
  * A challenger picks an online opponent from a menu. The opponent receives an
  * accept/decline menu. On accept both players are redirected to the configured
  * dedicated 1v1 server instance with {@link Call#connect}.
- *
  * This hub server only sends the two players to the duel instance. Map/mode
  * selection and the match itself live on that separate instance, because a
  * single Mindustry server process can only host one game at a time.
- *
  * The duel target (ip/port) is a persistent server setting, so nothing is
  * hard-coded and the worker instance can be pointed at whenever it is ready.
  */
@@ -239,10 +236,10 @@ final class DuelCommands {
             return;
         }
 
-        /**
-         * The manager reserves a worker and redirects both players once it is
-         * hosting. Spawning happens off the main thread, so this returns right
-         * away; a false result means no free worker slot is available.
+        /*
+          The manager reserves a worker and redirects both players once it is
+          hosting. Spawning happens off the main thread, so this returns right
+          away; a false result means no free worker slot is available.
          */
         if (!duelManager.requestDuel(challenger, opponent)) {
             challenger.sendMessage(
