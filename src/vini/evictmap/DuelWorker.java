@@ -22,12 +22,11 @@ import mindustry.gen.Player;
 /**
  * Worker-side 1v1 referee. Only active when launched as a duel worker
  * (-Devict.duelWorker=true); on the hub this class does nothing.
- *
  * - reads the hub handshake (the two player UUIDs + hub address),
  * - lets the world run for a brief settle window when a duelist joins so their
  *   unit spawns at their core and their client camera snaps onto it, then
  *   freezes the match (an instant freeze leaves the camera stuck at the map
- *   origin until the first unpause, because the spawn resolves on a world tick),
+ *   origin until the first unpause, because the spawn resolves on a world tick).
  * - once both are present, runs a 5-second countdown (HUD text), then unfreezes,
  * - if a player disconnects mid-match, pauses and shows a "Xs to rejoin"
  *   countdown; resumes when they return, or after the window if they do not,
@@ -35,7 +34,6 @@ import mindustry.gen.Player;
  * - shuts down once it has sat empty for a grace period,
  * - writes status.properties periodically so the hub's evictduelstatus can show
  *   the live state, game time and connected players.
- *
  * Countdowns, status writes and the empty-shutdown run on a real-time executor,
  * because the game is paused during them and logic-timed tasks would stall.
  */
@@ -95,9 +93,9 @@ final class DuelWorker {
     /** Shared id so each duel HUD update replaces the previous popup instead of stacking. */
     private static final String HUD_ID = "duel-hud";
     /**
-     * How far above screen centre the duel HUD sits, in UI units. This is bottom
-     * padding on a centre-aligned popup, so a larger value lifts the text higher.
-     * Kept just above centre so it reads above Mindustry's own status text without
+     * How far above screen center the duel HUD sits, in UI units. This is bottom
+     * padding on a center-aligned popup, so a larger value lifts the text higher.
+     * Kept just above center so it reads above Mindustry's own status text without
      * drifting up to the out-of-focus top of the screen.
      */
     private static final int HUD_RAISE = 220;
@@ -354,7 +352,7 @@ final class DuelWorker {
     }
 
     /**
-     * Shows the duel HUD text slightly above screen centre. Replaces any existing
+     * Shows the duel HUD text slightly above screen center. Replaces any existing
      * duel popup (same {@link #HUD_ID}) so repeated calls during the countdown do
      * not stack. Height is controlled by {@link #HUD_RAISE}.
      */
@@ -462,7 +460,7 @@ final class DuelWorker {
 
         Groups.player.each(connected -> {
             if (connected != null) {
-                if (names.length() > 0) {
+                if (!names.isEmpty()) {
                     names.append("[white], ");
                 }
                 names.append(PlayerNameFormatter.displayName(connected));
@@ -470,7 +468,7 @@ final class DuelWorker {
         });
 
         showHud(
-            names.length() > 0
+                !names.isEmpty()
                 ? "[accent]Waiting for players\n[white]" + names + "[]"
                 : "[accent]Waiting for players...[]"
         );
@@ -501,7 +499,7 @@ final class DuelWorker {
     private void scheduleShutdownIfEmpty(int seconds) {
         scheduler.schedule(
             () -> Core.app.post(() -> {
-                if (Groups.player.size() == 0) {
+                if (Groups.player.isEmpty()) {
                     Log.info(
                         "[EvictMapGenerator] Duel worker is empty; shutting down to free the slot."
                     );
@@ -535,7 +533,7 @@ final class DuelWorker {
 
         Groups.player.each(player -> {
             if (player != null) {
-                if (players.length() > 0) {
+                if (!players.isEmpty()) {
                     players.append(",");
                 }
                 players.append(player.plainName()).append("|").append(player.uuid());
