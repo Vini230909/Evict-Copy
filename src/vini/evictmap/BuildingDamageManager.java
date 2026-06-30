@@ -16,7 +16,6 @@ import java.util.Set;
 
 /**
  * Scales building-fired bullets against buildings only.
- *
  * Unit damage is left untouched because Mindustry applies
  * buildingDamageMultiplier only when the bullet damages a building.
  */
