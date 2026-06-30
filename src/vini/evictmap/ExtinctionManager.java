@@ -10,16 +10,14 @@ import java.util.List;
 
 /**
  * Crown-on-the-hill late-game event.
- *
  * The clock starts immediately when the generated round starts.
- *
  * Timeline:
  * - 01:20:00: first warning; /over becomes unavailable
  * - 01:25:00: five-minute warning
  * - 01:29:00: one-minute warning
  * - 01:30:00: outermost live ring collapses immediately
  * - every 01:30 afterward: the next live ring collapses
- * - when the center plus its six neighbours remain: four-minute center hold
+ * - when the center plus its six neighbors remain: four-minute center hold
  * - the center owner after four minutes wins, including Fallen
  */
 final class ExtinctionManager {
@@ -143,31 +141,6 @@ final class ExtinctionManager {
 
     boolean blocksEarlyEnd() {
         return warningTenMinutesSent || elapsedTicks >= WARNING_TEN_MINUTES_TICKS;
-    }
-
-    boolean forceStart() {
-        if (
-            !teamManager.isRoundActiveForSystems()
-                || extinctionStarted
-        ) {
-            return false;
-        }
-
-        /**
-         * An admin-triggered early Extinction skips the warning countdown and
-         * immediately collapses the outermost live ring.
-         */
-        warningTenMinutesSent = true;
-        warningFiveMinutesSent = true;
-        warningOneMinuteSent = true;
-        forcedTimelineOffsetTicks = Math.max(
-            forcedTimelineOffsetTicks,
-            EXTINCTION_START_TICKS - baseTimelineTicks()
-        );
-        elapsedTicks = currentTimelineTicks();
-
-        startExtinction();
-        return true;
     }
 
     private void startExtinction() {

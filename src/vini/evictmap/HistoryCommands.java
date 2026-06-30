@@ -15,7 +15,6 @@ import java.util.Map;
 /**
  * /history (alias /h): first pick a player, then page through that player's 1v1
  * matches.
- *
  * Every match is one entry: win/lose from the picked player's perspective, both
  * names, and an elo line. ELO is not computed yet, so the line shows a zero
  * delta for now. Because this server only runs ranked Evict 1v1s, the map/mode

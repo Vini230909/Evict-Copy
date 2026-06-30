@@ -15,12 +15,9 @@ import java.util.Set;
 
 /**
  * In-game player commands for the Evict server.
- *
  * /fullassault is toggled separately for each team and can only command that
  * team's own eligible units. It is never a global server-wide assault switch.
- *
  * Development commands are deliberately admin-only.
- *
  * Kept separate from the generator so additional commands can be added later
  * without turning EvictMapPlugin into a command monolith.
  */
@@ -70,7 +67,7 @@ final class FullassaultManager {
             return;
         }
 
-        /**
+        /*
          * Full assault is a team mode, not a global server mode and not a
          * per-player unit mode. The unit list is swept once and each unit is
          * dispatched by its own team, instead of re-scanning every unit once
