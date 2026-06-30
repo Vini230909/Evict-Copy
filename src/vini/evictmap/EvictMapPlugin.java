@@ -60,9 +60,7 @@ public class EvictMapPlugin extends Plugin {
 
     private final EvictCommands evictCommands =
         new EvictCommands(
-            teamManager,
-            extinctionManager,
-            playerDataManager
+            teamManager
         );
 
     private final RoundEndCommands roundEndCommands =

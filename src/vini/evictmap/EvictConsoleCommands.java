@@ -723,7 +723,7 @@ final class EvictConsoleCommands {
             + " | names=" + String.join(", ", info.knownNames())
             + " | FFA=" + info.ffaWon() + "/" + info.ffaPlayed()
             + " | playtime="
-            + EvictCommands.formatDuration(info.totalPlaytimeMillis());
+            + formatDuration(info.totalPlaytimeMillis());
     }
 
     private String plainPlayerInfo(PlayerDataManager.PlayerInfo info) {
@@ -731,9 +731,9 @@ final class EvictConsoleCommands {
             + " | uuid=" + info.uuid()
             + " | names=" + String.join(", ", info.knownNames())
             + " | totalPlaytime="
-            + EvictCommands.formatDuration(info.totalPlaytimeMillis())
+            + formatDuration(info.totalPlaytimeMillis())
             + " | ffaPlaytime="
-            + EvictCommands.formatDuration(info.ffaPlaytimeMillis())
+            + formatDuration(info.ffaPlaytimeMillis())
             + " | ffaWon=" + info.ffaWon()
             + " | ffaPlayed=" + info.ffaPlayed()
             + " | rankedWins=" + info.rankedWins()
@@ -851,5 +851,25 @@ final class EvictConsoleCommands {
 
     private double parseDecimal(String value) {
         return Double.parseDouble(value.replace(',', '.'));
+    }
+
+    static String formatDuration(long durationMillis) {
+        long totalSeconds = Math.max(0L, durationMillis / 1000L);
+        long hours = totalSeconds / 3600L;
+        long minutes = (totalSeconds % 3600L) / 60L;
+        long seconds = totalSeconds % 60L;
+
+        StringBuilder result = new StringBuilder();
+
+        if (hours > 0L) {
+            result.append(hours).append("h ");
+        }
+
+        if (hours > 0L || minutes > 0L) {
+            result.append(minutes).append("m ");
+        }
+
+        result.append(seconds).append("s");
+        return result.toString();
     }
 }
