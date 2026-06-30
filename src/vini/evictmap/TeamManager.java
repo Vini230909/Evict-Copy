@@ -2,7 +2,6 @@ package vini.evictmap;
 
 import arc.func.Cons;
 import arc.util.Log;
-import arc.util.Time;
 import mindustry.Vars;
 import mindustry.content.Blocks;
 import mindustry.game.Team;
@@ -11,7 +10,6 @@ import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
 import mindustry.gen.Unit;
-import mindustry.world.Block;
 import mindustry.world.Tile;
 import mindustry.world.blocks.storage.CoreBlock.CoreBuild;
 
@@ -28,7 +26,6 @@ import java.util.function.Predicate;
 
 /**
  * Phase 1 of the Evict round system.
- *
  * Implemented:
  * - every generated neutral core belongs to Fallen team #14
  * - a first-time player receives a random unique team ID from #1..#128,
@@ -38,11 +35,9 @@ import java.util.function.Predicate;
  * - edge / filled-wall protection is preferred
  * - reconnecting during the same round returns to the same team
  * - if no safe start hex exists, the player remains playable in Fallen team
- *
  * Implemented in the current phase:
  * - exact one-time starting resources on personal-core claim
  * - the Evict start schematic, anchored to the centered Nucleus
- *
  * Implemented in the current phase:
  * - destroyed registered cores leave an empty hex center for five seconds
  * - every synthetic building in the captured hex is removed
@@ -65,7 +60,6 @@ final class TeamManager {
 
     /**
      * Start A -> hex -> hex -> Start B
-     *
      * This means graph distance 3 is the minimum allowed distance between
      * two claimed start hexes.
      */
@@ -80,14 +74,14 @@ final class TeamManager {
     /**
      * The generated playable hex circles use radius 39. Extinction converts
      * each collapsed logical hex circle into space without touching the
-     * surviving neighbour selected by the nearest-center check.
+     * surviving neighbor selected by the nearest-center check.
      */
     private static final int EXTINCTION_HEX_RADIUS = 39;
     private static final int EXTINCTION_HEX_RADIUS_SQUARED =
         EXTINCTION_HEX_RADIUS * EXTINCTION_HEX_RADIUS;
 
     /**
-     * Floor changes are network-synchronised. Sending thousands of floor
+     * Floor changes are network-synchronized. Sending thousands of floor
      * packets in one tick can disconnect clients, so collapsed terrain is
      * streamed gradually.
      */
@@ -188,10 +182,6 @@ final class TeamManager {
         );
     }
 
-    void assignConnectedPlayers() {
-        assignConnectedPlayers(null);
-    }
-
     /**
      * Assigns every not-yet-registered connected player. Players the optional
      * spectator predicate accepts are parked on derelict instead of claiming a
@@ -203,7 +193,7 @@ final class TeamManager {
             return;
         }
 
-        /**
+        /*
          * This method may run both during generation and one tick after
          * PlayEvent. Only process players not yet registered in this round so
          * an already assigned player is never spawned or messaged twice.
@@ -225,7 +215,7 @@ final class TeamManager {
     }
 
     /**
-     * Parks a player on Team.derelict so they spectate without a starting hex
+     * Parks a player on `Team.derelict` so they spectate without a starting hex
      * or core. Registering them in teamIdByPlayerUuid keeps the connected-player
      * assignment scan from later handing them a personal team. Used on duel
      * workers for /view spectators.
@@ -463,14 +453,12 @@ final class TeamManager {
             );
         }
 
-        /**
+        /*
          * The schematic includes its own centered Nucleus. StartLoadout
          * anchors that Nucleus exactly onto the neutral core tile, places all
          * buildings as the new personal team and fills the core once.
-         *
          * Reconnects never reach this method, so the package cannot be claimed
          * twice by the same player.
-         *
          * The chosen hex still belongs to Fallen, which may have raised
          * buildings (or a stray neutral structure may sit) inside it. Wipe the
          * whole hex first so nothing survives under or beside the fresh core,
@@ -822,10 +810,9 @@ final class TeamManager {
         String surrenderName = displayTeam(team);
         Team claimantTeam = determineSurrenderClaimantTeam(team);
 
-        /**
+        /*
          * Logical ownership changes before building destruction so CoreChange
          * events triggered by the surrender cannot create captures.
-         *
          * Keep the surrendered slots so each one receives a Fallen Core Shard
          * immediately after the surrendered team's buildings are removed.
          */
@@ -865,7 +852,7 @@ final class TeamManager {
                 "[scarlet]Your team surrendered. You are now Fallen.[]"
             );
 
-        /**
+        /*
          * If this team lost cores before surrendering, use core-kill scores
          * to find a claimant. Surrender has no final-core attacker tie-breaker,
          * so tied or missing scores leave players as free Fallen spectators.
@@ -998,7 +985,7 @@ final class TeamManager {
         int additionalNeeded = Math.max(0, requiredForHalf - owned);
         List<EarlyEndBlocker> blockers = new ArrayList<>();
 
-        /**
+        /*
          * A one-core team is ignored only when it never expanded beyond its
          * original starting core. A previously established enemy must be
          * eliminated completely, even if it has already been reduced back to
@@ -1072,7 +1059,7 @@ final class TeamManager {
             return;
         }
 
-        /**
+        /*
          * In a duel the result can only be decided once both players have taken
          * a start core. Otherwise, while only one has joined, ignoring Fallen
          * would make that lone player an instant "winner".
@@ -1081,7 +1068,7 @@ final class TeamManager {
             return;
         }
 
-        /**
+        /*
          * Pending captures count as ownership immediately. The delayed Core
          * Shard is only the visible replacement block, not the moment at which
          * the round result is decided.
@@ -1092,7 +1079,7 @@ final class TeamManager {
             return;
         }
 
-        /**
+        /*
          * Fallen owns every neutral core immediately after generation. It may
          * win only after the round has actually started through at least one
          * personal start-core assignment.
@@ -1101,7 +1088,7 @@ final class TeamManager {
             return;
         }
 
-        finishRound(Team.get(winnerTeamId), false);
+        finishRound(Team.get(winnerTeamId));
     }
 
     private Integer singleSurvivingOwnerTeamId() {
@@ -1138,27 +1125,9 @@ final class TeamManager {
         return winnerTeamId;
     }
 
-    boolean forceEnd(Team winner) {
-        if (
-            !roundActive
-                || resetting
-                || winner == null
-                || winner == Team.derelict
-        ) {
-            return false;
-        }
-
-        finishRound(winner, true);
-        return true;
-    }
-
-    private void finishRound(Team winner, boolean forced) {
+    private void finishRound(Team winner) {
         resetting = true;
         roundActive = false;
-
-        if (forced) {
-            Call.sendMessage("[scarlet]The round was force-ended by an admin.[]");
-        }
 
         String victoryReason = extinctionActive
             ? " has secured every surviving hex during EXTINCTION and won "
@@ -1172,7 +1141,7 @@ final class TeamManager {
         Log.info(
             "[EvictMapGenerator] Victory: @ won the round@ Starting guarded post-game reset.",
             displayTeam(winner),
-            forced ? " through /forceend." : "."
+                "."
         );
 
         victoryHandler.get(winner);
@@ -1214,6 +1183,7 @@ final class TeamManager {
         return result;
     }
 
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     boolean isLeader(Player player) {
         if (player == null || player.team() == FALLEN_TEAM) {
             return false;
@@ -1280,10 +1250,9 @@ final class TeamManager {
 
     boolean joinFallenPlayerToTeam(Player player, Team targetTeam) {
         if (
-            player == null
-                || targetTeam == null
-                || !isFallenPlayer(player)
-                || !isActivePersonalTeam(targetTeam.id)
+                targetTeam == null
+                        || !isFallenPlayer(player)
+                        || !isActivePersonalTeam(targetTeam.id)
         ) {
             return false;
         }
@@ -1375,12 +1344,12 @@ final class TeamManager {
             return null;
         }
 
-        /**
-         * Confirm the core covering the hex centre is a genuinely registered
+        /*
+         * Confirm the core covering the hex center is a genuinely registered
          * core for its team (guards against a phantom build that has not joined
          * the team core list yet). Identity is used instead of comparing tile
          * coordinates so an even-sized Foundation, whose origin tile sits
-         * off-centre, still verifies.
+         * off-center, still verifies.
          */
         for (CoreBuild registeredCore : Vars.state.teams.cores(team)) {
             if (registeredCore == centerCore) {
@@ -1389,10 +1358,6 @@ final class TeamManager {
         }
 
         return null;
-    }
-
-    boolean isRoundActivated() {
-        return roundActivated;
     }
 
     private void activateRound() {
@@ -1434,7 +1399,7 @@ final class TeamManager {
 
         Set<HexSlot> collapsing = new HashSet<>(collapsingSlots);
 
-        /**
+        /*
          * Logical ownership is removed first. CoreChangeEvents emitted while
          * deleting blocks therefore cannot start normal capture timers.
          */
@@ -1494,8 +1459,8 @@ final class TeamManager {
                 }
             }
 
-            /**
-             * Queue floor removal instead of synchronising every tile in one
+            /*
+             * Queue floor removal instead of synchronizing every tile in one
              * tick. Buildings and cores are already gone immediately, so the
              * logical collapse still happens at once while visual terrain
              * removal is streamed safely across later ticks.
@@ -1533,10 +1498,6 @@ final class TeamManager {
             ) {
                 Tile tile = extinctionTerrainQueue.removeFirst();
 
-                if (tile == null) {
-                    continue;
-                }
-
                 if (tile.block() != Blocks.air) {
                     tile.removeNet();
                 }
@@ -1572,7 +1533,7 @@ final class TeamManager {
         extinctionTerrainChangesPerTick = amount;
     }
 
-    void finishExtinction(Team winner, boolean overtime) {
+    void finishExtinction(Team winner) {
         if (
             !roundActive
                 || resetting
@@ -1598,9 +1559,7 @@ final class TeamManager {
                 "[accent]"
                     + displayTeam(winner)
                     + "[] won EXTINCTION by controlling the center core"
-                    + (overtime
-                        ? " during overtime."
-                        : " after the 4-minute final hold.")
+                    + " after the 4-minute final hold."
             );
 
             Log.info(
@@ -1627,7 +1586,7 @@ final class TeamManager {
         }
 
         if (!hasActivePersonalTeam()) {
-            finishExtinction(FALLEN_TEAM, false);
+            finishExtinction(FALLEN_TEAM);
         }
     }
 
@@ -1650,7 +1609,7 @@ final class TeamManager {
                 "[scarlet]Your team was consumed by EXTINCTION. You are now Fallen.[]"
             );
 
-        /**
+        /*
          * Extinction has no conquering team. Existing claims held by the
          * eliminated team are released instead of transferred.
          */
@@ -1725,10 +1684,10 @@ final class TeamManager {
     /**
      * Resolves the hex a core belongs to by footprint, not by an exact
      * origin-tile match. Odd-sized cores (Shard 3x3, Nucleus 5x5) anchor their
-     * {@code tile} on the centre, but the even-sized Foundation (4x4) anchors
-     * one tile off-centre, so a plain {@code slot.x == core.tile.x} test misses
-     * an upgraded core. A core covers exactly one hex centre (hexes are 74
-     * tiles apart, cores are at most 5 wide), so the slot whose centre tile is
+     * {@code tile} on the center, but the even-sized Foundation (4x4) anchors
+     * one tile off-center, so a plain {@code slot.x == core.tile.x} test misses
+     * an upgraded core. A core covers exactly one hex center (hexes are 74
+     * tiles apart, cores are at most 5 wide), so the slot whose center tile is
      * inside the core footprint is unambiguous.
      */
     HexSlot slotForCore(Building core) {
@@ -1796,7 +1755,7 @@ final class TeamManager {
 
     /**
      * A unit is protected from recurring range attrition while it remains in
-     * an owned core hex or one directly neighbouring hex. Entering a hex two
+     * an owned core hex or one directly neighboring hex. Entering a hex two
      * graph steps away is the first point at which recurring attrition applies.
      */
     boolean isWithinOneHexOfOwnedCore(Unit unit) {
@@ -1813,10 +1772,10 @@ final class TeamManager {
         int teamId = unit.team.id;
 
         for (HexSlot coreHex : slots) {
-            /**
+            /*
              * The adjacency test is pure arithmetic, so it filters first. The
              * effective-owner lookup reads world/core state and runs only for
-             * the unit hex and its direct neighbours instead of every slot.
+             * the unit hex and its direct neighbors instead of every slot.
              */
             if (
                 isSameOrAdjacentHex(unitHex, coreHex)
@@ -1924,7 +1883,7 @@ final class TeamManager {
     private void assignPlayerToTeam(Player player, Team team) {
         player.team(team);
 
-        /**
+        /*
          * Force a clean spawn request at the assigned team's core.
          * This avoids keeping a unit that was briefly created for a previous
          * default team during the connection process.

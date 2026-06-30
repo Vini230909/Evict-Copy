@@ -14,7 +14,6 @@ import mindustry.world.blocks.storage.CoreBlock.CoreBuild;
 /**
  * Places the one-time Evict starting package when a personal team claims its
  * first hex.
- *
  * The uploaded .msch file is embedded as Base64 so the plugin remains a single
  * self-contained JAR. The schematic is 15x15, contains one centered Nucleus at
  * local coordinate 7,7 and preserves rotations plus block configurations.
@@ -52,7 +51,7 @@ final class StartLoadout {
         int offsetX = coreX - schematicCore.x;
         int offsetY = coreY - schematicCore.y;
 
-        /**
+        /*
          * Sort by schematic priority like Mindustry's own loadout placer.
          * tile.setNet() is used instead of plain setBlock() because this package
          * is placed after a player joins an already-running server.

@@ -135,7 +135,7 @@ final class ExtinctionManager {
         }
 
         if (elapsedTicks >= finalPhaseEndTicks) {
-            teamManager.finishExtinction(finalCenterWinner(), false);
+            teamManager.finishExtinction(finalCenterWinner());
         }
     }
 

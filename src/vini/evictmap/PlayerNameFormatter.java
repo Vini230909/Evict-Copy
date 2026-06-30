@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
 final class PlayerNameFormatter {
 
     private static final Pattern HEX_COLOR_TAG =
-        Pattern.compile("\\[#([0-9a-fA-F]{6})(?:[0-9a-fA-F]{2})?\\]");
+        Pattern.compile("\\[#([0-9a-fA-F]{6})(?:[0-9a-fA-F]{2})?]");
 
     private PlayerNameFormatter() {
     }
@@ -32,9 +32,9 @@ final class PlayerNameFormatter {
 
         /*
          * Only an explicit [#rrggbb] tag the player put in their own name is
-         * trusted. Everything else - team colour, the colour swatch picked in
+         * trusted. Everything else - team color, the color swatch picked in
          * the multiplayer menu - is ignored and the name is shown white, so a
-         * player without a coloured name never appears in an unrelated colour.
+         * player without a colored name never appears in an unrelated color.
          */
         return color == null
             ? "[white]" + name + "[]"

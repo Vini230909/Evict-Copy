@@ -26,7 +26,6 @@ import java.util.function.Consumer;
 
 /**
  * Persistent player profile and statistics storage.
- *
  * Database writes run on a single background thread. Game-world state is only
  * read on the server thread before small immutable write jobs are queued.
  */
@@ -116,8 +115,7 @@ final class PlayerDataManager {
     void recordConnectedFfaParticipants(TeamManager teamManager) {
         Groups.player.each(player -> {
             if (
-                player != null
-                    && teamManager.isPersonalRoundPlayer(player)
+                    teamManager.isPersonalRoundPlayer(player)
             ) {
                 recordFfaParticipation(player);
             }
@@ -183,13 +181,6 @@ final class PlayerDataManager {
         Consumer<List<DuelMatch>> callback
     ) {
         enqueue(() -> deliver(callback, loadDuelHistory(uuid)));
-    }
-
-    void findPlayerInfoByUuid(
-        String uuid,
-        Consumer<PlayerInfo> callback
-    ) {
-        enqueue(() -> deliver(callback, loadPlayerInfoByUuid(uuid)));
     }
 
     void searchPlayerInfo(
@@ -552,21 +543,6 @@ final class PlayerDataManager {
         }
     }
 
-    private PlayerInfo loadPlayerInfoByUuid(String uuid) throws SQLException {
-        try (
-            Connection connection = connect();
-            PreparedStatement statement = connection.prepareStatement(
-                "SELECT * FROM players WHERE uuid = ?"
-            )
-        ) {
-            statement.setString(1, uuid);
-
-            try (ResultSet result = statement.executeQuery()) {
-                return result.next() ? playerInfo(connection, result) : null;
-            }
-        }
-    }
-
     private List<PlayerInfo> searchPlayerInfo(String query)
         throws SQLException {
         List<PlayerInfo> result = new ArrayList<>();
@@ -656,13 +632,13 @@ final class PlayerDataManager {
     ) throws SQLException {
         String uuid = result.getString("uuid");
 
-        /**
-         * Stored playtime is only flushed at round starts, on leave and on
-         * shutdown, so an online player's ongoing session has not reached the
-         * database yet. Add the live unpersisted session time here, otherwise
-         * /info reports a stale total that never appears to count their current
-         * play. Offline players have no active session and read straight from
-         * the database.
+        /*
+          Stored playtime is only flushed at round starts, on leave and on
+          shutdown, so an online player's ongoing session has not reached the
+          database yet. Add the live unpersisted session time here, otherwise
+          /info reports a stale total that never appears to count their current
+          play. Offline players have no active session and read straight from
+          the database.
          */
         long now = System.currentTimeMillis();
         long liveTotalMillis;

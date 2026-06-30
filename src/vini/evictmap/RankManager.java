@@ -14,12 +14,10 @@ import java.util.Set;
 
 /**
  * Persistent tournament ranks keyed by player UUID.
- *
  * Ranks live in a small properties file so the hub can grant them from the
  * console and the on-demand duel workers can read them: {@link DuelServerManager}
  * copies this file into each worker when it spawns. The hub is the only writer;
  * workers only read.
- *
  * A ranked player gets a name tag (e.g. [C] for a commentator) and, for
  * commentator and above, permission to /restart a duel they are spectating.
  */
@@ -31,7 +29,7 @@ final class RankManager {
     /**
      * Hub admins snapshotted into each duel worker at spawn (see
      * {@link DuelServerManager}). Workers have no access to the hub's own admin
-     * list, so this is how an admin is recognised on a duel server. Only present
+     * list, so this is how an admin is recognized on a duel server. Only present
      * inside a worker's config; on the hub the set stays empty.
      */
     private static final File SYNCED_ADMINS_FILE =

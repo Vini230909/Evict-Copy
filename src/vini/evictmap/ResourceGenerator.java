@@ -15,13 +15,11 @@ import java.util.Set;
 
 /**
  * Evict-style resource generator.
- *
  * Main appearance:
  * - coherent noise fields run over the complete map
  * - coordinate warping makes patch borders less round and more irregular
  * - a large-scale richness field creates naturally rich and poor areas
  * - resources may overlap visually and form mixed clusters
- *
  * Fairness corrections remain intentionally tiny:
  * - water uses configurable placement tries per hex
  * - every normal hex receives at least a few tiles of each ore
@@ -63,9 +61,8 @@ final class ResourceGenerator {
     // Global warped-noise presets
     // ---------------------------------------------------------------------
 
-    /**
+    /*
      * Patch size remains close to 0.4.2 / 0.4.3.
-     *
      * New:
      * - warpStrength distorts otherwise rounded blobs
      * - richnessScale and richnessStrength create large areas that are
@@ -74,7 +71,6 @@ final class ResourceGenerator {
      */
     /**
      * Ore settings are loaded from persistent server configuration.
-     *
      * Tilt, coordinate warp and richness modifiers stay disabled for the
      * editor-style comparison workflow. Water and tar presets remain fixed.
      */
@@ -189,7 +185,7 @@ final class ResourceGenerator {
         CorrectionCounter corrections = new CorrectionCounter();
         NoisePreset[] orePresets = createOrePresets(settings);
 
-        /**
+        /*
          * Floors first: generate bounded liquid patches rather than
          * unrestricted global blobs. Tar is placed after water and therefore
          * never overwrites a water tile. Ores may later overlay water tiles so
@@ -244,7 +240,7 @@ final class ResourceGenerator {
             return;
         }
 
-        /**
+        /*
          * Each playable hex receives a configured number of placement tries.
          * Decimal values use a fractional extra try: 4.3 means 4 guaranteed
          * tries and a 30% chance for one more in that hex.
@@ -335,12 +331,8 @@ final class ResourceGenerator {
                 continue;
             }
 
-            int targetSize = choosePatchSize(
-                random,
-                TAR_NORMAL_PATCH_MIN_SIZE,
-                TAR_NORMAL_PATCH_MAX_SIZE,
-                TAR_RARE_PATCH_MIN_SIZE,
-                TAR_RARE_PATCH_MAX_SIZE
+            int targetSize = chooseTarPatchSize(
+                random
             );
 
             int placed = growFloorPatch(
@@ -359,18 +351,14 @@ final class ResourceGenerator {
         }
     }
 
-    private static int choosePatchSize(
-        Random random,
-        int normalMinimum,
-        int normalMaximum,
-        int rareMinimum,
-        int rareMaximum
+    private static int chooseTarPatchSize(
+        Random random
     ) {
         boolean rare = random.nextDouble() < RARE_LIQUID_PATCH_CHANCE;
 
         return rare
-            ? inclusiveRandom(random, rareMinimum, rareMaximum)
-            : inclusiveRandom(random, normalMinimum, normalMaximum);
+            ? inclusiveRandom(random, ResourceGenerator.TAR_RARE_PATCH_MIN_SIZE, ResourceGenerator.TAR_RARE_PATCH_MAX_SIZE)
+            : inclusiveRandom(random, ResourceGenerator.TAR_NORMAL_PATCH_MIN_SIZE, ResourceGenerator.TAR_NORMAL_PATCH_MAX_SIZE);
     }
 
     private static TilePoint bestLiquidPatchStart(
@@ -412,34 +400,6 @@ final class ResourceGenerator {
         }
 
         return best;
-    }
-
-    private static void generateFloorNoise(
-        int seed,
-        List<HexCenter> centers,
-        NoisePreset preset
-    ) {
-        int width = Vars.world.width();
-        int height = Vars.world.height();
-
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                Tile tile = Vars.world.tile(x, y);
-
-                if (
-                    tile == null
-                        || tile.block() != Blocks.air
-                        || tile.floor() != Blocks.darksand
-                        || !insideLiquidMask(x, y, centers)
-                ) {
-                    continue;
-                }
-
-                if (passesThreshold(seed, preset, x, y)) {
-                    Tile.setFloor(tile, preset.block, Blocks.air);
-                }
-            }
-        }
     }
 
     private static void generateOreNoise(
@@ -660,12 +620,12 @@ final class ResourceGenerator {
     }
 
     private static int growOrePatch(
-        int seed,
-        NoisePreset preset,
-        HexCenter center,
-        TilePoint start,
-        int targetSize,
-        int localRadius
+            int seed,
+            NoisePreset preset,
+            HexCenter center,
+            TilePoint start,
+            int targetSize,
+            @SuppressWarnings("SameParameterValue") int localRadius
     ) {
         PriorityQueue<Candidate> queue = candidateQueue();
         Set<TilePoint> queued = new HashSet<>();
@@ -757,23 +717,13 @@ final class ResourceGenerator {
             && closestDistanceSquared <= ORE_MAX_RADIUS_SQUARED;
     }
 
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     private static boolean canCarryOreOverlay(Tile tile) {
         return tile.floor() == Blocks.darksand
             || tile.floor() == Blocks.darksandWater;
     }
 
-    private static boolean insideLiquidMask(
-        int x,
-        int y,
-        List<HexCenter> centers
-    ) {
-        int closestDistanceSquared =
-            closestCenterDistanceSquared(x, y, centers);
-
-        return closestDistanceSquared >= LIQUID_CORE_SAFE_RADIUS_SQUARED
-            && closestDistanceSquared <= LIQUID_MAX_RADIUS_SQUARED;
-    }
-
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     private static boolean insideGuaranteeOreMaskForCenter(
         int x,
         int y,
@@ -785,6 +735,7 @@ final class ResourceGenerator {
             && distanceSquared <= GUARANTEE_ORE_RADIUS_SQUARED;
     }
 
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     private static boolean insideLiquidMaskForCenter(
         int x,
         int y,
@@ -796,6 +747,7 @@ final class ResourceGenerator {
             && distanceSquared <= LIQUID_MAX_RADIUS_SQUARED;
     }
 
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     private static boolean insideLocalRadius(
         TilePoint point,
         TilePoint start,

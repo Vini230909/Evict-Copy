@@ -21,10 +21,10 @@ final class RoundTimeCommands {
     }
 
     void registerClientCommands(CommandHandler handler) {
-        handler.<Player>register(
+        handler.register(
             "time",
             "Show round time and your time since first joining this round.",
-            (args, player) -> showTime(args, player)
+                this::showTime
         );
     }
 
@@ -97,22 +97,6 @@ final class RoundTimeCommands {
     }
 
     private String formatDuration(long durationMillis) {
-        long totalSeconds = Math.max(0L, durationMillis / 1000L);
-        long hours = totalSeconds / 3600L;
-        long minutes = (totalSeconds % 3600L) / 60L;
-        long seconds = totalSeconds % 60L;
-
-        StringBuilder result = new StringBuilder();
-
-        if (hours > 0L) {
-            result.append(hours).append("h ");
-        }
-
-        if (hours > 0L || minutes > 0L) {
-            result.append(minutes).append("m ");
-        }
-
-        result.append(seconds).append("s");
-        return result.toString();
+        return EvictConsoleCommands.formatDuration(durationMillis);
     }
 }

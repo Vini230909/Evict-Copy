@@ -14,7 +14,6 @@ import java.util.Map;
 
 /**
  * /invite workflow for eliminated and late-join Fallen spectators.
- *
  * - Unclaimed Fallen players can request several active teams.
  * - Only the original team leader can accept requests.
  * - Claimed Fallen players can only be pulled into their claimant's team.
@@ -34,11 +33,11 @@ final class InviteManager {
     }
 
     void registerClientCommands(CommandHandler handler) {
-        handler.<Player>register(
+        handler.register(
             "invite",
             "[number]",
             "List or use Evict team invitations.",
-            (args, player) -> handleInvite(args, player)
+                this::handleInvite
         );
     }
 
@@ -79,9 +78,9 @@ final class InviteManager {
             }
         }
 
-        /**
-         * Existing claims may have been transferred because their claimant was
-         * itself eliminated. Preserve their previous list order.
+        /*
+          Existing claims may have been transferred because their claimant was
+          itself eliminated. Preserve their previous list order.
          */
         claimedOrderByPlayerUuid.keySet().removeIf(
             uuid -> teamManager.claimTeamId(uuid) == null
@@ -257,9 +256,8 @@ final class InviteManager {
             Player requester = onlinePlayer(request.playerUuid);
 
             if (
-                requester != null
-                    && teamManager.isFallenPlayer(requester)
-                    && teamManager.claimTeamId(request.playerUuid) == null
+                    teamManager.isFallenPlayer(requester)
+                            && teamManager.claimTeamId(request.playerUuid) == null
             ) {
                 result.add(
                     new LeaderEntry(
@@ -275,10 +273,9 @@ final class InviteManager {
             Integer claimTeamId = teamManager.claimTeamId(player.uuid());
 
             if (
-                player != null
-                    && teamManager.isFallenPlayer(player)
-                    && claimTeamId != null
-                    && claimTeamId == leaderTeam.id
+                    teamManager.isFallenPlayer(player)
+                            && claimTeamId != null
+                            && claimTeamId == leaderTeam.id
             ) {
                 long order = claimedOrderByPlayerUuid.computeIfAbsent(
                     player.uuid(),
@@ -398,10 +395,9 @@ final class InviteManager {
             Player requester = onlinePlayer(request.playerUuid);
 
             if (
-                requester == null
-                    || !teamManager.isFallenPlayer(requester)
-                    || teamManager.claimTeamId(request.playerUuid) != null
-                    || !teamManager.isActivePersonalTeam(request.targetTeamId)
+                    !teamManager.isFallenPlayer(requester)
+                            || teamManager.claimTeamId(request.playerUuid) != null
+                            || !teamManager.isActivePersonalTeam(request.targetTeamId)
             ) {
                 iterator.remove();
             }

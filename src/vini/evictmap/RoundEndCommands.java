@@ -8,7 +8,6 @@ import mindustry.gen.Player;
 
 /**
  * Player-facing round-ending commands.
- *
  * Kept separate from EvictCommands because these commands affect the complete
  * match state.
  */
@@ -39,16 +38,16 @@ final class RoundEndCommands {
     }
 
     void registerClientCommands(CommandHandler handler) {
-        handler.<Player>register(
+        handler.register(
             "die",
             "Leader only: surrender your complete team after 10 minutes.",
-            (args, player) -> surrender(args, player)
+                this::surrender
         );
 
-        handler.<Player>register(
+        handler.register(
             "over",
             "End an eligible round immediately.",
-            (args, player) -> endEarly(args, player)
+                this::endEarly
         );
     }
 
