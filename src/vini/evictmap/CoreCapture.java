@@ -16,25 +16,21 @@ import java.util.List;
 /**
  * EVERYTHING about taking over a core lives here: the capture pipeline AND the
  * actual core placement.
- *
  * Why it is more than one method: a capture happens over real time. The old
  * core dies, the hex sits empty for 5 seconds, then the attacker's Core Shard
  * appears. Time.run(delay, ...) runs code LATER on the main thread; we must
  * never block the thread to "wait". So the flow is cut into steps ONLY at the
  * points where it genuinely has to wait:
- *
  *   handleCoreChange     now      a core changed - is it really a death, and
  *                                 who captured it?
  *   startCapture         now      mark the hex captured, schedule the wipe
  *   captureClearHex      +1 tick  wipe the hex, attrition, hand over ownership,
  *                                 decide elimination + victory
  *   replaceCapturedCore  +5 s     wipe again (anti-abuse), place the Core Shard;
- *                                 retries every 60 ticks if the centre is blocked
- *
+ *                                 retries every 60 ticks if the center is blocked
  * Every step does its own visible work and then schedules the next one at the
  * very end - no method just calls another. captureStepValid() is the single
  * shared "is this still the live capture?" guard.
- *
  * This class only asks TeamManager for shared round/team state (slots, victory,
  * elimination) through a handful of clearly named calls. TeamManager calls back
  * for exactly two things it reuses elsewhere: placeCore() (surrender restores
@@ -43,15 +39,15 @@ import java.util.List;
 final class CoreCapture {
 
     /**
-     * Captures intentionally do not complete instantly. The empty centre is
+     * Captures intentionally do not complete instantly. The empty center is
      * visible for a few seconds before the attacker's small Core Shard appears.
      */
     private static final float CAPTURE_DELAY_TICKS = 5f * 60f;
 
     /**
      * Capture cleanup follows the real Evict core range exactly: every synthetic
-     * building whose centre is within 40 tiles of the destroyed core is removed,
-     * including the overlap with a neighbouring hex. This is core range, not
+     * building whose center is within 40 tiles of the destroyed core is removed,
+     * including the overlap with a neighboring hex. This is core range, not
      * build range.
      */
     private static final int CAPTURE_CLEAR_RADIUS = 40;
@@ -60,7 +56,7 @@ final class CoreCapture {
 
     /**
      * Replacement-core placement can transiently fail (a unit/building reappears
-     * on the centre tile, a floor change still settling, etc.). Retry instead of
+     * on the center tile, a floor change still settling, etc.). Retry instead of
      * abandoning the hex: an abandoned hex stays coreless, so the attacker's
      * units standing there immediately start taking range attrition. Retries
      * keep the hex logically the attacker's and attrition-protected until a real
@@ -76,25 +72,12 @@ final class CoreCapture {
     }
 
     /**
-     * Everything one capture needs, carried as a single value through the
-     * delayed steps instead of repeating five parameters on every method.
-     * hex = the hex being captured, defender = who owned the core,
-     * attacker = who destroyed it, serial = which round this belongs to.
-     */
-    private static final class Capture {
-        final HexSlot hex;
-        final Team defender;
-        final Team attacker;
-        final long serial;
-        final AttritionManager attrition;
-
-        Capture(HexSlot hex, Team defender, Team attacker, long serial, AttritionManager attrition) {
-            this.hex = hex;
-            this.defender = defender;
-            this.attacker = attacker;
-            this.serial = serial;
-            this.attrition = attrition;
-        }
+         * Everything one capture needs, carried as a single value through the
+         * delayed steps instead of repeating five parameters on every method.
+         * hex = the hex being captured, defender = who owned the core,
+         * attacker = who destroyed it, serial = which round this belongs to.
+         */
+        private record Capture(HexSlot hex, Team defender, Team attacker, long serial, AttritionManager attrition) {
     }
 
     void handleCoreChange(CoreBuild core, AttritionManager attrition) {
@@ -108,8 +91,8 @@ final class CoreCapture {
         }
 
         // Find the hex by the core's footprint, not its origin tile: the 4x4
-        // Foundation anchors one tile off-centre, so a plain tile match would
-        // miss an upgraded core. A core covering no hex centre is ignored.
+        // Foundation anchors one tile off-center, so a plain tile match would
+        // miss an upgraded core. A core covering no hex center is ignored.
         HexSlot hex = team.slotForCore(core);
         if (hex == null) {
             return;
@@ -126,7 +109,7 @@ final class CoreCapture {
         }
 
         // The event can fire one tick before the core is actually removed. Wait
-        // a tick, re-read the centre tile, and only then decide whether it was
+        // a tick, re-read the center tile, and only then decide whether it was
         // really a death (and who the final attacker was).
         Time.run(0f, () -> {
             if (!team.isRoundActiveForSystems() || serial != team.roundSerial()) {
@@ -209,7 +192,7 @@ final class CoreCapture {
     }
 
     // step 3 (+5 s): wipe again (anti-abuse), place the shard, retry if blocked.
-    // Reschedules itself every 60 ticks while the centre tile stays blocked,
+    // Reschedules itself every 60 ticks while the center tile stays blocked,
     // keeping the hex the attacker's and attrition-protected, until it works or gives up.
     private void replaceCapturedCore(Capture c, int attempt) {
         if (!captureStepValid(c)) {
@@ -247,7 +230,7 @@ final class CoreCapture {
             return;
         }
 
-        // Centre tile still blocked: keep the hex the attacker's and retry.
+        // Center tile still blocked: keep the hex the attacker's and retry.
         if (attempt < MAX_REPLACEMENT_RETRIES) {
             Log.warn(
                 "[EvictMapGenerator] Capture at hex (@,@): replacement Core Shard for team #@ not verified on attempt @/@; retrying in @ ticks.",
@@ -271,6 +254,7 @@ final class CoreCapture {
     // The shared guard for every delayed step: the round is still live, this
     // callback belongs to the round it was scheduled in (not a regenerated round
     // reusing the same hex), and the hex is still mid-capture.
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     private boolean captureStepValid(Capture c) {
         return team.isRoundActiveForSystems()
             && c.serial == team.roundSerial()
@@ -338,8 +322,7 @@ final class CoreCapture {
      * twice (a networked setNet does not always "stick" on the first attempt)
      * and suppresses capture events while doing so (this placement is not itself
      * a capture). Returns false if the core could not be verified.
-     *
-     * Assumes the centre tile is already clear - the callers wipe the hex first
+     * Assumes the center tile is already clear - the callers wipe the hex first
      * (capture: clearBuildingsInHex; surrender: clearSurrenderedTeamAssets), and
      * the engine removes any unit standing under a freshly placed core.
      */
