@@ -14,7 +14,6 @@ import java.util.Set;
 
 /**
  * Persistent Evict server tuning values.
- *
  * Stored relative to the server working directory so values survive terminal
  * closes, full Java restarts and normal plugin updates.
  */
@@ -582,7 +581,7 @@ final class EvictSettings {
         StringBuilder result = new StringBuilder();
 
         for (OreKind kind : OreKind.values()) {
-            if (result.length() > 0) {
+            if (!result.isEmpty()) {
                 result.append("; ");
             }
 
@@ -622,15 +621,15 @@ final class EvictSettings {
     }
 
     private void setWallPercentagesWithoutSaving(
-        double fullWall,
-        double smallWall,
-        double open,
-        double passage
+        double possiblyInvalidFullWall,
+        double possiblyInvalidSmallWall,
+        double possiblyInvalidOpen,
+        double possiblyInvalidPassage
     ) {
-        fullWall = validatePercentage("full-wall", fullWall);
-        smallWall = validatePercentage("small-wall", smallWall);
-        open = validatePercentage("open", open);
-        passage = validatePercentage("passage", passage);
+        double fullWall = validatePercentage("full-wall", possiblyInvalidFullWall);
+        double smallWall = validatePercentage("small-wall", possiblyInvalidSmallWall);
+        double open = validatePercentage("open", possiblyInvalidOpen);
+        double passage = validatePercentage("passage", possiblyInvalidPassage);
 
         double sum = fullWall + smallWall + open + passage;
 
@@ -673,30 +672,30 @@ final class EvictSettings {
     }
 
     private void setWaterSettingsWithoutSaving(
-        double patchAttemptsPerHex,
-        int normalPatchTiles,
-        double largePatchChancePercent,
-        int largePatchTiles
+        double possiblyInvalidPatchAttemptsPerHex,
+        int possiblyInvalidNormalPatchTiles,
+        double possiblyInvalidLargePatchChancePercent,
+        int possiblyInvalidLargePatchTiles
     ) {
-        patchAttemptsPerHex = validateRange(
+        double patchAttemptsPerHex = validateRange(
             "Water patch tries per hex",
-            patchAttemptsPerHex,
+                possiblyInvalidPatchAttemptsPerHex,
             0d,
             MAX_WATER_PATCH_ATTEMPTS_PER_HEX
         );
-        normalPatchTiles = validateIntRange(
+        int normalPatchTiles = validateIntRange(
             "Water normal patch tiles",
-            normalPatchTiles,
+                possiblyInvalidNormalPatchTiles,
             MIN_WATER_PATCH_TILES,
             MAX_WATER_PATCH_TILES
         );
-        largePatchChancePercent = validatePercentage(
+        double largePatchChancePercent = validatePercentage(
             "Water large patch chance",
-            largePatchChancePercent
+                possiblyInvalidLargePatchChancePercent
         );
-        largePatchTiles = validateIntRange(
+        int largePatchTiles = validateIntRange(
             "Water large patch tiles",
-            largePatchTiles,
+                possiblyInvalidLargePatchTiles,
             MIN_WATER_PATCH_TILES,
             MAX_WATER_PATCH_TILES
         );
@@ -711,19 +710,19 @@ final class EvictSettings {
 
     private void setOreSettingsWithoutSaving(
         OreKind kind,
-        double scale,
-        double threshold,
-        double octaves,
-        double falloff
+        double possiblyInvalidScale,
+        double possiblyInvalidThreshold,
+        double possiblyInvalidOctaves,
+        double possiblyInvalidFalloff
     ) {
         if (kind == null) {
             throw new IllegalArgumentException("Ore kind is required.");
         }
 
-        scale = validatePositiveFinite(kind.key + " scale", scale);
-        threshold = validateRange(kind.key + " threshold", threshold, 0d, 1d);
-        octaves = validatePositiveFinite(kind.key + " octaves", octaves);
-        falloff = validateRange(kind.key + " falloff", falloff, 0d, 1d);
+        double scale = validatePositiveFinite(kind.key + " scale", possiblyInvalidScale);
+        double threshold = validateRange(kind.key + " threshold", possiblyInvalidThreshold, 0d, 1d);
+        double octaves = validatePositiveFinite(kind.key + " octaves", possiblyInvalidOctaves);
+        double falloff = validateRange(kind.key + " falloff", possiblyInvalidFalloff, 0d, 1d);
 
         oreSettings.put(
             kind,
