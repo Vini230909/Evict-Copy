@@ -11,7 +11,7 @@ import java.util.Set;
 
 /**
  * Disables combat damage for vanilla core units while keeping their building
- * and mining behaviour intact.
+ * and mining behavior intact.
  */
 final class CoreUnitDamageManager {
 
