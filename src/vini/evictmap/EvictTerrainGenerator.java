@@ -24,7 +24,6 @@ import java.util.Set;
 
 /**
  * Procedural Evict terrain generation.
- *
  * This class owns geometry, wall templates, resources and neutral core
  * placement. It deliberately does not manage players, captures or round resets.
  */
@@ -57,23 +56,20 @@ final class EvictTerrainGenerator {
     private static final int DIAGONAL_DY = 64;
 
     // Width of the open doorway cut across PASSAGE walls.
-    // This is independent from the wall thickness. The wall thickness itself
+    // This is independent of the wall thickness. The wall thickness itself
     // is derived automatically from circle radius, core spacing and polygon.
     private static final int PASSAGE_WIDTH = 7;
 
-    private static final double THIN_WALL_HALF_WIDTH = 0.5;
     private static final int OUTER_BUFFER = 10;
 
     /**
      * Mirrored inner guaranteed-floor polygon.
-     *
      * Reference center: (739, 168)
      * Updated points:
      * - middle left:          (-34,  0)
      * - upper-left side:      (-34, 20)
      * - upper-left top:       ( -4, 38)
      * - middle top:           (  0, 38)
-     *
      * These are the former polygon points shifted one tile farther
      * away from the center on each applicable axis.
      */
@@ -100,7 +96,7 @@ final class EvictTerrainGenerator {
     private static final double FILLED_HEX_SECOND_RING_CHANCE = 0.035;
     private static final double FILLED_HEX_INNER_CHANCE = 0.010;
 
-    // Small extra chance near the map centre.
+    // Small extra chance near the map center.
     // It fades smoothly to zero before reaching the outer rows.
     // Squared distance is used so no square root is needed.
     private static final double CENTER_FILLED_HEX_BONUS = 0.12;
@@ -286,7 +282,7 @@ final class EvictTerrainGenerator {
         List<Cell> normalCells
     ) {
         // 0 = outside all active circles: fixed Dirt Wall
-        // 1 = inside a circle, outside all inner polygons: variable grey zone
+        // 1 = inside a circle, outside all inner polygons: variable gray zone
         // 2 = inside an inner polygon: guaranteed Dark Sand
         byte[][] zones = new byte[height][width];
 
@@ -335,7 +331,7 @@ final class EvictTerrainGenerator {
             for (int x = 0; x < width; x++) {
                 // Outside every active outer circle is fixed Dirt Wall.
                 // Everything reached by a circle starts as floor. Connection
-                // templates add walls only between two normal neighbouring hexes.
+                // templates add walls only between two normal neighboring hexes.
                 // This makes all map-border and full-hex-facing sides perfectly round.
                 walls[y][x] = zones[y][x] == 0;
             }
@@ -344,79 +340,19 @@ final class EvictTerrainGenerator {
         return walls;
     }
 
-    private void carveRoundedOuterCaps(
-        boolean[][] walls,
-        byte[][] zones,
-        Map<Cell, Point> centers,
-        List<Cell> normalCells
-    ) {
-        int height = zones.length;
-        int width = zones[0].length;
-
-        Set<Cell> normalSet = new HashSet<>(normalCells);
-
-        for (Cell cell : normalCells) {
-            Point center = centers.get(cell);
-
-            for (Cell neighbour : neighbourSlots(cell)) {
-                boolean neighbourIsNormal = validCell(neighbour) && normalSet.contains(neighbour);
-
-                if (neighbourIsNormal) {
-                    continue;
-                }
-
-                Point currentRaw = rawCenter(cell);
-                Point neighbourRaw = rawCenter(neighbour);
-
-                double dx = neighbourRaw.x - currentRaw.x;
-                double dy = neighbourRaw.y - currentRaw.y;
-                double distance = Math.hypot(dx, dy);
-
-                double ux = dx / distance;
-                double uy = dy / distance;
-                double support = supportDistance(ux, uy);
-
-                int minX = Math.max(0, center.x - OUTER_RADIUS);
-                int maxX = Math.min(width - 1, center.x + OUTER_RADIUS);
-                int minY = Math.max(0, center.y - OUTER_RADIUS);
-                int maxY = Math.min(height - 1, center.y + OUTER_RADIUS);
-
-                for (int y = minY; y <= maxY; y++) {
-                    for (int x = minX; x <= maxX; x++) {
-                        if (zones[y][x] != 1) {
-                            continue;
-                        }
-
-                        double relX = x - center.x;
-                        double relY = y - center.y;
-
-                        boolean insideCircle = relX * relX + relY * relY <= OUTER_RADIUS * OUTER_RADIUS;
-                        boolean facingCap = relX * ux + relY * uy >= support - 0.75;
-
-                        if (insideCircle && facingCap) {
-                            walls[y][x] = false;
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     private void applyConnectionTemplates(
         boolean[][] walls,
         byte[][] zones,
         Map<Cell, Point> centers,
         Map<Edge, EdgeType> edgeTypes
     ) {
-        /**
+        /*
          * Important raster rule:
-         *
-         * Mindustry uses square tiles. Several grey edge regions touch each other
+         * Mindustry uses square tiles. Several gray edge regions touch each other
          * near the red triangle tips. The previous prototype let multiple edges
          * edit the same tile. The edge processed last could therefore slightly
-         * distort a neighbouring triangle.
-         *
-         * Now every editable grey tile is assigned to exactly one edge first.
+         * distort a neighboring triangle.
+         * Now every editable gray tile is assigned to exactly one edge first.
          * Afterwards each template edits only its own fixed tile mask.
          */
         Map<Edge, Set<TilePoint>> tilesByEdge =
@@ -541,7 +477,7 @@ final class EvictTerrainGenerator {
         Edge edge,
         Set<TilePoint> mask
     ) {
-        /**
+        /*
          * A mathematically centered line can lie exactly between two tile rows.
          * Selecting every tile with distance <= 0.5 would then create a two-tile
          * wall. Instead, rasterize one digital line with Bresenham's algorithm.
@@ -674,7 +610,7 @@ final class EvictTerrainGenerator {
     }
 
     private int deterministicRound(double value) {
-        /**
+        /*
          * Java's normal round() would also work most of the time, but this
          * explicitly resolves exact half-tile positions in one consistent way.
          */
@@ -687,146 +623,6 @@ final class EvictTerrainGenerator {
             .thenComparingInt(edge -> edge.a.col)
             .thenComparingInt(edge -> edge.b.row)
             .thenComparingInt(edge -> edge.b.col);
-    }
-
-
-    private void enforceThinWallsLast(
-        boolean[][] walls,
-        byte[][] zones,
-        Map<Cell, Point> centers,
-        Map<Edge, EdgeType> edgeTypes
-    ) {
-        /**
-         * A thin wall must be exactly one tile thick.
-         *
-         * Even after assigning edge ownership, another nearby template can touch
-         * the same visual corridor close to the triangle tips. Therefore thin
-         * walls get a final cleanup pass after every other template:
-         *
-         * 1. clear the complete grey corridor for this edge
-         * 2. draw one single digital center line
-         *
-         * For a half-tile midpoint, one side is selected consistently.
-         */
-        for (Map.Entry<Edge, EdgeType> entry : edgeTypes.entrySet()) {
-            if (entry.getValue() != EdgeType.THIN) {
-                continue;
-            }
-
-            Edge edge = entry.getKey();
-            Set<TilePoint> corridor = collectRawBridgeMask(zones, centers, edge);
-
-            for (TilePoint tile : corridor) {
-                walls[tile.y][tile.x] = false;
-            }
-
-            drawSingleCenteredLine(walls, centers, edge, corridor);
-        }
-    }
-
-    private Set<TilePoint> collectRawBridgeMask(
-        byte[][] zones,
-        Map<Cell, Point> centers,
-        Edge edge
-    ) {
-        int height = zones.length;
-        int width = zones[0].length;
-
-        Set<TilePoint> corridor = new LinkedHashSet<>();
-
-        Point a = centers.get(edge.a);
-        Point b = centers.get(edge.b);
-
-        double dx = b.x - a.x;
-        double dy = b.y - a.y;
-        double distance = Math.hypot(dx, dy);
-
-        double ux = dx / distance;
-        double uy = dy / distance;
-
-        double gapHalf = Math.max(0.0, distance / 2.0 - supportDistance(ux, uy));
-
-        double middleX = (a.x + b.x) / 2.0;
-        double middleY = (a.y + b.y) / 2.0;
-
-        int reach = OUTER_RADIUS + 2;
-        int minX = Math.max(0, (int)Math.floor(middleX - reach));
-        int maxX = Math.min(width - 1, (int)Math.ceil(middleX + reach));
-        int minY = Math.max(0, (int)Math.floor(middleY - reach));
-        int maxY = Math.min(height - 1, (int)Math.ceil(middleY + reach));
-
-        for (int y = minY; y <= maxY; y++) {
-            for (int x = minX; x <= maxX; x++) {
-                if (zones[y][x] != 1) {
-                    continue;
-                }
-
-                double relX = x - middleX;
-                double relY = y - middleY;
-                double u = relX * ux + relY * uy;
-
-                if (Math.abs(u) > gapHalf + 0.75) {
-                    continue;
-                }
-
-                boolean insideA =
-                    squaredDistance(x, y, a.x, a.y) <= OUTER_RADIUS * OUTER_RADIUS;
-
-                boolean insideB =
-                    squaredDistance(x, y, b.x, b.y) <= OUTER_RADIUS * OUTER_RADIUS;
-
-                if (insideA || insideB) {
-                    corridor.add(new TilePoint(x, y));
-                }
-            }
-        }
-
-        return corridor;
-    }
-
-    private void drawSingleCenteredLine(
-        boolean[][] walls,
-        Map<Cell, Point> centers,
-        Edge edge,
-        Set<TilePoint> corridor
-    ) {
-        if (corridor.isEmpty()) {
-            return;
-        }
-
-        Point a = centers.get(edge.a);
-        Point b = centers.get(edge.b);
-
-        double dx = b.x - a.x;
-        double dy = b.y - a.y;
-        double distance = Math.hypot(dx, dy);
-
-        // v points along the wall line, perpendicular to the line between cores.
-        double vx = -dy / distance;
-        double vy = dx / distance;
-
-        double middleX = (a.x + b.x) / 2.0;
-        double middleY = (a.y + b.y) / 2.0;
-
-        double minimumV = Double.POSITIVE_INFINITY;
-        double maximumV = Double.NEGATIVE_INFINITY;
-
-        for (TilePoint tile : corridor) {
-            double v = (tile.x - middleX) * vx + (tile.y - middleY) * vy;
-            minimumV = Math.min(minimumV, v);
-            maximumV = Math.max(maximumV, v);
-        }
-
-        int startX = deterministicRound(middleX + minimumV * vx);
-        int startY = deterministicRound(middleY + minimumV * vy);
-        int endX = deterministicRound(middleX + maximumV * vx);
-        int endY = deterministicRound(middleY + maximumV * vy);
-
-        for (TilePoint tile : rasterizeOneTileLine(startX, startY, endX, endY)) {
-            if (corridor.contains(tile)) {
-                walls[tile.y][tile.x] = true;
-            }
-        }
     }
 
 
@@ -943,7 +739,7 @@ final class EvictTerrainGenerator {
         Map<Cell, Point> centers,
         List<Cell> normalCells
     ) {
-        /**
+        /*
          * Every unclaimed Nucleus starts as Fallen team #14.
          * A first-time player later claims one safe random start hex and
          * receives a unique personal team.
@@ -1107,7 +903,7 @@ final class EvictTerrainGenerator {
             }
         }
 
-        /**
+        /*
          * Chance-based generation may occasionally produce too few filled
          * rooms. Add random connectivity-safe candidates until the configured
          * minimum is reached.
@@ -1151,8 +947,8 @@ final class EvictTerrainGenerator {
     }
 
     private boolean tryAddFilledCell(Set<Cell> filled, Cell candidate, List<Cell> cells) {
-        /**
-         * Extinction always ends with the center plus its six neighbours.
+        /*
+         * Extinction always ends with the center plus its six neighbors.
          * These seven cells must therefore never become procedural filled
          * rooms during map generation.
          */
@@ -1255,11 +1051,10 @@ final class EvictTerrainGenerator {
         Map<Edge, EdgeType> edgeTypes,
         Random random
     ) {
-        /**
+        /*
          * First, every normal-normal edge is rolled with the normal 25/25/25/25
          * probabilities. Only if this creates separated sectors do we repair the
          * minimum number of crossing edges by converting them to OPEN or PASSAGE.
-         *
          * This keeps the visible result much closer to the requested equal
          * distribution than forcing an entire spanning tree up front.
          */
@@ -1374,7 +1169,7 @@ final class EvictTerrainGenerator {
         double passage = settings.passageChance();
         double total = open + passage;
 
-        /**
+        /*
          * Connectivity repair always needs a traversable edge. If both
          * traversable weights were intentionally configured to zero, use a
          * passage as the least-open repair fallback.
@@ -1488,10 +1283,9 @@ final class EvictTerrainGenerator {
         slots.add(new Cell(cell.col - 1, cell.row));
         slots.add(new Cell(cell.col + 1, cell.row));
 
-        /**
+        /*
          * Short rows contain 7 cores and are shifted 37 tiles to the right.
          * Long rows contain 8 cores and start 37 tiles further left.
-         *
          * This centers the pattern:
          *   7
          *  8
@@ -1616,15 +1410,13 @@ final class EvictTerrainGenerator {
     }
 
     int horizontalGreyBandWidth() {
-        /**
+        /*
          * The horizontal variable zone is everything strictly between the
-         * guaranteed-floor polygons of two neighbouring cores.
-         *
+         * guaranteed-floor polygons of two neighboring cores.
          * With the current values:
          *   coordinate distance = 74
-         *   inner polygon reaches 34 tiles toward its neighbour on each side
-         *   grey band = 74 - 34 - 34 - 1 = 5 tiles
-         *
+         *   inner polygon reaches 34 tiles toward its neighbor on each side
+         *   gray band = 74 - 34 - 34 - 1 = 5 tiles
          * The -1 accounts for inclusive tile coordinates.
          */
         return HORIZONTAL_DX - 2 * supportDistance(1.0, 0.0) < 1.0
@@ -1632,7 +1424,7 @@ final class EvictTerrainGenerator {
             : (int)Math.round(HORIZONTAL_DX - 2 * supportDistance(1.0, 0.0) - 1.0);
     }
 
-    private String percent(double value) {
+    private String percent(@SuppressWarnings("SameParameterValue") double value) {
         return String.format("%.2f", value * 100.0);
     }
 
