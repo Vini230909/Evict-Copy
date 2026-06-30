@@ -1,26 +1,16 @@
 package vini.evictmap;
 
-import arc.math.Mathf;
 import arc.util.CommandHandler;
 import arc.util.Time;
-import mindustry.Vars;
 import mindustry.ai.UnitCommand;
 import mindustry.ai.types.CommandAI;
-import mindustry.game.Team;
-import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
 import mindustry.gen.Unit;
-import mindustry.type.UnitType;
-import mindustry.ui.Menus;
 import mindustry.world.blocks.storage.CoreBlock.CoreBuild;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
@@ -34,7 +24,7 @@ import java.util.Set;
  * Kept separate from the generator so additional commands can be added later
  * without turning EvictMapPlugin into a command monolith.
  */
-final class EvictCommands {
+final class FullassaultManager {
 
     private static final float FULL_ASSAULT_REFRESH_INTERVAL_TICKS = 5f * 60f;
 
@@ -43,7 +33,7 @@ final class EvictCommands {
 
     private float fullAssaultRefreshTimer = 0f;
 
-    EvictCommands(
+    FullassaultManager(
         TeamManager teamManager
     ) {
         this.teamManager = teamManager;

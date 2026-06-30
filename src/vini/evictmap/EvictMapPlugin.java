@@ -58,8 +58,8 @@ public class EvictMapPlugin extends Plugin {
     private final ExtinctionManager extinctionManager =
         new ExtinctionManager(teamManager);
 
-    private final EvictCommands evictCommands =
-        new EvictCommands(
+    private final FullassaultManager fullassaultManager =
+        new FullassaultManager(
             teamManager
         );
 
@@ -88,7 +88,7 @@ public class EvictMapPlugin extends Plugin {
 
     private final EvictClientCommands clientCommands =
         new EvictClientCommands(
-            evictCommands,
+                fullassaultManager,
             inviteManager,
             roundEndCommands,
             roundTimeCommands,
@@ -273,7 +273,7 @@ public class EvictMapPlugin extends Plugin {
         Events.run(Trigger.update, () -> {
             teamManager.updateExtinctionTerrainQueue();
             attritionManager.update();
-            evictCommands.update();
+            fullassaultManager.update();
             extinctionManager.update();
         });
 
@@ -323,7 +323,7 @@ public class EvictMapPlugin extends Plugin {
         teamManager.beginRound(round.slots(), seed);
         playerDataManager.beginFfaRound();
         attritionManager.beginRound();
-        evictCommands.beginRound();
+        fullassaultManager.beginRound();
         inviteManager.beginRound();
         roundEndCommands.beginRound();
         roundTimeCommands.beginRound();

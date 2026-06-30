@@ -7,7 +7,7 @@ import arc.util.CommandHandler;
  */
 final class EvictClientCommands {
 
-    private final EvictCommands gameplay;
+    private final FullassaultManager fullassault;
     private final InviteManager invites;
     private final RoundEndCommands roundEnd;
     private final RoundTimeCommands roundTime;
@@ -16,7 +16,7 @@ final class EvictClientCommands {
     private final EvictHelpCommands help;
 
     EvictClientCommands(
-        EvictCommands gameplay,
+        FullassaultManager fullassault,
         InviteManager invites,
         RoundEndCommands roundEnd,
         RoundTimeCommands roundTime,
@@ -24,7 +24,7 @@ final class EvictClientCommands {
         HistoryCommands history,
         EvictHelpCommands help
     ) {
-        this.gameplay = gameplay;
+        this.fullassault = fullassault;
         this.invites = invites;
         this.roundEnd = roundEnd;
         this.roundTime = roundTime;
@@ -34,7 +34,7 @@ final class EvictClientCommands {
     }
 
     void register(CommandHandler handler) {
-        gameplay.registerClientCommands(handler);
+        fullassault.registerClientCommands(handler);
         invites.registerClientCommands(handler);
         roundEnd.registerClientCommands(handler);
         roundTime.registerClientCommands(handler);
