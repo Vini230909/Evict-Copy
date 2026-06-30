@@ -614,7 +614,7 @@ final class EvictConsoleCommands {
         if (args.length == 0) {
             Log.info(
                     "Core attrition: "
-                            + attritionManager.compactCoreSettings()
+                            + settings.compactCoreAttritionSettings()
             );
             return;
         }
@@ -631,7 +631,7 @@ final class EvictConsoleCommands {
             double tier4 = Double.parseDouble(args[1]);
             double tier5 = Double.parseDouble(args[2]);
 
-            attritionManager.setCoreDeathChancesPercent(
+            settings.setCoreAttritionPercentages(
                     tier1To3,
                     tier4,
                     tier5
@@ -639,7 +639,7 @@ final class EvictConsoleCommands {
 
             Log.info(
                     "Core attrition saved: "
-                            + attritionManager.compactCoreSettings()
+                            + settings.compactCoreAttritionSettings()
             );
         } catch (NumberFormatException exception) {
             Log.err(
@@ -654,7 +654,7 @@ final class EvictConsoleCommands {
         if (args.length == 0) {
             Log.info(
                     "Range attrition: "
-                            + attritionManager.compactRangeSettings()
+                            + settings.compactRangeAttritionSettings()
             );
             return;
         }
@@ -667,13 +667,13 @@ final class EvictConsoleCommands {
         }
 
         try {
-            attritionManager.setRangeDeathChancePercent(
+            settings.setRangeAttritionPercent(
                     Double.parseDouble(args[0])
             );
 
             Log.info(
                     "Range attrition saved: "
-                            + attritionManager.compactRangeSettings()
+                            + settings.compactRangeAttritionSettings()
             );
         } catch (NumberFormatException exception) {
             Log.err(

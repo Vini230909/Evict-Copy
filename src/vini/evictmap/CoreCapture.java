@@ -164,7 +164,7 @@ final class CoreCapture {
         }
 
         int removed = clearBuildingsInHex(c.hex);
-        int killed = c.attrition.applyCaptureAttrition(c.hex.x, c.hex.y);
+        int killed = c.attrition.handleCoreExplosionAttrition(c.hex.x, c.hex.y);
 
         Log.info(
                 "[EvictMapGenerator] Cleared @ synthetic buildings and removed @ units through capture attrition from hex (@,@).",

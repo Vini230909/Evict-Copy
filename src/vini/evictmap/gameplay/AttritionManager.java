@@ -18,19 +18,11 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * Evict unit attrition:
- * - Every captured core applies a one-time tier-based core-attrition roll to
- * every normal unit inside the 40-tile capture radius, regardless of team.
- * - Every five seconds, units at least two graph hexes away from the nearest
- * owned core hex receive one flat range-attrition roll, regardless of tier.
- * - Player/core units spawned by a core are always immune.
+ * Handles unit attrition (on the basis of both range and core death).
+ *
+ * Units which fly further than {@link }
  */
 public final class AttritionManager implements GameplayManagerInterface {
-
-    private static final float RANGE_ATTRITION_INTERVAL_TICKS = 5f * 60f;
-    private static final int CAPTURE_ATTRITION_RADIUS_TILES = 40;
-
-
     private static final Map<UnitType, Integer> UNIT_TIER_MAP =
             new HashMap<>();
 
@@ -124,32 +116,29 @@ public final class AttritionManager implements GameplayManagerInterface {
 
         rangeAttritionTimer += Time.delta;
 
-        if (rangeAttritionTimer < RANGE_ATTRITION_INTERVAL_TICKS) {
+        if (rangeAttritionTimer < settings.rangeAttritionInterval()) {
             return;
         }
 
-        rangeAttritionTimer %= RANGE_ATTRITION_INTERVAL_TICKS;
-        applyRangeAttrition();
+        rangeAttritionTimer %= settings.rangeAttritionInterval();
+
+        killMatching(
+                unit -> !teamManager.isWithinOneHexOfOwnedCore(unit),
+                unit -> settings.rangeAttritionChance()
+        );
     }
 
     public void endRound() {
     }
 
-    public int applyCaptureAttrition(int coreTileX, int coreTileY) {
+    public int handleCoreExplosionAttrition(int coreTileX, int coreTileY) {
         float centerX = coreTileX * Vars.tilesize;
         float centerY = coreTileY * Vars.tilesize;
-        float radius = CAPTURE_ATTRITION_RADIUS_TILES * Vars.tilesize;
+        float radius = settings.coreAttritionRadius() * Vars.tilesize;
 
         return killMatching(
                 unit -> unit.within(centerX, centerY, radius),
                 unit -> coreDeathChance(unit.type)
-        );
-    }
-
-    private void applyRangeAttrition() {
-        killMatching(
-                unit -> !teamManager.isWithinOneHexOfOwnedCore(unit),
-                unit -> settings.rangeAttritionChance()
         );
     }
 
@@ -181,30 +170,6 @@ public final class AttritionManager implements GameplayManagerInterface {
                 && unit.team != Team.derelict
                 && !unit.spawnedByCore
                 && unit.type.killable(unit);
-    }
-
-    public void setCoreDeathChancesPercent(
-            double tier1To3Percent,
-            double tier4Percent,
-            double tier5Percent
-    ) {
-        settings.setCoreAttritionPercentages(
-                tier1To3Percent,
-                tier4Percent,
-                tier5Percent
-        );
-    }
-
-    public void setRangeDeathChancePercent(double percent) {
-        settings.setRangeAttritionPercent(percent);
-    }
-
-    public String compactCoreSettings() {
-        return settings.compactCoreAttritionSettings();
-    }
-
-    public String compactRangeSettings() {
-        return settings.compactRangeAttritionSettings();
     }
 
     private double coreDeathChance(UnitType type) {

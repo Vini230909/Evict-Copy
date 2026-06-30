@@ -512,9 +512,13 @@ public final class EvictSettings {
         return coreAttritionTier5Percent / 100d;
     }
 
+    public float coreAttritionRadius() { return 40; }
+
     public double rangeAttritionChance() {
         return rangeAttritionPercent / 100d;
     }
+
+    public float rangeAttritionInterval() { return 5f * 60f; }
 
     double fullWallChance() {
         return fullWallPercent / 100d;
