@@ -23,7 +23,6 @@ import java.util.HashMap;
 
 /**
  * Plugin composition root.
- *
  * This class intentionally contains only lifecycle wiring. Game systems live
  * in focused classes such as EvictTerrainGenerator, CaptureManager,
  * TeamManager and the command registrars.
@@ -126,7 +125,7 @@ public class EvictMapPlugin extends Plugin {
     private final boolean duelWorker =
         "true".equals(System.getProperty("evict.duelWorker"));
 
-    // prechanging detector
+    // pre-changing detector
     private final HashMap<Integer, CoreBlock.CoreBuild> prechanged =
         new HashMap<>();
 
