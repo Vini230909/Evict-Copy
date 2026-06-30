@@ -8,6 +8,7 @@ import mindustry.content.UnitTypes;
 import mindustry.game.Team;
 import mindustry.gen.Groups;
 import mindustry.gen.Unit;
+import mindustry.gen.Unitc;
 import mindustry.type.UnitType;
 
 import java.util.IdentityHashMap;
@@ -15,7 +16,6 @@ import java.util.Map;
 
 /**
  * Evict unit attrition:
- *
  * - Every captured core applies a one-time tier-based core-attrition roll to
  *   every normal unit inside the 40-tile capture radius, regardless of team.
  * - Every five seconds, units at least two graph hexes away from the nearest
@@ -155,8 +155,8 @@ final class AttritionManager {
         );
     }
 
-    private int applyRangeAttrition() {
-        return killMatching(
+    private void applyRangeAttrition() {
+        killMatching(
             unit -> !teamManager.isWithinOneHexOfOwnedCore(unit),
             unit -> settings.rangeAttritionChance()
         );
@@ -180,7 +180,7 @@ final class AttritionManager {
             toKill.add(unit);
         });
 
-        toKill.each(unit -> unit.kill());
+        toKill.each(Unitc::kill);
         return toKill.size;
     }
 
