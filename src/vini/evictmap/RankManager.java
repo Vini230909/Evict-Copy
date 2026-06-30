@@ -24,7 +24,7 @@ import java.util.Set;
 final class RankManager {
 
     private static final File RANKS_FILE =
-        new File("config/evict-ranks.properties");
+            new File("config/evict-ranks.properties");
 
     /**
      * Hub admins snapshotted into each duel worker at spawn (see
@@ -33,12 +33,14 @@ final class RankManager {
      * inside a worker's config; on the hub the set stays empty.
      */
     private static final File SYNCED_ADMINS_FILE =
-        new File("config/evict-admins.properties");
+            new File("config/evict-admins.properties");
 
     private final Map<String, Rank> ranksByUuid = new HashMap<>();
     private final Set<String> syncedAdminUuids = new HashSet<>();
 
-    /** A grantable role. Ordered low-to-high so "commentator and above" works. */
+    /**
+     * A grantable role. Ordered low-to-high so "commentator and above" works.
+     */
     enum Rank {
         COMMENTATOR("Commentator", "[sky][[C][] ");
 
@@ -83,8 +85,8 @@ final class RankManager {
                 }
             } catch (Exception exception) {
                 Log.err(
-                    "[EvictMapGenerator] Could not read the ranks file.",
-                    exception
+                        "[EvictMapGenerator] Could not read the ranks file.",
+                        exception
                 );
             }
         }
@@ -92,9 +94,9 @@ final class RankManager {
         loadSyncedAdmins();
 
         Log.info(
-            "[EvictMapGenerator] Loaded @ tournament rank(s) and @ synced admin(s).",
-            ranksByUuid.size(),
-            syncedAdminUuids.size()
+                "[EvictMapGenerator] Loaded @ tournament rank(s) and @ synced admin(s).",
+                ranksByUuid.size(),
+                syncedAdminUuids.size()
         );
     }
 
@@ -112,8 +114,8 @@ final class RankManager {
             syncedAdminUuids.addAll(properties.stringPropertyNames());
         } catch (Exception exception) {
             Log.err(
-                "[EvictMapGenerator] Could not read the synced admins file.",
-                exception
+                    "[EvictMapGenerator] Could not read the synced admins file.",
+                    exception
             );
         }
     }
@@ -122,7 +124,9 @@ final class RankManager {
         return uuid == null ? null : ranksByUuid.get(uuid);
     }
 
-    /** Snapshot of the granted ranks for listing. */
+    /**
+     * Snapshot of the granted ranks for listing.
+     */
     Map<String, Rank> snapshot() {
         return new HashMap<>(ranksByUuid);
     }
@@ -146,10 +150,12 @@ final class RankManager {
         return true;
     }
 
-    /** Commentator and above, with server admins always allowed. */
+    /**
+     * Commentator and above, with server admins always allowed.
+     */
     boolean canRestartMatches(Player player) {
         return player != null
-            && (player.admin || rankOf(player.uuid()) != null);
+                && (player.admin || rankOf(player.uuid()) != null);
     }
 
     boolean isSyncedAdmin(String uuid) {
@@ -211,7 +217,7 @@ final class RankManager {
 
         if (parent != null && !parent.exists() && !parent.mkdirs()) {
             Log.err(
-                "[EvictMapGenerator] Could not create the config directory for ranks."
+                    "[EvictMapGenerator] Could not create the config directory for ranks."
             );
             return;
         }

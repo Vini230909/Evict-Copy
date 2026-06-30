@@ -21,13 +21,13 @@ import java.util.List;
  * appears. Time.run(delay, ...) runs code LATER on the main thread; we must
  * never block the thread to "wait". So the flow is cut into steps ONLY at the
  * points where it genuinely has to wait:
- *   handleCoreChange     now      a core changed - is it really a death, and
- *                                 who captured it?
- *   startCapture         now      mark the hex captured, schedule the wipe
- *   captureClearHex      +1 tick  wipe the hex, attrition, hand over ownership,
- *                                 decide elimination + victory
- *   replaceCapturedCore  +5 s     wipe again (anti-abuse), place the Core Shard;
- *                                 retries every 60 ticks if the center is blocked
+ * handleCoreChange     now      a core changed - is it really a death, and
+ * who captured it?
+ * startCapture         now      mark the hex captured, schedule the wipe
+ * captureClearHex      +1 tick  wipe the hex, attrition, hand over ownership,
+ * decide elimination + victory
+ * replaceCapturedCore  +5 s     wipe again (anti-abuse), place the Core Shard;
+ * retries every 60 ticks if the center is blocked
  * Every step does its own visible work and then schedules the next one at the
  * very end - no method just calls another. captureStepValid() is the single
  * shared "is this still the live capture?" guard.
@@ -52,7 +52,7 @@ final class CoreCapture {
      */
     private static final int CAPTURE_CLEAR_RADIUS = 40;
     private static final int CAPTURE_CLEAR_RADIUS_SQUARED =
-        CAPTURE_CLEAR_RADIUS * CAPTURE_CLEAR_RADIUS;
+            CAPTURE_CLEAR_RADIUS * CAPTURE_CLEAR_RADIUS;
 
     /**
      * Replacement-core placement can transiently fail (a unit/building reappears
@@ -72,20 +72,20 @@ final class CoreCapture {
     }
 
     /**
-         * Everything one capture needs, carried as a single value through the
-         * delayed steps instead of repeating five parameters on every method.
-         * hex = the hex being captured, defender = who owned the core,
-         * attacker = who destroyed it, serial = which round this belongs to.
-         */
-        private record Capture(HexSlot hex, Team defender, Team attacker, long serial, AttritionManager attrition) {
+     * Everything one capture needs, carried as a single value through the
+     * delayed steps instead of repeating five parameters on every method.
+     * hex = the hex being captured, defender = who owned the core,
+     * attacker = who destroyed it, serial = which round this belongs to.
+     */
+    private record Capture(HexSlot hex, Team defender, Team attacker, long serial, AttritionManager attrition) {
     }
 
     void handleCoreChange(CoreBuild core, AttritionManager attrition) {
         if (
-            !team.isRoundActiveForSystems()
-                || team.isCaptureSuppressed()
-                || core == null
-                || core.tile == null
+                !team.isRoundActiveForSystems()
+                        || team.isCaptureSuppressed()
+                        || core == null
+                        || core.tile == null
         ) {
             return;
         }
@@ -123,7 +123,7 @@ final class CoreCapture {
                     return; // the core survived: this was not a capture
                 }
                 startCapture(new Capture(
-                    hex, live.team, validCaptureAttacker(live.lastDamage, live.team), serial, attrition));
+                        hex, live.team, validCaptureAttacker(live.lastDamage, live.team), serial, attrition));
             } else {
                 startCapture(new Capture(hex, defender, attacker, serial, attrition));
             }
@@ -144,8 +144,8 @@ final class CoreCapture {
         }
 
         Log.info(
-            "[EvictMapGenerator] Core destroyed at hex (@,@). defender=#@ attacker=#@. Clearing buildings and placing a Core Shard in 5 seconds.",
-            c.hex.col, c.hex.row, c.defender.id, c.attacker.id
+                "[EvictMapGenerator] Core destroyed at hex (@,@). defender=#@ attacker=#@. Clearing buildings and placing a Core Shard in 5 seconds.",
+                c.hex.col, c.hex.row, c.defender.id, c.attacker.id
         );
 
         // Wait one tick so the vanilla removal of the old core finishes first.
@@ -166,8 +166,8 @@ final class CoreCapture {
         int killed = c.attrition.applyCaptureAttrition(c.hex.x, c.hex.y);
 
         Log.info(
-            "[EvictMapGenerator] Cleared @ synthetic buildings and removed @ units through capture attrition from hex (@,@).",
-            removed, killed, c.hex.col, c.hex.row
+                "[EvictMapGenerator] Cleared @ synthetic buildings and removed @ units through capture attrition from hex (@,@).",
+                removed, killed, c.hex.col, c.hex.row
         );
 
         // Ownership is already the attacker's now, so elimination and victory
@@ -184,8 +184,8 @@ final class CoreCapture {
         }
 
         Log.info(
-            "[EvictMapGenerator] Waiting 5 seconds for team #@ Core Shard at captured hex (@,@).",
-            c.attacker.id, c.hex.col, c.hex.row
+                "[EvictMapGenerator] Waiting 5 seconds for team #@ Core Shard at captured hex (@,@).",
+                c.attacker.id, c.hex.col, c.hex.row
         );
 
         Time.run(CAPTURE_DELAY_TICKS, () -> replaceCapturedCore(c, 0));
@@ -210,8 +210,8 @@ final class CoreCapture {
             // window so the delay cannot be abused.
             int wiped = clearBuildingsInHex(c.hex);
             Log.info(
-                "[EvictMapGenerator] Removed @ synthetic buildings built or remaining during the 5-second capture window at hex (@,@).",
-                wiped, c.hex.col, c.hex.row
+                    "[EvictMapGenerator] Removed @ synthetic buildings built or remaining during the 5-second capture window at hex (@,@).",
+                    wiped, c.hex.col, c.hex.row
             );
         }
 
@@ -223,9 +223,9 @@ final class CoreCapture {
             c.hex.capturing = false;
 
             Log.info(
-                "[EvictMapGenerator] Capture complete at hex (@,@): team #@ -> team #@ with a Core Shard and no bonus items.@",
-                c.hex.col, c.hex.row, c.defender.id, c.attacker.id,
-                attempt > 0 ? " (after " + attempt + " retr(y/ies))" : ""
+                    "[EvictMapGenerator] Capture complete at hex (@,@): team #@ -> team #@ with a Core Shard and no bonus items.@",
+                    c.hex.col, c.hex.row, c.defender.id, c.attacker.id,
+                    attempt > 0 ? " (after " + attempt + " retr(y/ies))" : ""
             );
             return;
         }
@@ -233,8 +233,8 @@ final class CoreCapture {
         // Center tile still blocked: keep the hex the attacker's and retry.
         if (attempt < MAX_REPLACEMENT_RETRIES) {
             Log.warn(
-                "[EvictMapGenerator] Capture at hex (@,@): replacement Core Shard for team #@ not verified on attempt @/@; retrying in @ ticks.",
-                c.hex.col, c.hex.row, c.attacker.id, attempt + 1, MAX_REPLACEMENT_RETRIES, (int) REPLACEMENT_RETRY_DELAY_TICKS
+                    "[EvictMapGenerator] Capture at hex (@,@): replacement Core Shard for team #@ not verified on attempt @/@; retrying in @ ticks.",
+                    c.hex.col, c.hex.row, c.attacker.id, attempt + 1, MAX_REPLACEMENT_RETRIES, (int) REPLACEMENT_RETRY_DELAY_TICKS
             );
             Time.run(REPLACEMENT_RETRY_DELAY_TICKS, () -> replaceCapturedCore(c, attempt + 1));
             return;
@@ -246,8 +246,8 @@ final class CoreCapture {
         c.hex.capturing = false;
 
         Log.err(
-            "[EvictMapGenerator] Capture at hex (@,@) could not place a verified Core Shard for team #@ after @ attempts. The hex is now unowned so it cannot block victory as a phantom core. See the placement diagnostics above for what blocked the center tile.",
-            c.hex.col, c.hex.row, c.attacker.id, MAX_REPLACEMENT_RETRIES + 1
+                "[EvictMapGenerator] Capture at hex (@,@) could not place a verified Core Shard for team #@ after @ attempts. The hex is now unowned so it cannot block victory as a phantom core. See the placement diagnostics above for what blocked the center tile.",
+                c.hex.col, c.hex.row, c.attacker.id, MAX_REPLACEMENT_RETRIES + 1
         );
     }
 
@@ -257,15 +257,15 @@ final class CoreCapture {
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     private boolean captureStepValid(Capture c) {
         return team.isRoundActiveForSystems()
-            && c.serial == team.roundSerial()
-            && c.hex.capturing;
+                && c.serial == team.roundSerial()
+                && c.hex.capturing;
     }
 
     private Team validCaptureAttacker(Team lastDamage, Team defender) {
         if (
-            lastDamage == null
-                || lastDamage == Team.derelict
-                || lastDamage == defender
+                lastDamage == null
+                        || lastDamage == Team.derelict
+                        || lastDamage == defender
         ) {
             return defender;
         }
@@ -286,11 +286,11 @@ final class CoreCapture {
 
         for (Tile tile : Vars.world.tiles) {
             if (
-                tile != null
-                    && tile.build != null
-                    && tile.isCenter()
-                    && tile.synthetic()
-                    && belongsToCaptureHex(tile.x, tile.y, hex)
+                    tile != null
+                            && tile.build != null
+                            && tile.isCenter()
+                            && tile.synthetic()
+                            && belongsToCaptureHex(tile.x, tile.y, hex)
             ) {
                 centersToRemove.add(tile);
             }
@@ -298,9 +298,9 @@ final class CoreCapture {
 
         for (Tile tile : centersToRemove) {
             if (
-                tile.build != null
-                    && tile.isCenter()
-                    && tile.synthetic()
+                    tile.build != null
+                            && tile.isCenter()
+                            && tile.synthetic()
             ) {
                 tile.removeNet();
             }
@@ -328,10 +328,10 @@ final class CoreCapture {
      */
     boolean placeCore(HexSlot slot, Block coreBlock, Team coreTeam, String reason) {
         if (
-            slot == null
-                || coreBlock == null
-                || coreTeam == null
-                || coreTeam == Team.derelict
+                slot == null
+                        || coreBlock == null
+                        || coreTeam == null
+                        || coreTeam == Team.derelict
         ) {
             return false;
         }
@@ -340,8 +340,8 @@ final class CoreCapture {
 
         if (centerTile == null) {
             Log.err(
-                "[EvictMapGenerator] Cannot place @ core: missing center tile for hex (@,@).",
-                reason, slot.col, slot.row
+                    "[EvictMapGenerator] Cannot place @ core: missing center tile for hex (@,@).",
+                    reason, slot.col, slot.row
             );
             return false;
         }
@@ -363,22 +363,22 @@ final class CoreCapture {
         }
 
         Log.err(
-            "[EvictMapGenerator] Failed to verify @ core at hex (@,@), tile (@,@), expected @ for team #@. The hex will not count as owned. Center tile now holds block=@ floor=@ build=@ buildTeam=@.",
-            reason,
-            slot.col,
-            slot.row,
-            slot.x,
-            slot.y,
-            coreBlock.name,
-            coreTeam.id,
-            centerTile.block() == null ? "null" : centerTile.block().name,
-            centerTile.floor() == null ? "null" : centerTile.floor().name,
-            centerTile.build == null || centerTile.build.block == null
-                ? "none"
-                : centerTile.build.block.name,
-            centerTile.build == null || centerTile.build.team == null
-                ? "none"
-                : "#" + centerTile.build.team.id
+                "[EvictMapGenerator] Failed to verify @ core at hex (@,@), tile (@,@), expected @ for team #@. The hex will not count as owned. Center tile now holds block=@ floor=@ build=@ buildTeam=@.",
+                reason,
+                slot.col,
+                slot.row,
+                slot.x,
+                slot.y,
+                coreBlock.name,
+                coreTeam.id,
+                centerTile.block() == null ? "null" : centerTile.block().name,
+                centerTile.floor() == null ? "null" : centerTile.floor().name,
+                centerTile.build == null || centerTile.build.block == null
+                        ? "none"
+                        : centerTile.build.block.name,
+                centerTile.build == null || centerTile.build.team == null
+                        ? "none"
+                        : "#" + centerTile.build.team.id
         );
 
         return false;
@@ -388,8 +388,8 @@ final class CoreCapture {
         Tile centerTile = Vars.world.tile(slot.x, slot.y);
 
         return centerTile != null
-            && centerTile.block() == coreBlock
-            && centerTile.build instanceof CoreBuild core
-            && core.team == coreTeam;
+                && centerTile.block() == coreBlock
+                && centerTile.build instanceof CoreBuild core
+                && core.team == coreTeam;
     }
 }

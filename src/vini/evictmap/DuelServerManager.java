@@ -35,10 +35,10 @@ import mindustry.world.Block;
  * Flow per match:
  * 1. Reserve a free port from the configured range (main thread, no locking).
  * 2. On a background thread: provision the worker folder if missing, launch
- *    {@code java -Devict.duelWorker=true -jar <jar>}, inject the port and host
- *    command on stdin, then poll the port until it accepts connections.
+ * {@code java -Devict.duelWorker=true -jar <jar>}, inject the port and host
+ * command on stdin, then poll the port until it accepts connections.
  * 3. Back on the main thread: redirect both players, or release the slot and
- *    notify them on failure.
+ * notify them on failure.
  * The slot map is only ever touched on the main thread; background work posts
  * results back with {@link Core#app}.
  */
@@ -56,20 +56,22 @@ final class DuelServerManager {
     private final PlayerDataManager playerDataManager;
 
     private final ExecutorService spawnExecutor =
-        Executors.newCachedThreadPool(runnable -> {
-            Thread thread = new Thread(runnable, "evict-duel-spawn");
-            thread.setDaemon(true);
-            return thread;
-        });
+            Executors.newCachedThreadPool(runnable -> {
+                Thread thread = new Thread(runnable, "evict-duel-spawn");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     private final ScheduledExecutorService lifetimeScheduler =
-        Executors.newSingleThreadScheduledExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "evict-duel-lifetime");
-            thread.setDaemon(true);
-            return thread;
-        });
+            Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "evict-duel-lifetime");
+                thread.setDaemon(true);
+                return thread;
+            });
 
-    /** Port -> reserved/running worker. Only mutated on the main thread. */
+    /**
+     * Port -> reserved/running worker. Only mutated on the main thread.
+     */
     private final Map<Integer, WorkerHandle> workers = new HashMap<>();
 
     /**
@@ -79,14 +81,14 @@ final class DuelServerManager {
     private final Map<String, Integer> activeDuelByUuid = new HashMap<>();
 
     DuelServerManager(
-        EvictSettings settings,
-        PlayerDataManager playerDataManager
+            EvictSettings settings,
+            PlayerDataManager playerDataManager
     ) {
         this.settings = settings;
         this.playerDataManager = playerDataManager;
 
         Runtime.getRuntime().addShutdownHook(
-            new Thread(this::destroyAllWorkers, "evict-duel-shutdown")
+                new Thread(this::destroyAllWorkers, "evict-duel-shutdown")
         );
     }
 
@@ -126,9 +128,9 @@ final class DuelServerManager {
         String opponentUuid = opponent.uuid();
 
         spawnExecutor.submit(() -> spawnAndRedirect(
-            handle,
-            challengerUuid,
-            opponentUuid
+                handle,
+                challengerUuid,
+                opponentUuid
         ));
 
         scheduleLifetimeKill(handle);
@@ -136,9 +138,9 @@ final class DuelServerManager {
     }
 
     private void spawnAndRedirect(
-        WorkerHandle handle,
-        String challengerUuid,
-        String opponentUuid
+            WorkerHandle handle,
+            String challengerUuid,
+            String opponentUuid
     ) {
         try {
             File workerDir = provisionWorkerDir(handle);
@@ -149,10 +151,10 @@ final class DuelServerManager {
             handle.process = process;
 
             process.onExit().thenRun(
-                () -> Core.app.post(() -> {
-                    logResult(handle);
-                    releaseSlot(handle);
-                })
+                    () -> Core.app.post(() -> {
+                        logResult(handle);
+                        releaseSlot(handle);
+                    })
             );
 
             boolean ready = waitUntilReady(handle.port);
@@ -160,8 +162,8 @@ final class DuelServerManager {
             Core.app.post(() -> {
                 if (!ready || !process.isAlive()) {
                     Log.err(
-                        "[EvictMapGenerator] 1v1: worker on port @ did not become ready; releasing slot.",
-                        handle.port
+                            "[EvictMapGenerator] 1v1: worker on port @ did not become ready; releasing slot.",
+                            handle.port
                     );
                     notifyFailure(challengerUuid, opponentUuid);
                     destroyWorker(handle);
@@ -172,9 +174,9 @@ final class DuelServerManager {
             });
         } catch (Exception exception) {
             Log.err(
-                "[EvictMapGenerator] 1v1: failed to start a duel worker on port "
-                    + handle.port + ".",
-                exception
+                    "[EvictMapGenerator] 1v1: failed to start a duel worker on port "
+                            + handle.port + ".",
+                    exception
             );
 
             Core.app.post(() -> {
@@ -185,9 +187,9 @@ final class DuelServerManager {
     }
 
     private void redirectPlayers(
-        WorkerHandle handle,
-        String challengerUuid,
-        String opponentUuid
+            WorkerHandle handle,
+            String challengerUuid,
+            String opponentUuid
     ) {
         if (workers.get(handle.port) != handle) {
             // Slot was already released (e.g. the worker died) meanwhile.
@@ -199,8 +201,8 @@ final class DuelServerManager {
 
         if (challenger == null || opponent == null) {
             Log.info(
-                "[EvictMapGenerator] 1v1: a player left before the worker on port @ was ready; releasing slot.",
-                handle.port
+                    "[EvictMapGenerator] 1v1: a player left before the worker on port @ was ready; releasing slot.",
+                    handle.port
             );
             destroyWorker(handle);
             return;
@@ -218,11 +220,11 @@ final class DuelServerManager {
         Call.connect(opponent.con, ip, handle.port);
 
         Log.info(
-            "[EvictMapGenerator] 1v1: sent @ and @ to duel worker @:@.",
-            challenger.plainName(),
-            opponent.plainName(),
-            ip,
-            handle.port
+                "[EvictMapGenerator] 1v1: sent @ and @ to duel worker @:@.",
+                challenger.plainName(),
+                opponent.plainName(),
+                ip,
+                handle.port
         );
     }
 
@@ -266,9 +268,9 @@ final class DuelServerManager {
         for (WorkerHandle handle : workers.values()) {
             if (isOngoing(handle)) {
                 duels.add(new ActiveDuel(
-                    handle.port,
-                    handle.player1Display,
-                    handle.player2Display
+                        handle.port,
+                        handle.player1Display,
+                        handle.player2Display
                 ));
             }
         }
@@ -287,7 +289,7 @@ final class DuelServerManager {
         }
 
         viewer.sendMessage(
-            "[accent]Connecting you to the 1v1 as a spectator...[]"
+                "[accent]Connecting you to the 1v1 as a spectator...[]"
         );
         Call.connect(viewer.con, settings.duelServerIp(), port);
         return true;
@@ -295,12 +297,12 @@ final class DuelServerManager {
 
     private boolean isOngoing(WorkerHandle handle) {
         return handle != null
-            && handle.process != null
-            && handle.process.isAlive()
-            && !new File(
+                && handle.process != null
+                && handle.process.isAlive()
+                && !new File(
                 workerDir(handle.port),
                 "result.properties"
-            ).exists();
+        ).exists();
     }
 
     /**
@@ -313,12 +315,12 @@ final class DuelServerManager {
         int maxWorkers = settings.duelMaxWorkers();
 
         Log.info(
-            "[EvictMapGenerator] Duel pool: @ active of @ slots, ip=@, ports @-@.",
-            workers.size(),
-            maxWorkers,
-            isConfigured() ? settings.duelServerIp() : "not set",
-            basePort,
-            basePort + maxWorkers - 1
+                "[EvictMapGenerator] Duel pool: @ active of @ slots, ip=@, ports @-@.",
+                workers.size(),
+                maxWorkers,
+                isConfigured() ? settings.duelServerIp() : "not set",
+                basePort,
+                basePort + maxWorkers - 1
         );
 
         if (workers.isEmpty()) {
@@ -335,23 +337,23 @@ final class DuelServerManager {
 
             if (alive && status != null) {
                 Log.info(
-                    "[EvictMapGenerator]   port @ [@] uptime=@ game=@ players: @",
-                    handle.port,
-                    status.getProperty("state", "?"),
-                    uptime,
-                    formatHms(parseLong(status.getProperty("elapsedSeconds"))),
-                    formatPlayers(status.getProperty("players", ""))
+                        "[EvictMapGenerator]   port @ [@] uptime=@ game=@ players: @",
+                        handle.port,
+                        status.getProperty("state", "?"),
+                        uptime,
+                        formatHms(parseLong(status.getProperty("elapsedSeconds"))),
+                        formatPlayers(status.getProperty("players", ""))
                 );
             } else {
                 Log.info(
-                    "[EvictMapGenerator]   port @ [@] uptime=@ players: @ (@) vs @ (@)",
-                    handle.port,
-                    alive ? "starting" : "closing",
-                    uptime,
-                    handle.player1Name,
-                    handle.player1Uuid,
-                    handle.player2Name,
-                    handle.player2Uuid
+                        "[EvictMapGenerator]   port @ [@] uptime=@ players: @ (@) vs @ (@)",
+                        handle.port,
+                        alive ? "starting" : "closing",
+                        uptime,
+                        handle.player1Name,
+                        handle.player1Uuid,
+                        handle.player2Name,
+                        handle.player2Uuid
                 );
             }
         }
@@ -425,13 +427,13 @@ final class DuelServerManager {
 
         if (challenger != null) {
             challenger.sendMessage(
-                "[scarlet]The 1v1 server could not be started. Try again.[]"
+                    "[scarlet]The 1v1 server could not be started. Try again.[]"
             );
         }
 
         if (opponent != null) {
             opponent.sendMessage(
-                "[scarlet]The 1v1 server could not be started. Try again.[]"
+                    "[scarlet]The 1v1 server could not be started. Try again.[]"
             );
         }
     }
@@ -462,8 +464,8 @@ final class DuelServerManager {
         File jar = new File(workerDir, settings.duelWorkerJarName());
         if (!jar.exists()) {
             Log.info(
-                "[EvictMapGenerator] 1v1: provisioning worker folder @ from the hub files.",
-                workerDir.getPath()
+                    "[EvictMapGenerator] 1v1: provisioning worker folder @ from the hub files.",
+                    workerDir.getPath()
             );
             copyFile(new File(settings.duelWorkerJarName()), jar);
         }
@@ -496,9 +498,9 @@ final class DuelServerManager {
         }
 
         Files.copy(
-            source.toPath(),
-            new File(workerConfig, "evict-ranks.properties").toPath(),
-            StandardCopyOption.REPLACE_EXISTING
+                source.toPath(),
+                new File(workerConfig, "evict-ranks.properties").toPath(),
+                StandardCopyOption.REPLACE_EXISTING
         );
     }
 
@@ -511,8 +513,8 @@ final class DuelServerManager {
      * bans exactly those blocks - the hub's own settings file does not track them.
      */
     private static void copySettingsFile(
-        File workerConfig,
-        List<String> bannedBlocks
+            File workerConfig,
+            List<String> bannedBlocks
     ) throws IOException {
         File source = new File("config/evict-map-generator.properties");
 
@@ -530,12 +532,12 @@ final class DuelServerManager {
         // not relay /play to another instance.
         properties.setProperty("duel.server.ip", "");
         properties.setProperty(
-            "rules.bannedBlocks",
-            String.join(",", bannedBlocks)
+                "rules.bannedBlocks",
+                String.join(",", bannedBlocks)
         );
 
         try (FileOutputStream output = new FileOutputStream(
-            new File(workerConfig, "evict-map-generator.properties")
+                new File(workerConfig, "evict-map-generator.properties")
         )) {
             properties.store(output, "Evict synced hub generation settings");
         }
@@ -547,8 +549,8 @@ final class DuelServerManager {
      * keeps stale admins.
      */
     private static void writeAdminsFile(
-        File workerConfig,
-        List<String> adminUuids
+            File workerConfig,
+            List<String> adminUuids
     ) throws IOException {
         Properties properties = new Properties();
 
@@ -559,7 +561,7 @@ final class DuelServerManager {
         }
 
         try (FileOutputStream output = new FileOutputStream(
-            new File(workerConfig, "evict-admins.properties")
+                new File(workerConfig, "evict-admins.properties")
         )) {
             properties.store(output, "Evict synced hub admins (uuid = admin)");
         }
@@ -586,7 +588,9 @@ final class DuelServerManager {
         return names;
     }
 
-    /** Snapshot of the hub's admin UUIDs. Must run on the main thread. */
+    /**
+     * Snapshot of the hub's admin UUIDs. Must run on the main thread.
+     */
     private static List<String> snapshotAdminUuids() {
         List<String> uuids = new ArrayList<>();
 
@@ -604,9 +608,9 @@ final class DuelServerManager {
     }
 
     private void writeHandshake(
-        File workerDir,
-        String player1Uuid,
-        String player2Uuid
+            File workerDir,
+            String player1Uuid,
+            String player2Uuid
     ) throws IOException {
         Properties properties = new Properties();
         properties.setProperty("player1.uuid", player1Uuid);
@@ -615,7 +619,7 @@ final class DuelServerManager {
         properties.setProperty("hub.port", Integer.toString(hubPort()));
 
         try (FileOutputStream output =
-                 new FileOutputStream(new File(workerDir, "duel.properties"))) {
+                     new FileOutputStream(new File(workerDir, "duel.properties"))) {
             properties.store(output, "Evict duel handshake");
         }
     }
@@ -650,11 +654,11 @@ final class DuelServerManager {
             String loserUuid = properties.getProperty("loser.uuid", "").trim();
 
             Log.info(
-                "[EvictMapGenerator] 1v1 result on port @: winner=@ loser=@ reason=@.",
-                port,
-                winnerUuid.isEmpty() ? "?" : winnerUuid,
-                loserUuid.isEmpty() ? "?" : loserUuid,
-                properties.getProperty("reason", "?")
+                    "[EvictMapGenerator] 1v1 result on port @: winner=@ loser=@ reason=@.",
+                    port,
+                    winnerUuid.isEmpty() ? "?" : winnerUuid,
+                    loserUuid.isEmpty() ? "?" : loserUuid,
+                    properties.getProperty("reason", "?")
             );
 
             // Credit the ranked record and match history on the hub's database;
@@ -662,16 +666,16 @@ final class DuelServerManager {
             // colored display names captured at match start let /history render
             // them later without the players being online.
             playerDataManager.recordRankedResult(
-                winnerUuid,
-                displayNameFor(handle, winnerUuid),
-                loserUuid,
-                displayNameFor(handle, loserUuid)
+                    winnerUuid,
+                    displayNameFor(handle, winnerUuid),
+                    loserUuid,
+                    displayNameFor(handle, loserUuid)
             );
         } catch (Exception exception) {
             Log.err(
-                "[EvictMapGenerator] Could not read the duel result on port "
-                    + port + ".",
-                exception
+                    "[EvictMapGenerator] Could not read the duel result on port "
+                            + port + ".",
+                    exception
             );
         }
 
@@ -698,15 +702,15 @@ final class DuelServerManager {
 
     private Process launchWorker(File workerDir, int port) throws IOException {
         String javaExe = new File(
-            System.getProperty("java.home"),
-            "bin/java"
+                System.getProperty("java.home"),
+                "bin/java"
         ).getPath();
 
         ProcessBuilder builder = new ProcessBuilder(
-            javaExe,
-            "-Devict.duelWorker=true",
-            "-jar",
-            settings.duelWorkerJarName()
+                javaExe,
+                "-Devict.duelWorker=true",
+                "-jar",
+                settings.duelWorkerJarName()
         );
 
         builder.directory(workerDir);
@@ -723,7 +727,7 @@ final class DuelServerManager {
     }
 
     private void writeCommand(OutputStream stdin, String command)
-        throws IOException {
+            throws IOException {
         stdin.write((command + "\n").getBytes(StandardCharsets.UTF_8));
         stdin.flush();
     }
@@ -734,8 +738,8 @@ final class DuelServerManager {
         while (System.currentTimeMillis() < deadline) {
             try (Socket socket = new Socket()) {
                 socket.connect(
-                    new InetSocketAddress("127.0.0.1", port),
-                    READINESS_CONNECT_TIMEOUT_MILLIS
+                        new InetSocketAddress("127.0.0.1", port),
+                        READINESS_CONNECT_TIMEOUT_MILLIS
                 );
                 return true;
             } catch (IOException ignored) {
@@ -748,17 +752,17 @@ final class DuelServerManager {
 
     private void scheduleLifetimeKill(WorkerHandle handle) {
         lifetimeScheduler.schedule(
-            () -> Core.app.post(() -> {
-                if (workers.get(handle.port) == handle) {
-                    Log.info(
-                        "[EvictMapGenerator] 1v1: worker on port @ hit the max lifetime; stopping it.",
-                        handle.port
-                    );
-                    destroyWorker(handle);
-                }
-            }),
-            MAX_WORKER_LIFETIME_MINUTES,
-            TimeUnit.MINUTES
+                () -> Core.app.post(() -> {
+                    if (workers.get(handle.port) == handle) {
+                        Log.info(
+                                "[EvictMapGenerator] 1v1: worker on port @ hit the max lifetime; stopping it.",
+                                handle.port
+                        );
+                        destroyWorker(handle);
+                    }
+                }),
+                MAX_WORKER_LIFETIME_MINUTES,
+                TimeUnit.MINUTES
         );
     }
 
@@ -767,8 +771,8 @@ final class DuelServerManager {
             workers.remove(handle.port);
             activeDuelByUuid.values().removeIf(port -> port == handle.port);
             Log.info(
-                "[EvictMapGenerator] 1v1: duel worker on port @ ended; slot is free again.",
-                handle.port
+                    "[EvictMapGenerator] 1v1: duel worker on port @ ended; slot is free again.",
+                    handle.port
             );
         }
     }
@@ -794,7 +798,7 @@ final class DuelServerManager {
     }
 
     private static void copyDirectory(File source, File target)
-        throws IOException {
+            throws IOException {
         if (!source.exists()) {
             return;
         }
@@ -807,16 +811,16 @@ final class DuelServerManager {
         try (Stream<Path> entries = Files.walk(sourcePath)) {
             for (Path entry : (Iterable<Path>) entries::iterator) {
                 Path destination =
-                    targetPath.resolve(sourcePath.relativize(entry));
+                        targetPath.resolve(sourcePath.relativize(entry));
 
                 if (Files.isDirectory(entry)) {
                     Files.createDirectories(destination);
                 } else {
                     Files.createDirectories(destination.getParent());
                     Files.copy(
-                        entry,
-                        destination,
-                        StandardCopyOption.REPLACE_EXISTING
+                            entry,
+                            destination,
+                            StandardCopyOption.REPLACE_EXISTING
                     );
                 }
             }
@@ -838,15 +842,17 @@ final class DuelServerManager {
 
     private static Player onlinePlayer(String uuid) {
         return Groups.player.find(
-            player -> player != null && player.uuid().equals(uuid)
+                player -> player != null && player.uuid().equals(uuid)
         );
     }
 
-    /** One in-progress duel exposed to the /view menu. */
+    /**
+     * One in-progress duel exposed to the /view menu.
+     */
     record ActiveDuel(
-        int port,
-        String player1Display,
-        String player2Display
+            int port,
+            String player1Display,
+            String player2Display
     ) {
     }
 

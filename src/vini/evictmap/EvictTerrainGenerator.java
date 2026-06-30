@@ -74,18 +74,18 @@ final class EvictTerrainGenerator {
      * away from the center on each applicable axis.
      */
     private static final Point[] INNER_POLYGON = new Point[]{
-        new Point(-34,   0),
-        new Point(-34,  20),
-        new Point( -4,  38),
-        new Point(  0,  38),
-        new Point(  4,  38),
-        new Point( 34,  20),
-        new Point( 34,   0),
-        new Point( 34, -20),
-        new Point(  4, -38),
-        new Point(  0, -38),
-        new Point( -4, -38),
-        new Point(-34, -20)
+            new Point(-34, 0),
+            new Point(-34, 20),
+            new Point(-4, 38),
+            new Point(0, 38),
+            new Point(4, 38),
+            new Point(34, 20),
+            new Point(34, 0),
+            new Point(34, -20),
+            new Point(4, -38),
+            new Point(0, -38),
+            new Point(-4, -38),
+            new Point(-34, -20)
     };
 
     // ---------------------------------------------------------------------
@@ -102,7 +102,7 @@ final class EvictTerrainGenerator {
     private static final double CENTER_FILLED_HEX_BONUS = 0.12;
     private static final int CENTER_BONUS_RADIUS = 180;
     private static final int CENTER_BONUS_RADIUS_SQUARED =
-        CENTER_BONUS_RADIUS * CENTER_BONUS_RADIUS;
+            CENTER_BONUS_RADIUS * CENTER_BONUS_RADIUS;
 
     // Keep every map inside a predictable filled-hex range.
     private static final int MIN_FILLED_HEXES = 6;
@@ -117,23 +117,23 @@ final class EvictTerrainGenerator {
      * Generates a round onto the currently loaded world.
      *
      * @param syncToClients when {@code true}, the freshly generated terrain is
-     *     pushed to connected clients tile-by-tile via {@code Call.setTile*}.
-     *     Pass {@code false} when generation runs inside a world (re)load: the
-     *     server's own world snapshot already carries the generated terrain to
-     *     clients, so the extra per-tile flood is redundant and - layered on top
-     *     of the snapshot stream - is what overflows client connections and
-     *     drops them with "(error)" at match end. Only in-place regeneration
-     *     (duel /restart, evictgen on a live map) needs the per-tile push,
-     *     because no fresh snapshot is sent there.
+     *                      pushed to connected clients tile-by-tile via {@code Call.setTile*}.
+     *                      Pass {@code false} when generation runs inside a world (re)load: the
+     *                      server's own world snapshot already carries the generated terrain to
+     *                      clients, so the extra per-tile flood is redundant and - layered on top
+     *                      of the snapshot stream - is what overflows client connections and
+     *                      drops them with "(error)" at match end. Only in-place regeneration
+     *                      (duel /restart, evictgen on a live map) needs the per-tile push,
+     *                      because no fresh snapshot is sent there.
      */
     GeneratedRound generate(long seed, boolean syncToClients) {
         if (
-            Vars.world == null
-                || Vars.world.width() <= 0
-                || Vars.world.height() <= 0
+                Vars.world == null
+                        || Vars.world.width() <= 0
+                        || Vars.world.height() <= 0
         ) {
             throw new IllegalStateException(
-                "No map is loaded. Host a sufficiently large blank test map first."
+                    "No map is loaded. Host a sufficiently large blank test map first."
             );
         }
 
@@ -141,19 +141,19 @@ final class EvictTerrainGenerator {
         int worldHeight = Vars.world.height();
 
         if (
-            worldWidth < minimumWorldWidth()
-                || worldHeight < minimumWorldHeight()
+                worldWidth < minimumWorldWidth()
+                        || worldHeight < minimumWorldHeight()
         ) {
             throw new IllegalStateException(
-                "Base map is too small. Required: at least "
-                    + minimumWorldWidth()
-                    + "x"
-                    + minimumWorldHeight()
-                    + " tiles. Loaded: "
-                    + worldWidth
-                    + "x"
-                    + worldHeight
-                    + "."
+                    "Base map is too small. Required: at least "
+                            + minimumWorldWidth()
+                            + "x"
+                            + minimumWorldHeight()
+                            + " tiles. Loaded: "
+                            + worldWidth
+                            + "x"
+                            + worldHeight
+                            + "."
             );
         }
 
@@ -161,7 +161,7 @@ final class EvictTerrainGenerator {
 
         List<Cell> cells = allCells();
         Set<Cell> filledCells =
-            chooseFilledCells(random, cells, rawGridCenter(cells));
+                chooseFilledCells(random, cells, rawGridCenter(cells));
 
         List<Cell> normalCells = new ArrayList<>();
 
@@ -178,26 +178,26 @@ final class EvictTerrainGenerator {
         }
 
         Set<Edge> repairedConnectivityEdges =
-            ensureTraversableConnectivity(normalCells, edgeTypes, random);
+                ensureTraversableConnectivity(normalCells, edgeTypes, random);
 
         Map<Cell, Point> centers =
-            translatedCenters(worldWidth, worldHeight);
+                translatedCenters(worldWidth, worldHeight);
 
         byte[][] zones =
-            createZoneMap(worldWidth, worldHeight, centers, normalCells);
+                createZoneMap(worldWidth, worldHeight, centers, normalCells);
 
         boolean[][] walls =
-            createWallMap(worldWidth, worldHeight, zones);
+                createWallMap(worldWidth, worldHeight, zones);
 
         applyConnectionTemplates(walls, zones, centers, edgeTypes);
         applyTerrainToWorld(walls);
 
         ResourceGenerator.Summary resourceSummary =
-            ResourceGenerator.generate(
-                seed,
-                resourceCenters(centers, normalCells),
-                settings
-            );
+                ResourceGenerator.generate(
+                        seed,
+                        resourceCenters(centers, normalCells),
+                        settings
+                );
 
         placeNucleusCores(centers, normalCells);
         recomputeStaticDarkness();
@@ -206,80 +206,80 @@ final class EvictTerrainGenerator {
             syncGeneratedWorld();
         } else {
             Log.info(
-                "[EvictMapGenerator] Skipped per-tile client sync; the world (re)load snapshot carries the generated terrain."
+                    "[EvictMapGenerator] Skipped per-tile client sync; the world (re)load snapshot carries the generated terrain."
             );
         }
 
         return new GeneratedRound(
-            startHexSlots(centers, normalCells, filledCells),
-            normalCells.size(),
-            filledCells.size(),
-            repairedConnectivityEdges.size(),
-            resourceSummary
+                startHexSlots(centers, normalCells, filledCells),
+                normalCells.size(),
+                filledCells.size(),
+                repairedConnectivityEdges.size(),
+                resourceSummary
         );
     }
 
     void logStatus() {
         Log.info(
-            "[EvictMapGenerator] grid: @ staggered rows, alternating @ / @ hexes",
-            ROWS,
-            SHORT_ROW_COLS,
-            LONG_ROW_COLS
+                "[EvictMapGenerator] grid: @ staggered rows, alternating @ / @ hexes",
+                ROWS,
+                SHORT_ROW_COLS,
+                LONG_ROW_COLS
         );
 
         Log.info(
-            "[EvictMapGenerator] required map size: at least @x@ tiles",
-            minimumWorldWidth(),
-            minimumWorldHeight()
+                "[EvictMapGenerator] required map size: at least @x@ tiles",
+                minimumWorldWidth(),
+                minimumWorldHeight()
         );
 
         Log.info(
-            "[EvictMapGenerator] geometry: outerRadius=@, outerDiameter=@, horizontalCenterDistance=@ coordinates / @ tiles counted inclusively",
-            OUTER_RADIUS,
-            OUTER_RADIUS * 2 + 1,
-            HORIZONTAL_DX,
-            HORIZONTAL_DX + 1
+                "[EvictMapGenerator] geometry: outerRadius=@, outerDiameter=@, horizontalCenterDistance=@ coordinates / @ tiles counted inclusively",
+                OUTER_RADIUS,
+                OUTER_RADIUS * 2 + 1,
+                HORIZONTAL_DX,
+                HORIZONTAL_DX + 1
         );
 
         Log.info(
-            "[EvictMapGenerator] geometry: horizontal grey connection band derives to @ tiles, passage opening width=@",
-            horizontalGreyBandWidth(),
-            PASSAGE_WIDTH
+                "[EvictMapGenerator] geometry: horizontal grey connection band derives to @ tiles, passage opening width=@",
+                horizontalGreyBandWidth(),
+                PASSAGE_WIDTH
         );
 
         Log.info(
-            "[EvictMapGenerator] filled hexes: min=@, max=@, centre bonus up to @% within @ tiles",
-            MIN_FILLED_HEXES,
-            MAX_FILLED_HEXES,
-            percent(CENTER_FILLED_HEX_BONUS),
-            CENTER_BONUS_RADIUS
+                "[EvictMapGenerator] filled hexes: min=@, max=@, centre bonus up to @% within @ tiles",
+                MIN_FILLED_HEXES,
+                MAX_FILLED_HEXES,
+                percent(CENTER_FILLED_HEX_BONUS),
+                CENTER_BONUS_RADIUS
         );
 
         Log.info(
-            "[EvictMapGenerator] resources: @",
-            ResourceGenerator.presetDescription(settings)
+                "[EvictMapGenerator] resources: @",
+                ResourceGenerator.presetDescription(settings)
         );
 
         Log.info(
-            "[EvictMapGenerator] edge weights: @",
-            settings.compactWallSettings()
+                "[EvictMapGenerator] edge weights: @",
+                settings.compactWallSettings()
         );
     }
 
     record GeneratedRound(
-        List<TeamManager.HexSlot> slots,
-        int normalHexes,
-        int filledHexes,
-        int repairedConnectivityEdges,
-        ResourceGenerator.Summary resources
+            List<TeamManager.HexSlot> slots,
+            int normalHexes,
+            int filledHexes,
+            int repairedConnectivityEdges,
+            ResourceGenerator.Summary resources
     ) {
     }
 
     private byte[][] createZoneMap(
-        int width,
-        int height,
-        Map<Cell, Point> centers,
-        List<Cell> normalCells
+            int width,
+            int height,
+            Map<Cell, Point> centers,
+            List<Cell> normalCells
     ) {
         // 0 = outside all active circles: fixed Dirt Wall
         // 1 = inside a circle, outside all inner polygons: variable gray zone
@@ -312,8 +312,8 @@ final class EvictTerrainGenerator {
                     // The inner polygon may only turn a tile into guaranteed
                     // floor when that tile was already reached by a circle.
                     if (
-                        zones[y][x] != 0
-                            && pointInsideTranslatedInnerPolygon(x, y, center)
+                            zones[y][x] != 0
+                                    && pointInsideTranslatedInnerPolygon(x, y, center)
                     ) {
                         zones[y][x] = 2;
                     }
@@ -341,10 +341,10 @@ final class EvictTerrainGenerator {
     }
 
     private void applyConnectionTemplates(
-        boolean[][] walls,
-        byte[][] zones,
-        Map<Cell, Point> centers,
-        Map<Edge, EdgeType> edgeTypes
+            boolean[][] walls,
+            byte[][] zones,
+            Map<Cell, Point> centers,
+            Map<Edge, EdgeType> edgeTypes
     ) {
         /*
          * Important raster rule:
@@ -356,7 +356,7 @@ final class EvictTerrainGenerator {
          * Afterwards each template edits only its own fixed tile mask.
          */
         Map<Edge, Set<TilePoint>> tilesByEdge =
-            buildOwnedEdgeMasks(zones, centers, edgeTypes.keySet());
+                buildOwnedEdgeMasks(zones, centers, edgeTypes.keySet());
 
         for (Map.Entry<Edge, EdgeType> entry : edgeTypes.entrySet()) {
             Edge edge = entry.getKey();
@@ -384,9 +384,9 @@ final class EvictTerrainGenerator {
     }
 
     private Map<Edge, Set<TilePoint>> buildOwnedEdgeMasks(
-        byte[][] zones,
-        Map<Cell, Point> centers,
-        Set<Edge> edges
+            byte[][] zones,
+            Map<Cell, Point> centers,
+            Set<Edge> edges
     ) {
         int height = zones.length;
         int width = zones[0].length;
@@ -416,10 +416,10 @@ final class EvictTerrainGenerator {
             double middleY = (a.y + b.y) / 2.0;
 
             int reach = OUTER_RADIUS + 2;
-            int minX = Math.max(0, (int)Math.floor(middleX - reach));
-            int maxX = Math.min(width - 1, (int)Math.ceil(middleX + reach));
-            int minY = Math.max(0, (int)Math.floor(middleY - reach));
-            int maxY = Math.min(height - 1, (int)Math.ceil(middleY + reach));
+            int minX = Math.max(0, (int) Math.floor(middleX - reach));
+            int maxX = Math.min(width - 1, (int) Math.ceil(middleX + reach));
+            int minY = Math.max(0, (int) Math.floor(middleY - reach));
+            int maxY = Math.min(height - 1, (int) Math.ceil(middleY + reach));
 
             for (int y = minY; y <= maxY; y++) {
                 for (int x = minX; x <= maxX; x++) {
@@ -436,10 +436,10 @@ final class EvictTerrainGenerator {
                     }
 
                     boolean insideA =
-                        squaredDistance(x, y, a.x, a.y) <= OUTER_RADIUS * OUTER_RADIUS;
+                            squaredDistance(x, y, a.x, a.y) <= OUTER_RADIUS * OUTER_RADIUS;
 
                     boolean insideB =
-                        squaredDistance(x, y, b.x, b.y) <= OUTER_RADIUS * OUTER_RADIUS;
+                            squaredDistance(x, y, b.x, b.y) <= OUTER_RADIUS * OUTER_RADIUS;
 
                     if (!insideA && !insideB) {
                         continue;
@@ -451,11 +451,11 @@ final class EvictTerrainGenerator {
                     EdgeOwnership current = ownerByTile.get(tile);
 
                     if (
-                        current == null
-                            || score < current.score - 1e-9
-                            || (
-                                Math.abs(score - current.score) <= 1e-9
-                                    && edgeComparator().compare(edge, current.edge) < 0
+                            current == null
+                                    || score < current.score - 1e-9
+                                    || (
+                                    Math.abs(score - current.score) <= 1e-9
+                                            && edgeComparator().compare(edge, current.edge) < 0
                             )
                     ) {
                         ownerByTile.put(tile, new EdgeOwnership(edge, score));
@@ -472,10 +472,10 @@ final class EvictTerrainGenerator {
     }
 
     private void applyOneTileThinWallTemplate(
-        boolean[][] walls,
-        Map<Cell, Point> centers,
-        Edge edge,
-        Set<TilePoint> mask
+            boolean[][] walls,
+            Map<Cell, Point> centers,
+            Edge edge,
+            Set<TilePoint> mask
     ) {
         /*
          * A mathematically centered line can lie exactly between two tile rows.
@@ -542,10 +542,10 @@ final class EvictTerrainGenerator {
     }
 
     private void applyPassageTemplate(
-        boolean[][] walls,
-        Map<Cell, Point> centers,
-        Edge edge,
-        Set<TilePoint> mask
+            boolean[][] walls,
+            Map<Cell, Point> centers,
+            Edge edge,
+            Set<TilePoint> mask
     ) {
         Point a = centers.get(edge.a);
         Point b = centers.get(edge.b);
@@ -568,10 +568,10 @@ final class EvictTerrainGenerator {
     }
 
     private Set<TilePoint> rasterizeOneTileLine(
-        int startX,
-        int startY,
-        int endX,
-        int endY
+            int startX,
+            int startY,
+            int endX,
+            int endY
     ) {
         Set<TilePoint> line = new LinkedHashSet<>();
 
@@ -614,15 +614,15 @@ final class EvictTerrainGenerator {
          * Java's normal round() would also work most of the time, but this
          * explicitly resolves exact half-tile positions in one consistent way.
          */
-        return (int)Math.floor(value + 0.5);
+        return (int) Math.floor(value + 0.5);
     }
 
     private Comparator<Edge> edgeComparator() {
         return Comparator
-            .comparingInt((Edge edge) -> edge.a.row)
-            .thenComparingInt(edge -> edge.a.col)
-            .thenComparingInt(edge -> edge.b.row)
-            .thenComparingInt(edge -> edge.b.col);
+                .comparingInt((Edge edge) -> edge.a.row)
+                .thenComparingInt(edge -> edge.a.col)
+                .thenComparingInt(edge -> edge.b.row)
+                .thenComparingInt(edge -> edge.b.col);
     }
 
 
@@ -650,11 +650,11 @@ final class EvictTerrainGenerator {
 
     private void syncGeneratedWorld() {
         Map<Block, List<Integer>> floorPositionsByBlock =
-            new LinkedHashMap<>();
+                new LinkedHashMap<>();
         Map<Block, List<Integer>> overlayPositionsByBlock =
-            new LinkedHashMap<>();
+                new LinkedHashMap<>();
         Map<BlockSyncKey, List<Integer>> blockPositionsByKey =
-            new LinkedHashMap<>();
+                new LinkedHashMap<>();
 
         for (Tile tile : Vars.world.tiles) {
             if (tile == null) {
@@ -662,22 +662,22 @@ final class EvictTerrainGenerator {
             }
 
             floorPositionsByBlock
-                .computeIfAbsent(tile.floor(), ignored -> new ArrayList<>())
-                .add(tile.pos());
+                    .computeIfAbsent(tile.floor(), ignored -> new ArrayList<>())
+                    .add(tile.pos());
 
             if (tile.overlay() != Blocks.air) {
                 overlayPositionsByBlock
-                    .computeIfAbsent(tile.overlay(), ignored -> new ArrayList<>())
-                    .add(tile.pos());
+                        .computeIfAbsent(tile.overlay(), ignored -> new ArrayList<>())
+                        .add(tile.pos());
             }
 
             if (shouldSyncBlockPosition(tile)) {
                 blockPositionsByKey
-                    .computeIfAbsent(
-                        new BlockSyncKey(tile.block(), tile.team()),
-                        ignored -> new ArrayList<>()
-                    )
-                    .add(tile.pos());
+                        .computeIfAbsent(
+                                new BlockSyncKey(tile.block(), tile.team()),
+                                ignored -> new ArrayList<>()
+                        )
+                        .add(tile.pos());
             }
         }
 
@@ -692,17 +692,17 @@ final class EvictTerrainGenerator {
         for (Map.Entry<BlockSyncKey, List<Integer>> entry : blockPositionsByKey.entrySet()) {
             BlockSyncKey key = entry.getKey();
             Call.setTileBlocks(
-                key.block,
-                key.team,
-                positions(entry.getValue())
+                    key.block,
+                    key.team,
+                    positions(entry.getValue())
             );
         }
 
         Log.info(
-            "[EvictMapGenerator] Synced generated terrain to clients in @ floor groups, @ overlay groups and @ block groups.",
-            floorPositionsByBlock.size(),
-            overlayPositionsByBlock.size(),
-            blockPositionsByKey.size()
+                "[EvictMapGenerator] Synced generated terrain to clients in @ floor groups, @ overlay groups and @ block groups.",
+                floorPositionsByBlock.size(),
+                overlayPositionsByBlock.size(),
+                blockPositionsByKey.size()
         );
     }
 
@@ -722,8 +722,8 @@ final class EvictTerrainGenerator {
     }
 
     private List<ResourceGenerator.HexCenter> resourceCenters(
-        Map<Cell, Point> centers,
-        List<Cell> normalCells
+            Map<Cell, Point> centers,
+            List<Cell> normalCells
     ) {
         List<ResourceGenerator.HexCenter> result = new ArrayList<>();
 
@@ -736,8 +736,8 @@ final class EvictTerrainGenerator {
     }
 
     private void placeNucleusCores(
-        Map<Cell, Point> centers,
-        List<Cell> normalCells
+            Map<Cell, Point> centers,
+            List<Cell> normalCells
     ) {
         /*
          * Every unclaimed Nucleus starts as Fallen team #14.
@@ -750,8 +750,8 @@ final class EvictTerrainGenerator {
 
             if (tile == null) {
                 throw new IllegalStateException(
-                    "Core center is outside the loaded world at "
-                        + center.x + "," + center.y + "."
+                        "Core center is outside the loaded world at "
+                                + center.x + "," + center.y + "."
                 );
             }
 
@@ -761,9 +761,9 @@ final class EvictTerrainGenerator {
     }
 
     private List<TeamManager.HexSlot> startHexSlots(
-        Map<Cell, Point> centers,
-        List<Cell> normalCells,
-        Set<Cell> filledCells
+            Map<Cell, Point> centers,
+            List<Cell> normalCells,
+            Set<Cell> filledCells
     ) {
         List<TeamManager.HexSlot> slots = new ArrayList<>();
 
@@ -772,13 +772,13 @@ final class EvictTerrainGenerator {
             int protectedSides = protectedStartSides(cell, filledCells);
 
             slots.add(
-                new TeamManager.HexSlot(
-                    cell.col,
-                    cell.row,
-                    center.x,
-                    center.y,
-                    protectedSides
-                )
+                    new TeamManager.HexSlot(
+                            cell.col,
+                            cell.row,
+                            center.x,
+                            center.y,
+                            protectedSides
+                    )
             );
         }
 
@@ -822,15 +822,15 @@ final class EvictTerrainGenerator {
         }
 
         double centreFactor =
-            1.0 - distanceSquared / (double)CENTER_BONUS_RADIUS_SQUARED;
+                1.0 - distanceSquared / (double) CENTER_BONUS_RADIUS_SQUARED;
 
         return CENTER_FILLED_HEX_BONUS * centreFactor;
     }
 
     private Set<Cell> chooseFilledCells(
-        Random random,
-        List<Cell> cells,
-        Point gridCenter
+            Random random,
+            List<Cell> cells,
+            Point gridCenter
     ) {
         Set<Cell> filled = new HashSet<>();
 
@@ -841,10 +841,10 @@ final class EvictTerrainGenerator {
             int ring = borderDistance(cell);
 
             double chance = ring == 0
-                ? FILLED_HEX_BORDER_CHANCE
-                : ring == 1
-                    ? FILLED_HEX_SECOND_RING_CHANCE
-                    : FILLED_HEX_INNER_CHANCE;
+                    ? FILLED_HEX_BORDER_CHANCE
+                    : ring == 1
+                      ? FILLED_HEX_SECOND_RING_CHANCE
+                      : FILLED_HEX_INNER_CHANCE;
 
             chance += centreFilledHexBonus(cell, gridCenter);
 
@@ -874,8 +874,8 @@ final class EvictTerrainGenerator {
 
                 for (Cell neighbour : neighbors(current)) {
                     if (
-                        borderDistance(neighbour) > borderDistance(current)
-                            && !filled.contains(neighbour)
+                            borderDistance(neighbour) > borderDistance(current)
+                                    && !filled.contains(neighbour)
                     ) {
                         inward.add(neighbour);
                     }
@@ -919,8 +919,8 @@ final class EvictTerrainGenerator {
 
                 for (Cell candidate : minimumCandidates) {
                     if (
-                        filled.size() >= MIN_FILLED_HEXES
-                            || filled.contains(candidate)
+                            filled.size() >= MIN_FILLED_HEXES
+                                    || filled.contains(candidate)
                     ) {
                         continue;
                     }
@@ -930,15 +930,15 @@ final class EvictTerrainGenerator {
                     }
                 }
             } while (
-                filled.size() < MIN_FILLED_HEXES
-                    && added
+                    filled.size() < MIN_FILLED_HEXES
+                            && added
             );
 
             if (filled.size() < MIN_FILLED_HEXES) {
                 throw new IllegalStateException(
-                    "Could not place the configured minimum of "
-                        + MIN_FILLED_HEXES
-                        + " filled hexes without disconnecting the map."
+                        "Could not place the configured minimum of "
+                                + MIN_FILLED_HEXES
+                                + " filled hexes without disconnecting the map."
                 );
             }
         }
@@ -1047,9 +1047,9 @@ final class EvictTerrainGenerator {
     }
 
     private Set<Edge> ensureTraversableConnectivity(
-        List<Cell> normalCells,
-        Map<Edge, EdgeType> edgeTypes,
-        Random random
+            List<Cell> normalCells,
+            Map<Edge, EdgeType> edgeTypes,
+            Random random
     ) {
         /*
          * First, every normal-normal edge is rolled with the normal 25/25/25/25
@@ -1062,7 +1062,7 @@ final class EvictTerrainGenerator {
 
         while (true) {
             Map<Cell, Integer> componentByCell =
-                traversableComponents(normalCells, edgeTypes);
+                    traversableComponents(normalCells, edgeTypes);
 
             int componentCount = 0;
             for (int component : componentByCell.values()) {
@@ -1086,7 +1086,7 @@ final class EvictTerrainGenerator {
 
             if (crossingEdges.isEmpty()) {
                 throw new IllegalStateException(
-                    "Could not repair map connectivity although normal hexes should be connected."
+                        "Could not repair map connectivity although normal hexes should be connected."
                 );
             }
 
@@ -1097,8 +1097,8 @@ final class EvictTerrainGenerator {
     }
 
     private Map<Cell, Integer> traversableComponents(
-        List<Cell> normalCells,
-        Map<Edge, EdgeType> edgeTypes
+            List<Cell> normalCells,
+            Map<Edge, EdgeType> edgeTypes
     ) {
         Map<Cell, List<Cell>> traversableNeighbours = new HashMap<>();
 
@@ -1179,8 +1179,8 @@ final class EvictTerrainGenerator {
         }
 
         return random.nextDouble() * total < open
-            ? EdgeType.OPEN
-            : EdgeType.PASSAGE;
+                ? EdgeType.OPEN
+                : EdgeType.PASSAGE;
     }
 
     private EdgeType chooseEdgeType(Random random) {
@@ -1294,16 +1294,16 @@ final class EvictTerrainGenerator {
          */
         if (cell.row % 2 == 0) {
             // Short shifted row -> adjacent long rows.
-            slots.add(new Cell(cell.col,     cell.row - 1));
+            slots.add(new Cell(cell.col, cell.row - 1));
             slots.add(new Cell(cell.col + 1, cell.row - 1));
-            slots.add(new Cell(cell.col,     cell.row + 1));
+            slots.add(new Cell(cell.col, cell.row + 1));
             slots.add(new Cell(cell.col + 1, cell.row + 1));
         } else {
             // Long unshifted row -> adjacent short rows.
             slots.add(new Cell(cell.col - 1, cell.row - 1));
-            slots.add(new Cell(cell.col,     cell.row - 1));
+            slots.add(new Cell(cell.col, cell.row - 1));
             slots.add(new Cell(cell.col - 1, cell.row + 1));
-            slots.add(new Cell(cell.col,     cell.row + 1));
+            slots.add(new Cell(cell.col, cell.row + 1));
         }
 
         return slots;
@@ -1323,22 +1323,22 @@ final class EvictTerrainGenerator {
 
     private boolean validCell(Cell cell) {
         return cell.row >= 0
-            && cell.row < ROWS
-            && cell.col >= 0
-            && cell.col < colsForRow(cell.row);
+                && cell.row < ROWS
+                && cell.col >= 0
+                && cell.col < colsForRow(cell.row);
     }
 
     private int borderDistance(Cell cell) {
         return Math.min(
-            Math.min(cell.col, colsForRow(cell.row) - 1 - cell.col),
-            Math.min(cell.row, ROWS - 1 - cell.row)
+                Math.min(cell.col, colsForRow(cell.row) - 1 - cell.col),
+                Math.min(cell.row, ROWS - 1 - cell.row)
         );
     }
 
     private Point rawCenter(Cell cell) {
         return new Point(
-            cell.col * HORIZONTAL_DX + (cell.row % 2 == 0 ? DIAGONAL_DX : 0),
-            cell.row * DIAGONAL_DY
+                cell.col * HORIZONTAL_DX + (cell.row % 2 == 0 ? DIAGONAL_DX : 0),
+                cell.row * DIAGONAL_DY
         );
     }
 
@@ -1360,9 +1360,9 @@ final class EvictTerrainGenerator {
 
             if (intersects) {
                 double intersectionX =
-                    (previous.x - current.x) * (localY - current.y)
-                        / (double)(previous.y - current.y)
-                        + current.x;
+                        (previous.x - current.x) * (localY - current.y)
+                                / (double) (previous.y - current.y)
+                                + current.x;
 
                 if (localX <= intersectionX) {
                     inside = !inside;
@@ -1374,12 +1374,12 @@ final class EvictTerrainGenerator {
     }
 
     private boolean pointOnSegment(
-        double x,
-        double y,
-        double x1,
-        double y1,
-        double x2,
-        double y2
+            double x,
+            double y,
+            double x1,
+            double y1,
+            double x2,
+            double y2
     ) {
         double cross = (x - x1) * (y2 - y1) - (y - y1) * (x2 - x1);
 
@@ -1388,9 +1388,9 @@ final class EvictTerrainGenerator {
         }
 
         return x >= Math.min(x1, x2) - 1e-9
-            && x <= Math.max(x1, x2) + 1e-9
-            && y >= Math.min(y1, y2) - 1e-9
-            && y <= Math.max(y1, y2) + 1e-9;
+                && x <= Math.max(x1, x2) + 1e-9
+                && y >= Math.min(y1, y2) - 1e-9
+                && y <= Math.max(y1, y2) + 1e-9;
     }
 
     private double supportDistance(double directionX, double directionY) {
@@ -1420,8 +1420,8 @@ final class EvictTerrainGenerator {
          * The -1 accounts for inclusive tile coordinates.
          */
         return HORIZONTAL_DX - 2 * supportDistance(1.0, 0.0) < 1.0
-            ? 0
-            : (int)Math.round(HORIZONTAL_DX - 2 * supportDistance(1.0, 0.0) - 1.0);
+                ? 0
+                : (int) Math.round(HORIZONTAL_DX - 2 * supportDistance(1.0, 0.0) - 1.0);
     }
 
     private String percent(@SuppressWarnings("SameParameterValue") double value) {
@@ -1456,8 +1456,8 @@ final class EvictTerrainGenerator {
     private record Edge(Cell a, Cell b) {
         private static Edge of(Cell first, Cell second) {
             if (
-                first.row < second.row
-                    || (first.row == second.row && first.col <= second.col)
+                    first.row < second.row
+                            || (first.row == second.row && first.col <= second.col)
             ) {
                 return new Edge(first, second);
             }

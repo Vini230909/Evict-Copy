@@ -37,23 +37,29 @@ final class DuelCommands {
     private final int challengeMenuId;
     private final int viewMenuId;
 
-    /** Challenger UUID -> ordered opponent UUIDs shown in their menu. */
+    /**
+     * Challenger UUID -> ordered opponent UUIDs shown in their menu.
+     */
     private final Map<String, List<String>> selectionTargetsByChallengerUuid =
-        new HashMap<>();
+            new HashMap<>();
 
-    /** Opponent UUID -> challenger UUID for an outstanding challenge. */
+    /**
+     * Opponent UUID -> challenger UUID for an outstanding challenge.
+     */
     private final Map<String, String> challengerByOpponentUuid =
-        new HashMap<>();
+            new HashMap<>();
 
-    /** Viewer UUID -> ordered duel ports shown in their /view menu. */
+    /**
+     * Viewer UUID -> ordered duel ports shown in their /view menu.
+     */
     private final Map<String, List<Integer>> viewTargetsByViewerUuid =
-        new HashMap<>();
+            new HashMap<>();
 
     DuelCommands(
-        DuelServerManager duelManager,
-        DuelWorker worker,
-        RankManager rankManager,
-        Runnable restartMatch
+            DuelServerManager duelManager,
+            DuelWorker worker,
+            RankManager rankManager,
+            Runnable restartMatch
     ) {
         this.duelManager = duelManager;
         this.worker = worker;
@@ -66,33 +72,33 @@ final class DuelCommands {
 
     void registerClientCommands(CommandHandler handler) {
         handler.<Player>register(
-            "play",
-            "Challenge an online player to a 1v1 on the duel server.",
-            (args, player) -> openSelectionMenu(player)
+                "play",
+                "Challenge an online player to a 1v1 on the duel server.",
+                (args, player) -> openSelectionMenu(player)
         );
 
         handler.<Player>register(
-            "p",
-            "Alias for /play.",
-            (args, player) -> openSelectionMenu(player)
+                "p",
+                "Alias for /play.",
+                (args, player) -> openSelectionMenu(player)
         );
 
         handler.<Player>register(
-            "view",
-            "Spectate an ongoing 1v1, or return to the lobby if spectating.",
-            (args, player) -> handleViewCommand(player)
+                "view",
+                "Spectate an ongoing 1v1, or return to the lobby if spectating.",
+                (args, player) -> handleViewCommand(player)
         );
 
         handler.<Player>register(
-            "v",
-            "Alias for /view.",
-            (args, player) -> handleViewCommand(player)
+                "v",
+                "Alias for /view.",
+                (args, player) -> handleViewCommand(player)
         );
 
         handler.<Player>register(
-            "restart",
-            "Commentator/admin: restart the 1v1 you are spectating with a fresh map.",
-            (args, player) -> handleRestartCommand(player)
+                "restart",
+                "Commentator/admin: restart the 1v1 you are spectating with a fresh map.",
+                (args, player) -> handleRestartCommand(player)
         );
     }
 
@@ -120,7 +126,7 @@ final class DuelCommands {
 
         if (!duelManager.isConfigured()) {
             player.sendMessage(
-                "[scarlet]The 1v1 server is not set up yet. Ask an admin.[]"
+                    "[scarlet]The 1v1 server is not set up yet. Ask an admin.[]"
             );
             return;
         }
@@ -150,15 +156,15 @@ final class DuelCommands {
             rows.add(currentRow.toArray(new String[0]));
         }
 
-        rows.add(new String[] {"[red]Cancel"});
+        rows.add(new String[]{"[red]Cancel"});
         selectionTargetsByChallengerUuid.put(player.uuid(), targetUuids);
 
         Call.menu(
-            player.con,
-            selectionMenuId,
-            "[accent]1v1",
-            "Select a player to challenge to a 1v1.",
-            rows.toArray(new String[0][])
+                player.con,
+                selectionMenuId,
+                "[accent]1v1",
+                "Select a player to challenge to a 1v1.",
+                rows.toArray(new String[0][])
         );
     }
 
@@ -168,12 +174,12 @@ final class DuelCommands {
         }
 
         List<String> targetUuids =
-            selectionTargetsByChallengerUuid.remove(player.uuid());
+                selectionTargetsByChallengerUuid.remove(player.uuid());
 
         if (
-            targetUuids == null
-                || option < 0
-                || option >= targetUuids.size()
+                targetUuids == null
+                        || option < 0
+                        || option >= targetUuids.size()
         ) {
             return;
         }
@@ -188,21 +194,21 @@ final class DuelCommands {
         challengerByOpponentUuid.put(opponent.uuid(), player.uuid());
 
         player.sendMessage(
-            "[accent]Challenge sent to "
-                + PlayerNameFormatter.displayName(opponent)
-                + "[accent].[]"
+                "[accent]Challenge sent to "
+                        + PlayerNameFormatter.displayName(opponent)
+                        + "[accent].[]"
         );
 
         Call.menu(
-            opponent.con,
-            challengeMenuId,
-            "[accent]1v1 Challenge",
-            PlayerNameFormatter.displayName(player)
-                + "[white] has challenged you to a 1v1.",
-            new String[][] {
-                {"[green]Accept"},
-                {"[red]Decline"}
-            }
+                opponent.con,
+                challengeMenuId,
+                "[accent]1v1 Challenge",
+                PlayerNameFormatter.displayName(player)
+                        + "[white] has challenged you to a 1v1.",
+                new String[][]{
+                        {"[green]Accept"},
+                        {"[red]Decline"}
+                }
         );
     }
 
@@ -212,7 +218,7 @@ final class DuelCommands {
         }
 
         String challengerUuid =
-            challengerByOpponentUuid.remove(opponent.uuid());
+                challengerByOpponentUuid.remove(opponent.uuid());
 
         if (challengerUuid == null) {
             return;
@@ -222,16 +228,16 @@ final class DuelCommands {
 
         if (challenger == null || challenger == opponent) {
             opponent.sendMessage(
-                "[scarlet]The challenger is no longer online.[]"
+                    "[scarlet]The challenger is no longer online.[]"
             );
             return;
         }
 
         if (option != ACCEPT_OPTION) {
             challenger.sendMessage(
-                "[scarlet]"
-                    + PlayerNameFormatter.displayName(opponent)
-                    + "[scarlet] declined your 1v1.[]"
+                    "[scarlet]"
+                            + PlayerNameFormatter.displayName(opponent)
+                            + "[scarlet] declined your 1v1.[]"
             );
             return;
         }
@@ -243,10 +249,10 @@ final class DuelCommands {
          */
         if (!duelManager.requestDuel(challenger, opponent)) {
             challenger.sendMessage(
-                "[scarlet]All 1v1 servers are busy right now. Try again shortly.[]"
+                    "[scarlet]All 1v1 servers are busy right now. Try again shortly.[]"
             );
             opponent.sendMessage(
-                "[scarlet]All 1v1 servers are busy right now. Try again shortly.[]"
+                    "[scarlet]All 1v1 servers are busy right now. Try again shortly.[]"
             );
         }
     }
@@ -263,7 +269,7 @@ final class DuelCommands {
         if (worker.isActive()) {
             if (worker.isParticipant(player.uuid())) {
                 player.sendMessage(
-                    "[scarlet]You are in this 1v1; you cannot leave it with /v.[]"
+                        "[scarlet]You are in this 1v1; you cannot leave it with /v.[]"
                 );
                 return;
             }
@@ -278,7 +284,7 @@ final class DuelCommands {
     private void openViewMenu(Player player) {
         if (!duelManager.isConfigured()) {
             player.sendMessage(
-                "[scarlet]The 1v1 server is not set up yet. Ask an admin.[]"
+                    "[scarlet]The 1v1 server is not set up yet. Ask an admin.[]"
             );
             return;
         }
@@ -295,20 +301,20 @@ final class DuelCommands {
 
         for (DuelServerManager.ActiveDuel duel : duels) {
             targetPorts.add(duel.port());
-            rows.add(new String[] {
-                duel.player1Display() + " [white]vs[] " + duel.player2Display()
+            rows.add(new String[]{
+                    duel.player1Display() + " [white]vs[] " + duel.player2Display()
             });
         }
 
-        rows.add(new String[] {"[red]Cancel"});
+        rows.add(new String[]{"[red]Cancel"});
         viewTargetsByViewerUuid.put(player.uuid(), targetPorts);
 
         Call.menu(
-            player.con,
-            viewMenuId,
-            "[accent]Spectate a 1v1",
-            "Select a match to watch. Use /v again to return to the lobby.",
-            rows.toArray(new String[0][])
+                player.con,
+                viewMenuId,
+                "[accent]Spectate a 1v1",
+                "Select a match to watch. Use /v again to return to the lobby.",
+                rows.toArray(new String[0][])
         );
     }
 
@@ -318,19 +324,19 @@ final class DuelCommands {
         }
 
         List<Integer> targetPorts =
-            viewTargetsByViewerUuid.remove(player.uuid());
+                viewTargetsByViewerUuid.remove(player.uuid());
 
         if (
-            targetPorts == null
-                || option < 0
-                || option >= targetPorts.size()
+                targetPorts == null
+                        || option < 0
+                        || option >= targetPorts.size()
         ) {
             return;
         }
 
         if (!duelManager.viewDuel(player, targetPorts.get(option))) {
             player.sendMessage(
-                "[scarlet]That match is no longer available.[]"
+                    "[scarlet]That match is no longer available.[]"
             );
         }
     }
@@ -346,21 +352,21 @@ final class DuelCommands {
 
         if (!worker.isActive()) {
             player.sendMessage(
-                "[scarlet]/restart can only be used on a 1v1 server.[]"
+                    "[scarlet]/restart can only be used on a 1v1 server.[]"
             );
             return;
         }
 
         if (!rankManager.canRestartMatches(player)) {
             player.sendMessage(
-                "[scarlet]Only commentators and admins can restart a 1v1.[]"
+                    "[scarlet]Only commentators and admins can restart a 1v1.[]"
             );
             return;
         }
 
         if (worker.isParticipant(player.uuid())) {
             player.sendMessage(
-                "[scarlet]You can't restart a 1v1 you are playing in.[]"
+                    "[scarlet]You can't restart a 1v1 you are playing in.[]"
             );
             return;
         }
@@ -378,10 +384,10 @@ final class DuelCommands {
         });
 
         players.sort(
-            Comparator.comparing(
-                Player::plainName,
-                String.CASE_INSENSITIVE_ORDER
-            )
+                Comparator.comparing(
+                        Player::plainName,
+                        String.CASE_INSENSITIVE_ORDER
+                )
         );
 
         return players;
@@ -389,7 +395,7 @@ final class DuelCommands {
 
     private Player onlinePlayerByUuid(String uuid) {
         return Groups.player.find(
-            player -> player != null && player.uuid().equals(uuid)
+                player -> player != null && player.uuid().equals(uuid)
         );
     }
 }

@@ -13,14 +13,14 @@ final class CoreMarkerFloor {
 
     static void place(int centerX, int centerY) {
         for (
-            int y = centerY - MARKER_RADIUS;
-            y <= centerY + MARKER_RADIUS;
-            y++
+                int y = centerY - MARKER_RADIUS;
+                y <= centerY + MARKER_RADIUS;
+                y++
         ) {
             for (
-                int x = centerX - MARKER_RADIUS;
-                x <= centerX + MARKER_RADIUS;
-                x++
+                    int x = centerX - MARKER_RADIUS;
+                    x <= centerX + MARKER_RADIUS;
+                    x++
             ) {
                 Tile tile = Vars.world.tile(x, y);
 

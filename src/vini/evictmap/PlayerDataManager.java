@@ -32,7 +32,7 @@ import java.util.function.Consumer;
 final class PlayerDataManager {
 
     private static final File DATABASE_FILE =
-        new File("config/evict-players.db");
+            new File("config/evict-players.db");
     private static final int DEFAULT_ELO = 1000;
 
     /**
@@ -43,21 +43,21 @@ final class PlayerDataManager {
     private volatile File historyDatabaseFile = DATABASE_FILE;
 
     private final ExecutorService databaseExecutor =
-        Executors.newSingleThreadExecutor(task -> {
-            Thread thread = new Thread(task, "EvictPlayerDataWriter");
-            thread.setDaemon(true);
-            return thread;
-        });
+            Executors.newSingleThreadExecutor(task -> {
+                Thread thread = new Thread(task, "EvictPlayerDataWriter");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     private final Map<String, ActiveSession> activeSessionsByUuid =
-        new HashMap<>();
+            new HashMap<>();
     private final Set<String> ffaParticipantsThisRound = new HashSet<>();
 
     void start() {
         enqueue(this::createSchema);
 
         Runtime.getRuntime().addShutdownHook(
-            new Thread(this::shutdown, "EvictPlayerDataShutdown")
+                new Thread(this::shutdown, "EvictPlayerDataShutdown")
         );
     }
 
@@ -85,8 +85,8 @@ final class PlayerDataManager {
 
         synchronized (this) {
             activeSessionsByUuid.putIfAbsent(
-                uuid,
-                new ActiveSession(name, now)
+                    uuid,
+                    new ActiveSession(name, now)
             );
         }
 
@@ -100,13 +100,13 @@ final class PlayerDataManager {
 
         synchronized (this) {
             ActiveSession session =
-                activeSessionsByUuid.remove(player.uuid());
+                    activeSessionsByUuid.remove(player.uuid());
 
             if (session != null) {
                 persistSession(
-                    player.uuid(),
-                    session,
-                    System.currentTimeMillis()
+                        player.uuid(),
+                        session,
+                        System.currentTimeMillis()
                 );
             }
         }
@@ -124,9 +124,9 @@ final class PlayerDataManager {
 
     void recordFfaWinner(TeamManager teamManager, Team winner) {
         if (
-            winner == null
-                || winner == TeamManager.FALLEN_TEAM
-                || winner == Team.derelict
+                winner == null
+                        || winner == TeamManager.FALLEN_TEAM
+                        || winner == Team.derelict
         ) {
             return;
         }
@@ -150,16 +150,16 @@ final class PlayerDataManager {
      * identify a winner).
      */
     void recordRankedResult(
-        String winnerUuid,
-        String winnerName,
-        String loserUuid,
-        String loserName
+            String winnerUuid,
+            String winnerName,
+            String loserUuid,
+            String loserName
     ) {
         if (
-            winnerUuid == null
-                || winnerUuid.isEmpty()
-                || loserUuid == null
-                || loserUuid.isEmpty()
+                winnerUuid == null
+                        || winnerUuid.isEmpty()
+                        || loserUuid == null
+                        || loserUuid.isEmpty()
         ) {
             return;
         }
@@ -167,25 +167,27 @@ final class PlayerDataManager {
         long playedAtMillis = System.currentTimeMillis();
 
         enqueue(() -> applyRankedResult(
-            winnerUuid,
-            safeName(winnerName),
-            loserUuid,
-            safeName(loserName),
-            playedAtMillis
+                winnerUuid,
+                safeName(winnerName),
+                loserUuid,
+                safeName(loserName),
+                playedAtMillis
         ));
     }
 
-    /** A player's 1v1 matches, most recent first. */
+    /**
+     * A player's 1v1 matches, most recent first.
+     */
     void findDuelHistory(
-        String uuid,
-        Consumer<List<DuelMatch>> callback
+            String uuid,
+            Consumer<List<DuelMatch>> callback
     ) {
         enqueue(() -> deliver(callback, loadDuelHistory(uuid)));
     }
 
     void searchPlayerInfo(
-        String query,
-        Consumer<List<PlayerInfo>> callback
+            String query,
+            Consumer<List<PlayerInfo>> callback
     ) {
         enqueue(() -> deliver(callback, searchPlayerInfo(query)));
     }
@@ -198,10 +200,10 @@ final class PlayerDataManager {
 
         synchronized (this) {
             ActiveSession session =
-                activeSessionsByUuid.computeIfAbsent(
-                    uuid,
-                    ignored -> new ActiveSession(name, now)
-                );
+                    activeSessionsByUuid.computeIfAbsent(
+                            uuid,
+                            ignored -> new ActiveSession(name, now)
+                    );
 
             session.lastName = name;
             session.ffaParticipant = true;
@@ -235,31 +237,31 @@ final class PlayerDataManager {
 
     private void flushActiveSessions(long now) {
         for (Map.Entry<String, ActiveSession> entry :
-            activeSessionsByUuid.entrySet()) {
+                activeSessionsByUuid.entrySet()) {
             persistSession(entry.getKey(), entry.getValue(), now);
         }
     }
 
     private void persistSession(
-        String uuid,
-        ActiveSession session,
-        long finishedAtMillis
+            String uuid,
+            ActiveSession session,
+            long finishedAtMillis
     ) {
         long playedMillis =
-            Math.max(0L, finishedAtMillis - session.startedAtMillis);
+                Math.max(0L, finishedAtMillis - session.startedAtMillis);
         long ffaPlayedMillis = session.ffaParticipant ? playedMillis : 0L;
         String name = session.lastName;
 
         session.startedAtMillis = finishedAtMillis;
 
         enqueue(
-            () -> addPlaytime(
-                uuid,
-                name,
-                finishedAtMillis,
-                playedMillis,
-                ffaPlayedMillis
-            )
+                () -> addPlaytime(
+                        uuid,
+                        name,
+                        finishedAtMillis,
+                        playedMillis,
+                        ffaPlayedMillis
+                )
         );
     }
 
@@ -269,8 +271,8 @@ final class PlayerDataManager {
                 job.run();
             } catch (Exception exception) {
                 Log.err(
-                    "[EvictMapGenerator] Player data write failed.",
-                    exception
+                        "[EvictMapGenerator] Player data write failed.",
+                        exception
                 );
             }
         });
@@ -290,93 +292,93 @@ final class PlayerDataManager {
 
         if (parent != null && !parent.exists() && !parent.mkdirs()) {
             throw new SQLException(
-                "Could not create data directory: " + parent.getPath()
+                    "Could not create data directory: " + parent.getPath()
             );
         }
 
         try (
-            Connection connection = connect();
-            Statement statement = connection.createStatement()
+                Connection connection = connect();
+                Statement statement = connection.createStatement()
         ) {
             statement.executeUpdate(
-                "CREATE TABLE IF NOT EXISTS players ("
-                    + "uuid TEXT PRIMARY KEY,"
-                    + "last_name TEXT NOT NULL,"
-                    + "first_seen_ms INTEGER NOT NULL,"
-                    + "last_seen_ms INTEGER NOT NULL,"
-                    + "total_playtime_ms INTEGER NOT NULL DEFAULT 0,"
-                    + "ffa_playtime_ms INTEGER NOT NULL DEFAULT 0,"
-                    + "ffa_played INTEGER NOT NULL DEFAULT 0,"
-                    + "ffa_won INTEGER NOT NULL DEFAULT 0,"
-                    + "ranked_playtime_ms INTEGER NOT NULL DEFAULT 0,"
-                    + "ranked_wins INTEGER NOT NULL DEFAULT 0,"
-                    + "ranked_losses INTEGER NOT NULL DEFAULT 0,"
-                    + "ranked_matches_played INTEGER NOT NULL DEFAULT 0,"
-                    + "elo INTEGER NOT NULL DEFAULT " + DEFAULT_ELO + ","
-                    + "peak_elo INTEGER NOT NULL DEFAULT " + DEFAULT_ELO
-                    + ")"
+                    "CREATE TABLE IF NOT EXISTS players ("
+                            + "uuid TEXT PRIMARY KEY,"
+                            + "last_name TEXT NOT NULL,"
+                            + "first_seen_ms INTEGER NOT NULL,"
+                            + "last_seen_ms INTEGER NOT NULL,"
+                            + "total_playtime_ms INTEGER NOT NULL DEFAULT 0,"
+                            + "ffa_playtime_ms INTEGER NOT NULL DEFAULT 0,"
+                            + "ffa_played INTEGER NOT NULL DEFAULT 0,"
+                            + "ffa_won INTEGER NOT NULL DEFAULT 0,"
+                            + "ranked_playtime_ms INTEGER NOT NULL DEFAULT 0,"
+                            + "ranked_wins INTEGER NOT NULL DEFAULT 0,"
+                            + "ranked_losses INTEGER NOT NULL DEFAULT 0,"
+                            + "ranked_matches_played INTEGER NOT NULL DEFAULT 0,"
+                            + "elo INTEGER NOT NULL DEFAULT " + DEFAULT_ELO + ","
+                            + "peak_elo INTEGER NOT NULL DEFAULT " + DEFAULT_ELO
+                            + ")"
             );
 
             statement.executeUpdate(
-                "CREATE TABLE IF NOT EXISTS player_names ("
-                    + "uuid TEXT NOT NULL,"
-                    + "name TEXT NOT NULL,"
-                    + "first_seen_ms INTEGER NOT NULL,"
-                    + "last_seen_ms INTEGER NOT NULL,"
-                    + "PRIMARY KEY(uuid, name)"
-                    + ")"
+                    "CREATE TABLE IF NOT EXISTS player_names ("
+                            + "uuid TEXT NOT NULL,"
+                            + "name TEXT NOT NULL,"
+                            + "first_seen_ms INTEGER NOT NULL,"
+                            + "last_seen_ms INTEGER NOT NULL,"
+                            + "PRIMARY KEY(uuid, name)"
+                            + ")"
             );
 
             // One row per finished 1v1. Names are the colored display names at
             // match time so /history can render them without the players being
             // online. The elo columns default to 0 until the elo feature lands.
             statement.executeUpdate(
-                "CREATE TABLE IF NOT EXISTS duel_matches ("
-                    + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                    + "played_at_ms INTEGER NOT NULL,"
-                    + "winner_uuid TEXT NOT NULL,"
-                    + "winner_name TEXT NOT NULL,"
-                    + "loser_uuid TEXT NOT NULL,"
-                    + "loser_name TEXT NOT NULL,"
-                    + "winner_elo_before INTEGER NOT NULL DEFAULT 0,"
-                    + "winner_elo_after INTEGER NOT NULL DEFAULT 0,"
-                    + "loser_elo_before INTEGER NOT NULL DEFAULT 0,"
-                    + "loser_elo_after INTEGER NOT NULL DEFAULT 0"
-                    + ")"
+                    "CREATE TABLE IF NOT EXISTS duel_matches ("
+                            + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                            + "played_at_ms INTEGER NOT NULL,"
+                            + "winner_uuid TEXT NOT NULL,"
+                            + "winner_name TEXT NOT NULL,"
+                            + "loser_uuid TEXT NOT NULL,"
+                            + "loser_name TEXT NOT NULL,"
+                            + "winner_elo_before INTEGER NOT NULL DEFAULT 0,"
+                            + "winner_elo_after INTEGER NOT NULL DEFAULT 0,"
+                            + "loser_elo_before INTEGER NOT NULL DEFAULT 0,"
+                            + "loser_elo_after INTEGER NOT NULL DEFAULT 0"
+                            + ")"
             );
 
             statement.executeUpdate(
-                "CREATE INDEX IF NOT EXISTS idx_duel_matches_winner "
-                    + "ON duel_matches(winner_uuid)"
+                    "CREATE INDEX IF NOT EXISTS idx_duel_matches_winner "
+                            + "ON duel_matches(winner_uuid)"
             );
 
             statement.executeUpdate(
-                "CREATE INDEX IF NOT EXISTS idx_duel_matches_loser "
-                    + "ON duel_matches(loser_uuid)"
+                    "CREATE INDEX IF NOT EXISTS idx_duel_matches_loser "
+                            + "ON duel_matches(loser_uuid)"
             );
         }
 
         Log.info(
-            "[EvictMapGenerator] Player data storage ready: @",
-            DATABASE_FILE.getPath()
+                "[EvictMapGenerator] Player data storage ready: @",
+                DATABASE_FILE.getPath()
         );
     }
 
     private void upsertPlayer(
-        String uuid,
-        String name,
-        long seenAtMillis
+            String uuid,
+            String name,
+            long seenAtMillis
     ) throws SQLException {
         try (
-            Connection connection = connect();
-            PreparedStatement statement = connection.prepareStatement(
-                "INSERT INTO players "
-                    + "(uuid, last_name, first_seen_ms, last_seen_ms) "
-                    + "VALUES (?, ?, ?, ?) "
-                    + "ON CONFLICT(uuid) DO UPDATE SET "
-                    + "last_name = excluded.last_name, "
-                    + "last_seen_ms = excluded.last_seen_ms"
-            )
+                Connection connection = connect();
+                PreparedStatement statement = connection.prepareStatement(
+                        "INSERT INTO players "
+                                + "(uuid, last_name, first_seen_ms, last_seen_ms) "
+                                + "VALUES (?, ?, ?, ?) "
+                                + "ON CONFLICT(uuid) DO UPDATE SET "
+                                + "last_name = excluded.last_name, "
+                                + "last_seen_ms = excluded.last_seen_ms"
+                )
         ) {
             statement.setString(1, uuid);
             statement.setString(2, name);
@@ -389,24 +391,24 @@ final class PlayerDataManager {
     }
 
     private void addPlaytime(
-        String uuid,
-        String name,
-        long seenAtMillis,
-        long totalMillis,
-        long ffaMillis
+            String uuid,
+            String name,
+            long seenAtMillis,
+            long totalMillis,
+            long ffaMillis
     ) throws SQLException {
         upsertPlayer(uuid, name, seenAtMillis);
 
         try (
-            Connection connection = connect();
-            PreparedStatement statement = connection.prepareStatement(
-                "UPDATE players SET "
-                    + "last_name = ?, "
-                    + "last_seen_ms = ?, "
-                    + "total_playtime_ms = total_playtime_ms + ?, "
-                    + "ffa_playtime_ms = ffa_playtime_ms + ? "
-                    + "WHERE uuid = ?"
-            )
+                Connection connection = connect();
+                PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE players SET "
+                                + "last_name = ?, "
+                                + "last_seen_ms = ?, "
+                                + "total_playtime_ms = total_playtime_ms + ?, "
+                                + "ffa_playtime_ms = ffa_playtime_ms + ? "
+                                + "WHERE uuid = ?"
+                )
         ) {
             statement.setString(1, name);
             statement.setLong(2, seenAtMillis);
@@ -419,11 +421,11 @@ final class PlayerDataManager {
 
     private void incrementFfaPlayed(String uuid) throws SQLException {
         try (
-            Connection connection = connect();
-            PreparedStatement statement = connection.prepareStatement(
-                "UPDATE players SET ffa_played = ffa_played + 1 "
-                    + "WHERE uuid = ?"
-            )
+                Connection connection = connect();
+                PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE players SET ffa_played = ffa_played + 1 "
+                                + "WHERE uuid = ?"
+                )
         ) {
             statement.setString(1, uuid);
             statement.executeUpdate();
@@ -432,11 +434,11 @@ final class PlayerDataManager {
 
     private void incrementFfaWins(String uuid) throws SQLException {
         try (
-            Connection connection = connect();
-            PreparedStatement statement = connection.prepareStatement(
-                "UPDATE players SET ffa_won = ffa_won + 1 "
-                    + "WHERE uuid = ?"
-            )
+                Connection connection = connect();
+                PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE players SET ffa_won = ffa_won + 1 "
+                                + "WHERE uuid = ?"
+                )
         ) {
             statement.setString(1, uuid);
             statement.executeUpdate();
@@ -444,41 +446,41 @@ final class PlayerDataManager {
     }
 
     private void applyRankedResult(
-        String winnerUuid,
-        String winnerName,
-        String loserUuid,
-        String loserName,
-        long playedAtMillis
+            String winnerUuid,
+            String winnerName,
+            String loserUuid,
+            String loserName,
+            long playedAtMillis
     ) throws SQLException {
         try (Connection connection = connect()) {
             updateRankedOutcome(connection, winnerUuid, true);
             updateRankedOutcome(connection, loserUuid, false);
             insertDuelMatch(
-                connection,
-                playedAtMillis,
-                winnerUuid,
-                winnerName,
-                loserUuid,
-                loserName
+                    connection,
+                    playedAtMillis,
+                    winnerUuid,
+                    winnerName,
+                    loserUuid,
+                    loserName
             );
         }
     }
 
     private void insertDuelMatch(
-        Connection connection,
-        long playedAtMillis,
-        String winnerUuid,
-        String winnerName,
-        String loserUuid,
-        String loserName
+            Connection connection,
+            long playedAtMillis,
+            String winnerUuid,
+            String winnerName,
+            String loserUuid,
+            String loserName
     ) throws SQLException {
         try (
-            PreparedStatement statement = connection.prepareStatement(
-                "INSERT INTO duel_matches "
-                    + "(played_at_ms, winner_uuid, winner_name, "
-                    + "loser_uuid, loser_name) "
-                    + "VALUES (?, ?, ?, ?, ?)"
-            )
+                PreparedStatement statement = connection.prepareStatement(
+                        "INSERT INTO duel_matches "
+                                + "(played_at_ms, winner_uuid, winner_name, "
+                                + "loser_uuid, loser_name) "
+                                + "VALUES (?, ?, ?, ?, ?)"
+                )
         ) {
             statement.setLong(1, playedAtMillis);
             statement.setString(2, winnerUuid);
@@ -493,13 +495,13 @@ final class PlayerDataManager {
         List<DuelMatch> result = new ArrayList<>();
 
         try (
-            Connection connection = connect(historyDatabaseFile);
-            PreparedStatement statement = connection.prepareStatement(
-                "SELECT played_at_ms, winner_uuid, winner_name, "
-                    + "loser_uuid, loser_name FROM duel_matches "
-                    + "WHERE winner_uuid = ? OR loser_uuid = ? "
-                    + "ORDER BY played_at_ms DESC"
-            )
+                Connection connection = connect(historyDatabaseFile);
+                PreparedStatement statement = connection.prepareStatement(
+                        "SELECT played_at_ms, winner_uuid, winner_name, "
+                                + "loser_uuid, loser_name FROM duel_matches "
+                                + "WHERE winner_uuid = ? OR loser_uuid = ? "
+                                + "ORDER BY played_at_ms DESC"
+                )
         ) {
             statement.setString(1, uuid);
             statement.setString(2, uuid);
@@ -507,11 +509,11 @@ final class PlayerDataManager {
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) {
                     result.add(new DuelMatch(
-                        rows.getLong("played_at_ms"),
-                        rows.getString("winner_uuid"),
-                        rows.getString("winner_name"),
-                        rows.getString("loser_uuid"),
-                        rows.getString("loser_name")
+                            rows.getLong("played_at_ms"),
+                            rows.getString("winner_uuid"),
+                            rows.getString("winner_name"),
+                            rows.getString("loser_uuid"),
+                            rows.getString("loser_name")
                     ));
                 }
             }
@@ -525,18 +527,18 @@ final class PlayerDataManager {
     }
 
     private void updateRankedOutcome(
-        Connection connection,
-        String uuid,
-        boolean won
+            Connection connection,
+            String uuid,
+            boolean won
     ) throws SQLException {
         try (
-            PreparedStatement statement = connection.prepareStatement(
-                "UPDATE players SET "
-                    + (won ? "ranked_wins = ranked_wins + 1, "
-                           : "ranked_losses = ranked_losses + 1, ")
-                    + "ranked_matches_played = ranked_matches_played + 1 "
-                    + "WHERE uuid = ?"
-            )
+                PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE players SET "
+                                + (won ? "ranked_wins = ranked_wins + 1, "
+                                : "ranked_losses = ranked_losses + 1, ")
+                                + "ranked_matches_played = ranked_matches_played + 1 "
+                                + "WHERE uuid = ?"
+                )
         ) {
             statement.setString(1, uuid);
             statement.executeUpdate();
@@ -544,17 +546,17 @@ final class PlayerDataManager {
     }
 
     private List<PlayerInfo> searchPlayerInfo(String query)
-        throws SQLException {
+            throws SQLException {
         List<PlayerInfo> result = new ArrayList<>();
         String trimmedQuery = query == null ? "" : query.trim();
 
         if (trimmedQuery.isEmpty()) {
             try (
-                Connection connection = connect();
-                PreparedStatement statement = connection.prepareStatement(
-                    "SELECT * FROM players ORDER BY last_seen_ms DESC"
-                );
-                ResultSet rows = statement.executeQuery()
+                    Connection connection = connect();
+                    PreparedStatement statement = connection.prepareStatement(
+                            "SELECT * FROM players ORDER BY last_seen_ms DESC"
+                    );
+                    ResultSet rows = statement.executeQuery()
             ) {
                 while (rows.next()) {
                     result.add(playerInfo(connection, rows));
@@ -565,19 +567,19 @@ final class PlayerDataManager {
         }
 
         String likeQuery =
-            "%" + trimmedQuery.toLowerCase().replace("\\", "\\\\")
-                .replace("%", "\\%")
-                .replace("_", "\\_") + "%";
+                "%" + trimmedQuery.toLowerCase().replace("\\", "\\\\")
+                        .replace("%", "\\%")
+                        .replace("_", "\\_") + "%";
 
         try (Connection connection = connect()) {
             result.addAll(
-                searchRows(
-                    connection,
-                    "SELECT * FROM players "
-                        + "WHERE lower(last_name) LIKE ? ESCAPE '\\' "
-                        + "ORDER BY last_seen_ms DESC",
-                    likeQuery
-                )
+                    searchRows(
+                            connection,
+                            "SELECT * FROM players "
+                                    + "WHERE lower(last_name) LIKE ? ESCAPE '\\' "
+                                    + "ORDER BY last_seen_ms DESC",
+                            likeQuery
+                    )
             );
 
             if (!result.isEmpty()) {
@@ -585,19 +587,19 @@ final class PlayerDataManager {
             }
 
             result.addAll(
-                searchRows(
-                    connection,
-                    "SELECT * FROM players "
-                        + "WHERE lower(uuid) LIKE ? ESCAPE '\\' "
-                        + "OR EXISTS ("
-                        + "SELECT 1 FROM player_names "
-                        + "WHERE player_names.uuid = players.uuid "
-                        + "AND lower(player_names.name) LIKE ? ESCAPE '\\'"
-                        + ") "
-                        + "ORDER BY last_seen_ms DESC",
-                    likeQuery,
-                    likeQuery
-                )
+                    searchRows(
+                            connection,
+                            "SELECT * FROM players "
+                                    + "WHERE lower(uuid) LIKE ? ESCAPE '\\' "
+                                    + "OR EXISTS ("
+                                    + "SELECT 1 FROM player_names "
+                                    + "WHERE player_names.uuid = players.uuid "
+                                    + "AND lower(player_names.name) LIKE ? ESCAPE '\\'"
+                                    + ") "
+                                    + "ORDER BY last_seen_ms DESC",
+                            likeQuery,
+                            likeQuery
+                    )
             );
         }
 
@@ -605,9 +607,9 @@ final class PlayerDataManager {
     }
 
     private List<PlayerInfo> searchRows(
-        Connection connection,
-        String sql,
-        String... parameters
+            Connection connection,
+            String sql,
+            String... parameters
     ) throws SQLException {
         List<PlayerInfo> result = new ArrayList<>();
 
@@ -627,8 +629,8 @@ final class PlayerDataManager {
     }
 
     private PlayerInfo playerInfo(
-        Connection connection,
-        ResultSet result
+            Connection connection,
+            ResultSet result
     ) throws SQLException {
         String uuid = result.getString("uuid");
 
@@ -652,45 +654,45 @@ final class PlayerDataManager {
                 liveFfaMillis = 0L;
             } else {
                 liveTotalMillis =
-                    Math.max(0L, now - session.startedAtMillis);
+                        Math.max(0L, now - session.startedAtMillis);
                 liveFfaMillis =
-                    session.ffaParticipant ? liveTotalMillis : 0L;
+                        session.ffaParticipant ? liveTotalMillis : 0L;
             }
         }
 
         return new PlayerInfo(
-            uuid,
-            result.getString("last_name"),
-            playerNames(connection, uuid),
-            result.getLong("first_seen_ms"),
-            result.getLong("last_seen_ms"),
-            result.getLong("total_playtime_ms") + liveTotalMillis,
-            result.getLong("ffa_playtime_ms") + liveFfaMillis,
-            result.getInt("ffa_played"),
-            result.getInt("ffa_won"),
-            result.getLong("ranked_playtime_ms"),
-            result.getInt("ranked_wins"),
-            result.getInt("ranked_losses"),
-            result.getInt("ranked_matches_played"),
-            result.getInt("elo"),
-            result.getInt("peak_elo")
+                uuid,
+                result.getString("last_name"),
+                playerNames(connection, uuid),
+                result.getLong("first_seen_ms"),
+                result.getLong("last_seen_ms"),
+                result.getLong("total_playtime_ms") + liveTotalMillis,
+                result.getLong("ffa_playtime_ms") + liveFfaMillis,
+                result.getInt("ffa_played"),
+                result.getInt("ffa_won"),
+                result.getLong("ranked_playtime_ms"),
+                result.getInt("ranked_wins"),
+                result.getInt("ranked_losses"),
+                result.getInt("ranked_matches_played"),
+                result.getInt("elo"),
+                result.getInt("peak_elo")
         );
     }
 
     private void upsertPlayerName(
-        Connection connection,
-        String uuid,
-        String name,
-        long seenAtMillis
+            Connection connection,
+            String uuid,
+            String name,
+            long seenAtMillis
     ) throws SQLException {
         try (
-            PreparedStatement statement = connection.prepareStatement(
-                "INSERT INTO player_names "
-                    + "(uuid, name, first_seen_ms, last_seen_ms) "
-                    + "VALUES (?, ?, ?, ?) "
-                    + "ON CONFLICT(uuid, name) DO UPDATE SET "
-                    + "last_seen_ms = excluded.last_seen_ms"
-            )
+                PreparedStatement statement = connection.prepareStatement(
+                        "INSERT INTO player_names "
+                                + "(uuid, name, first_seen_ms, last_seen_ms) "
+                                + "VALUES (?, ?, ?, ?) "
+                                + "ON CONFLICT(uuid, name) DO UPDATE SET "
+                                + "last_seen_ms = excluded.last_seen_ms"
+                )
         ) {
             statement.setString(1, uuid);
             statement.setString(2, name);
@@ -701,17 +703,17 @@ final class PlayerDataManager {
     }
 
     private List<String> playerNames(
-        Connection connection,
-        String uuid
+            Connection connection,
+            String uuid
     ) throws SQLException {
         List<String> names = new ArrayList<>();
 
         try (
-            PreparedStatement statement = connection.prepareStatement(
-                "SELECT name FROM player_names "
-                    + "WHERE uuid = ? "
-                    + "ORDER BY last_seen_ms DESC"
-            )
+                PreparedStatement statement = connection.prepareStatement(
+                        "SELECT name FROM player_names "
+                                + "WHERE uuid = ? "
+                                + "ORDER BY last_seen_ms DESC"
+                )
         ) {
             statement.setString(1, uuid);
 
@@ -739,7 +741,7 @@ final class PlayerDataManager {
         ensureSqliteDriver();
 
         return DriverManager.getConnection(
-            "jdbc:sqlite:" + file.getPath()
+                "jdbc:sqlite:" + file.getPath()
         );
     }
 
@@ -767,30 +769,30 @@ final class PlayerDataManager {
     }
 
     record PlayerInfo(
-        String uuid,
-        String lastName,
-        List<String> knownNames,
-        long firstSeenMillis,
-        long lastSeenMillis,
-        long totalPlaytimeMillis,
-        long ffaPlaytimeMillis,
-        int ffaPlayed,
-        int ffaWon,
-        long rankedPlaytimeMillis,
-        int rankedWins,
-        int rankedLosses,
-        int rankedMatchesPlayed,
-        int elo,
-        int peakElo
+            String uuid,
+            String lastName,
+            List<String> knownNames,
+            long firstSeenMillis,
+            long lastSeenMillis,
+            long totalPlaytimeMillis,
+            long ffaPlaytimeMillis,
+            int ffaPlayed,
+            int ffaWon,
+            long rankedPlaytimeMillis,
+            int rankedWins,
+            int rankedLosses,
+            int rankedMatchesPlayed,
+            int elo,
+            int peakElo
     ) {
     }
 
     record DuelMatch(
-        long playedAtMillis,
-        String winnerUuid,
-        String winnerName,
-        String loserUuid,
-        String loserName
+            long playedAtMillis,
+            String winnerUuid,
+            String winnerName,
+            String loserUuid,
+            String loserName
     ) {
     }
 }

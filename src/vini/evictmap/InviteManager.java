@@ -34,9 +34,9 @@ final class InviteManager {
 
     void registerClientCommands(CommandHandler handler) {
         handler.register(
-            "invite",
-            "[number]",
-            "List or use Evict team invitations.",
+                "invite",
+                "[number]",
+                "List or use Evict team invitations.",
                 this::handleInvite
         );
     }
@@ -56,18 +56,18 @@ final class InviteManager {
     }
 
     void handleTeamEliminated(
-        Team eliminatedTeam,
-        Team claimantTeam,
-        List<String> newlyEliminatedPlayerUuids
+            Team eliminatedTeam,
+            Team claimantTeam,
+            List<String> newlyEliminatedPlayerUuids
     ) {
         if (eliminatedTeam == null) {
             return;
         }
 
         joinRequests.removeIf(
-            request ->
-                request.targetTeamId == eliminatedTeam.id
-                    || newlyEliminatedPlayerUuids.contains(request.playerUuid)
+                request ->
+                        request.targetTeamId == eliminatedTeam.id
+                                || newlyEliminatedPlayerUuids.contains(request.playerUuid)
         );
 
         for (String uuid : newlyEliminatedPlayerUuids) {
@@ -83,7 +83,7 @@ final class InviteManager {
           itself eliminated. Preserve their previous list order.
          */
         claimedOrderByPlayerUuid.keySet().removeIf(
-            uuid -> teamManager.claimTeamId(uuid) == null
+                uuid -> teamManager.claimTeamId(uuid) == null
         );
     }
 
@@ -111,7 +111,7 @@ final class InviteManager {
 
         if (!teamManager.isLeader(player)) {
             player.sendMessage(
-                "[scarlet]Only your team's original leader can manage invites.[]"
+                    "[scarlet]Only your team's original leader can manage invites.[]"
             );
             return;
         }
@@ -124,9 +124,9 @@ final class InviteManager {
 
         if (claimTeamId != null) {
             player.sendMessage(
-                "[accent]You were claimed by "
-                    + teamManager.displayTeam(Team.get(claimTeamId))
-                    + "'s team. Only this team can invite you.[]"
+                    "[accent]You were claimed by "
+                            + teamManager.displayTeam(Team.get(claimTeamId))
+                            + "'s team. Only this team can invite you.[]"
             );
             return;
         }
@@ -146,9 +146,9 @@ final class InviteManager {
         Integer selectedIndex = parseSelection(args[0], player);
 
         if (
-            selectedIndex == null
-                || selectedIndex < 1
-                || selectedIndex > availableTeams.size()
+                selectedIndex == null
+                        || selectedIndex < 1
+                        || selectedIndex > availableTeams.size()
         ) {
             player.sendMessage("[scarlet]That team number is not available.[]");
             return;
@@ -159,30 +159,30 @@ final class InviteManager {
 
         if (leader == null) {
             player.sendMessage(
-                "[scarlet]That team's leader is currently offline.[]"
+                    "[scarlet]That team's leader is currently offline.[]"
             );
             return;
         }
 
         joinRequests.add(
-            new JoinRequest(
-                player.uuid(),
-                PlayerNameFormatter.displayName(player),
-                targetTeam.id,
-                nextSequence()
-            )
+                new JoinRequest(
+                        player.uuid(),
+                        PlayerNameFormatter.displayName(player),
+                        targetTeam.id,
+                        nextSequence()
+                )
         );
 
         player.sendMessage(
-            "[green]Join request sent to "
-                + teamManager.displayTeam(targetTeam)
-                + "'s team.[]"
+                "[green]Join request sent to "
+                        + teamManager.displayTeam(targetTeam)
+                        + "'s team.[]"
         );
 
         leader.sendMessage(
-            "[accent]"
-                + PlayerNameFormatter.displayName(player)
-                + " wants to join your team. Use /invite to view pending requests.[]"
+                "[accent]"
+                        + PlayerNameFormatter.displayName(player)
+                        + " wants to join your team. Use /invite to view pending requests.[]"
         );
     }
 
@@ -202,9 +202,9 @@ final class InviteManager {
         Integer selectedIndex = parseSelection(args[0], leader);
 
         if (
-            selectedIndex == null
-                || selectedIndex < 1
-                || selectedIndex > entries.size()
+                selectedIndex == null
+                        || selectedIndex < 1
+                        || selectedIndex > entries.size()
         ) {
             leader.sendMessage("[scarlet]That invite number is not available.[]");
             return;
@@ -213,10 +213,10 @@ final class InviteManager {
         LeaderEntry entry = entries.get(selectedIndex - 1);
 
         if (
-            !teamManager.joinFallenPlayerToTeam(entry.player, leader.team())
+                !teamManager.joinFallenPlayerToTeam(entry.player, leader.team())
         ) {
             leader.sendMessage(
-                "[scarlet]That player can no longer join your team.[]"
+                    "[scarlet]That player can no longer join your team.[]"
             );
             cleanupInvalidRequests();
             return;
@@ -225,9 +225,9 @@ final class InviteManager {
         handlePlayerJoinedTeam(entry.player.uuid());
 
         leader.sendMessage(
-            "[green]"
-                + PlayerNameFormatter.displayName(entry.player)
-                + " joined your team.[]"
+                "[green]"
+                        + PlayerNameFormatter.displayName(entry.player)
+                        + " joined your team.[]"
         );
     }
 
@@ -260,11 +260,11 @@ final class InviteManager {
                             && teamManager.claimTeamId(request.playerUuid) == null
             ) {
                 result.add(
-                    new LeaderEntry(
-                        requester,
-                        EntryType.REQUEST,
-                        request.sequence
-                    )
+                        new LeaderEntry(
+                                requester,
+                                EntryType.REQUEST,
+                                request.sequence
+                        )
                 );
             }
         }
@@ -278,16 +278,16 @@ final class InviteManager {
                             && claimTeamId == leaderTeam.id
             ) {
                 long order = claimedOrderByPlayerUuid.computeIfAbsent(
-                    player.uuid(),
-                    ignored -> nextSequence()
+                        player.uuid(),
+                        ignored -> nextSequence()
                 );
 
                 result.add(
-                    new LeaderEntry(
-                        player,
-                        EntryType.CLAIMED,
-                        order
-                    )
+                        new LeaderEntry(
+                                player,
+                                EntryType.CLAIMED,
+                                order
+                        )
                 );
             }
         }
@@ -306,9 +306,9 @@ final class InviteManager {
                 Team team = availableTeams.get(index);
 
                 message.append("\n[lightgray]")
-                    .append(index + 1)
-                    .append(". []")
-                    .append(teamManager.displayTeam(team));
+                        .append(index + 1)
+                        .append(". []")
+                        .append(teamManager.displayTeam(team));
             }
         }
 
@@ -323,9 +323,9 @@ final class InviteManager {
                 }
 
                 message.append(
-                    teamManager.displayTeam(
-                        Team.get(requested.get(index).targetTeamId)
-                    )
+                        teamManager.displayTeam(
+                                Team.get(requested.get(index).targetTeamId)
+                        )
                 );
             }
         }
@@ -343,12 +343,12 @@ final class InviteManager {
                 LeaderEntry entry = entries.get(index);
 
                 message.append("\n[lightgray]")
-                    .append(index + 1)
-                    .append(". []")
-                    .append(PlayerNameFormatter.displayName(entry.player))
-                    .append(entry.type == EntryType.REQUEST
-                        ? " [accent][request][]"
-                        : " [orange][claimed][]");
+                        .append(index + 1)
+                        .append(". []")
+                        .append(PlayerNameFormatter.displayName(entry.player))
+                        .append(entry.type == EntryType.REQUEST
+                                ? " [accent][request][]"
+                                : " [orange][claimed][]");
             }
         }
 
@@ -371,8 +371,8 @@ final class InviteManager {
     private boolean hasRequest(String playerUuid, int teamId) {
         for (JoinRequest request : joinRequests) {
             if (
-                request.playerUuid.equals(playerUuid)
-                    && request.targetTeamId == teamId
+                    request.playerUuid.equals(playerUuid)
+                            && request.targetTeamId == teamId
             ) {
                 return true;
             }
@@ -383,7 +383,7 @@ final class InviteManager {
 
     private void removeRequestsFrom(String playerUuid) {
         joinRequests.removeIf(
-            request -> request.playerUuid.equals(playerUuid)
+                request -> request.playerUuid.equals(playerUuid)
         );
     }
 
@@ -433,17 +433,17 @@ final class InviteManager {
     }
 
     private record JoinRequest(
-        String playerUuid,
-        String playerName,
-        int targetTeamId,
-        long sequence
+            String playerUuid,
+            String playerName,
+            int targetTeamId,
+            long sequence
     ) {
     }
 
     private record LeaderEntry(
-        Player player,
-        EntryType type,
-        long sequence
+            Player player,
+            EntryType type,
+            long sequence
     ) {
     }
 }

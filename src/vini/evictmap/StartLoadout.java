@@ -21,30 +21,30 @@ import mindustry.world.blocks.storage.CoreBlock.CoreBuild;
 final class StartLoadout {
 
     private static final String START_SCHEMATIC_BASE64 =
-        "bXNjaAF4nDWTbW7UMBCGJ3Y+vHG85Qi9wEr8RL0DJ0D8cFMjVgpJlE1bqqr34K4Uyrzz0o02T5zMvPPhsVzJVS31nH8U+VAezuN+"
-        + "fdnztl9/Lz+vpR+XeS/z/jmvkp4/3jxfxi2vN59eXiTeFV2c1/28zCLSTvm2TBdxX772EsdlXct2eszTJD5vowQVeihPyybxskx5"
-        + "O615LpN0lzHve9mkuzU+Sb8uj+o5L3dFwv08LflOPw/jspXTfD9O5f4iMZ+307c87os6iPzSv1R66c8Rnohiv4FIeFmZLc1xc3zw"
-        + "RC0VXjQUaomO+oEmB6InolRQGbhKtDxi5fgMgcorHLJy+vdALR6vLJBjIIdA+BZociB6IhKDeGgmRjiyVnkv2XkTgDrWiGYRPCN4"
-        + "RvCI0CgO4mDZI0EPaXxNFDPpmpo1NJFzQ7SEirWKEDT3t1dYVZ3eD2oVPLxMsaZiQ6kGaTSC6K5T1DDWq4Ma+tGjMQ3KBQYiQail"
-        + "QgsFQHNukUBwb381CsKjkybQUqClQAsBtLdCTzrsCeCJmuhpEomBML9Av0C/QL8Av1bRa/xXzUBLqtBZ26jA2gNqdzYyFeAIT6hA"
-        + "p+jRkIP6OeyI+R3YM5sx7I9WXMMODr001jNU2oYKsStMiZYFBEJjQTLauHtIpfcD4QATjtyMiF3BqkW1kUqRStGyVvx3P76fJ8eh"
-        + "rzA3tiEDR3vA8AENYZoDNQdqDtCEu03xQM3Ec4lXDgfJcYXBVNREQ5hmomaiZmKeybqkiDgnCSli85P26ffbH1O0w3m0k6lwXHki"
-        + "wvnIPTgil3+LrVgo";
+            "bXNjaAF4nDWTbW7UMBCGJ3Y+vHG85Qi9wEr8RL0DJ0D8cFMjVgpJlE1bqqr34K4Uyrzz0o02T5zMvPPhsVzJVS31nH8U+VAezuN+"
+                    + "fdnztl9/Lz+vpR+XeS/z/jmvkp4/3jxfxi2vN59eXiTeFV2c1/28zCLSTvm2TBdxX772EsdlXct2eszTJD5vowQVeihPyybxskx5"
+                    + "O615LpN0lzHve9mkuzU+Sb8uj+o5L3dFwv08LflOPw/jspXTfD9O5f4iMZ+307c87os6iPzSv1R66c8Rnohiv4FIeFmZLc1xc3zw"
+                    + "RC0VXjQUaomO+oEmB6InolRQGbhKtDxi5fgMgcorHLJy+vdALR6vLJBjIIdA+BZociB6IhKDeGgmRjiyVnkv2XkTgDrWiGYRPCN4"
+                    + "RvCI0CgO4mDZI0EPaXxNFDPpmpo1NJFzQ7SEirWKEDT3t1dYVZ3eD2oVPLxMsaZiQ6kGaTSC6K5T1DDWq4Ma+tGjMQ3KBQYiQail"
+                    + "QgsFQHNukUBwb381CsKjkybQUqClQAsBtLdCTzrsCeCJmuhpEomBML9Av0C/QL8Av1bRa/xXzUBLqtBZ26jA2gNqdzYyFeAIT6hA"
+                    + "p+jRkIP6OeyI+R3YM5sx7I9WXMMODr001jNU2oYKsStMiZYFBEJjQTLauHtIpfcD4QATjtyMiF3BqkW1kUqRStGyVvx3P76fJ8eh"
+                    + "rzA3tiEDR3vA8AENYZoDNQdqDtCEu03xQM3Ec4lXDgfJcYXBVNREQ5hmomaiZmKeybqkiDgnCSli85P26ffbH1O0w3m0k6lwXHki"
+                    + "wvnIPTgil3+LrVgo";
 
     private static final Schematic START_SCHEMATIC =
-        Schematics.readBase64(START_SCHEMATIC_BASE64);
+            Schematics.readBase64(START_SCHEMATIC_BASE64);
 
     private StartLoadout() {
     }
 
     static void place(int coreX, int coreY, Team team) {
         Stile schematicCore = START_SCHEMATIC.tiles.find(
-            stile -> stile.block instanceof mindustry.world.blocks.storage.CoreBlock
+                stile -> stile.block instanceof mindustry.world.blocks.storage.CoreBlock
         );
 
         if (schematicCore == null) {
             throw new IllegalStateException(
-                "Embedded Evict start schematic does not contain a core."
+                    "Embedded Evict start schematic does not contain a core."
             );
         }
 
@@ -63,17 +63,17 @@ final class StartLoadout {
 
         for (Stile stile : sortedTiles) {
             Tile tile = Vars.world.tile(
-                stile.x + offsetX,
-                stile.y + offsetY
+                    stile.x + offsetX,
+                    stile.y + offsetY
             );
 
             if (tile == null) {
                 throw new IllegalStateException(
-                    "Start schematic reaches outside the map at "
-                        + (stile.x + offsetX)
-                        + ","
-                        + (stile.y + offsetY)
-                        + "."
+                        "Start schematic reaches outside the map at "
+                                + (stile.x + offsetX)
+                                + ","
+                                + (stile.y + offsetY)
+                                + "."
                 );
             }
 
@@ -87,22 +87,22 @@ final class StartLoadout {
         Tile coreTile = Vars.world.tile(coreX, coreY);
 
         if (
-            coreTile == null
-                || !(coreTile.build instanceof CoreBuild core)
+                coreTile == null
+                        || !(coreTile.build instanceof CoreBuild core)
         ) {
             throw new IllegalStateException(
-                "Start schematic did not place a Nucleus at "
-                    + coreX + "," + coreY + "."
+                    "Start schematic did not place a Nucleus at "
+                            + coreX + "," + coreY + "."
             );
         }
 
         fillStartingItems(core);
 
         Log.info(
-            "[EvictMapGenerator] Placed 15x15 start schematic and starting resources for team #@ at @,@.",
-            team.id,
-            coreX,
-            coreY
+                "[EvictMapGenerator] Placed 15x15 start schematic and starting resources for team #@ at @,@.",
+                team.id,
+                coreX,
+                coreY
         );
     }
 

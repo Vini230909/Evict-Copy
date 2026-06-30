@@ -17,8 +17,8 @@ final class EvictRules {
     }
 
     static void apply(
-        float unitBuildSpeedMultiplier,
-        Set<String> bannedBlockNames
+            float unitBuildSpeedMultiplier,
+            Set<String> bannedBlockNames
     ) {
         Vars.state.rules.pvp = true;
         Vars.state.rules.pvpAutoPause = false;
@@ -49,10 +49,10 @@ final class EvictRules {
         String bannedBlocks = applyBannedBlocks(bannedBlockNames);
 
         Log.info(
-            "[EvictMapGenerator] Applied Evict rules: pvp=ON, pvpAutoPause=OFF, waves=OFF, vanillaGameOver=OFF, unitFactorySpeed=@x, bannedBlocks=@, defaultTeam=Fallen #@.",
-            unitBuildSpeedMultiplier,
-            bannedBlocks,
-            TeamManager.FALLEN_TEAM_ID
+                "[EvictMapGenerator] Applied Evict rules: pvp=ON, pvpAutoPause=OFF, waves=OFF, vanillaGameOver=OFF, unitFactorySpeed=@x, bannedBlocks=@, defaultTeam=Fallen #@.",
+                unitBuildSpeedMultiplier,
+                bannedBlocks,
+                TeamManager.FALLEN_TEAM_ID
         );
     }
 
@@ -80,8 +80,8 @@ final class EvictRules {
 
             if (block == null) {
                 Log.warn(
-                    "[EvictMapGenerator] Synced banned block id '@' is not a known block; skipping.",
-                    name
+                        "[EvictMapGenerator] Synced banned block id '@' is not a known block; skipping.",
+                        name
                 );
                 continue;
             }

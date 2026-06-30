@@ -31,16 +31,16 @@ final class FullassaultManager {
     private float fullAssaultRefreshTimer = 0f;
 
     FullassaultManager(
-        TeamManager teamManager
+            TeamManager teamManager
     ) {
         this.teamManager = teamManager;
     }
 
     void registerClientCommands(CommandHandler handler) {
         handler.<Player>register(
-            "fullassault",
-            "Toggle automatic attacks against the closest enemy core for your team's unattended combat units.",
-            (args, player) -> toggleFullAssault(player)
+                "fullassault",
+                "Toggle automatic attacks against the closest enemy core for your team's unattended combat units.",
+                (args, player) -> toggleFullAssault(player)
         );
     }
 
@@ -78,9 +78,9 @@ final class FullassaultManager {
 
         Groups.unit.each(unit -> {
             if (
-                unit != null
-                    && fullAssaultTeamIds.contains(unit.team.id)
-                    && eligibleForFullAssault(unit)
+                    unit != null
+                            && fullAssaultTeamIds.contains(unit.team.id)
+                            && eligibleForFullAssault(unit)
             ) {
                 commandFullAssault(unit, coreSnapshot);
             }
@@ -104,7 +104,7 @@ final class FullassaultManager {
     }
 
     private void commandFullAssault(Unit unit, List<CoreBuild> coreSnapshot) {
-        CommandAI commandAI = (CommandAI)unit.controller();
+        CommandAI commandAI = (CommandAI) unit.controller();
         UnitCommand currentCommand = commandAI.currentCommand();
 
         if (ignoredCommand(currentCommand)) {
@@ -118,8 +118,8 @@ final class FullassaultManager {
         }
 
         if (
-            currentCommand == UnitCommand.moveCommand
-                && commandAI.attackTarget == targetCore
+                currentCommand == UnitCommand.moveCommand
+                        && commandAI.attackTarget == targetCore
         ) {
             return;
         }
@@ -131,12 +131,12 @@ final class FullassaultManager {
 
     private boolean eligibleForFullAssault(Unit unit) {
         return unit != null
-            && unit.isAdded()
-            && !unit.spawnedByCore
-            && !unit.isPlayer()
-            && unit.type.canAttack
-            && unit.type.hasWeapons()
-            && unit.controller() instanceof CommandAI;
+                && unit.isAdded()
+                && !unit.spawnedByCore
+                && !unit.isPlayer()
+                && unit.type.canAttack
+                && unit.type.hasWeapons()
+                && unit.controller() instanceof CommandAI;
     }
 
     private boolean ignoredCommand(UnitCommand command) {

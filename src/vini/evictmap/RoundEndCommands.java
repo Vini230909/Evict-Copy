@@ -14,9 +14,9 @@ import mindustry.gen.Player;
 final class RoundEndCommands {
 
     private static final long SURRENDER_UNLOCK_DELAY_MILLIS =
-        10L * 60L * 1000L;
+            10L * 60L * 1000L;
     private static final float SURRENDER_UNLOCK_DELAY_TICKS =
-        10f * 60f * 60f;
+            10f * 60f * 60f;
 
     private final TeamManager teamManager;
     private final ExtinctionManager extinctionManager;
@@ -27,11 +27,11 @@ final class RoundEndCommands {
      * cores. Normal Evict keeps both unchanged.
      */
     private final boolean duelWorker =
-        "true".equals(System.getProperty("evict.duelWorker"));
+            "true".equals(System.getProperty("evict.duelWorker"));
 
     RoundEndCommands(
-        TeamManager teamManager,
-        ExtinctionManager extinctionManager
+            TeamManager teamManager,
+            ExtinctionManager extinctionManager
     ) {
         this.teamManager = teamManager;
         this.extinctionManager = extinctionManager;
@@ -39,14 +39,14 @@ final class RoundEndCommands {
 
     void registerClientCommands(CommandHandler handler) {
         handler.register(
-            "die",
-            "Leader only: surrender your complete team after 10 minutes.",
+                "die",
+                "Leader only: surrender your complete team after 10 minutes.",
                 this::surrender
         );
 
         handler.register(
-            "over",
-            "End an eligible round immediately.",
+                "over",
+                "End an eligible round immediately.",
                 this::endEarly
         );
     }
@@ -55,8 +55,8 @@ final class RoundEndCommands {
         long scheduledRoundSerial = teamManager.roundSerial();
 
         Time.run(
-            SURRENDER_UNLOCK_DELAY_TICKS,
-            () -> announceOpeningPeriodEnded(scheduledRoundSerial)
+                SURRENDER_UNLOCK_DELAY_TICKS,
+                () -> announceOpeningPeriodEnded(scheduledRoundSerial)
         );
     }
 
@@ -74,17 +74,17 @@ final class RoundEndCommands {
         if (!duelWorker) {
             if (!teamManager.isLeader(player)) {
                 player.sendMessage(
-                    "[scarlet]Only your team's original leader can surrender.[]"
+                        "[scarlet]Only your team's original leader can surrender.[]"
                 );
                 return;
             }
 
             long remainingMillis =
-                SURRENDER_UNLOCK_DELAY_MILLIS - teamManager.roundRuntimeMillis();
+                    SURRENDER_UNLOCK_DELAY_MILLIS - teamManager.roundRuntimeMillis();
 
             if (remainingMillis > 0L) {
                 player.sendMessage(
-                    "[scarlet]Your team cannot surrender during the opening 10 minutes.[]"
+                        "[scarlet]Your team cannot surrender during the opening 10 minutes.[]"
                 );
                 return;
             }
@@ -92,7 +92,7 @@ final class RoundEndCommands {
 
         if (!teamManager.surrenderTeam(player.team())) {
             player.sendMessage(
-                "[scarlet]Your team can no longer surrender right now.[]"
+                    "[scarlet]Your team can no longer surrender right now.[]"
             );
         }
     }
@@ -100,7 +100,7 @@ final class RoundEndCommands {
     private void endEarly(String[] args, Player player) {
         if (duelWorker) {
             player.sendMessage(
-                "[scarlet]/over is not available in 1v1 duels.[]"
+                    "[scarlet]/over is not available in 1v1 duels.[]"
             );
             return;
         }
@@ -118,24 +118,24 @@ final class RoundEndCommands {
         Team team = player.team();
 
         if (
-            team == TeamManager.FALLEN_TEAM
-                || !teamManager.isActivePersonalTeam(team.id)
+                team == TeamManager.FALLEN_TEAM
+                        || !teamManager.isActivePersonalTeam(team.id)
         ) {
             player.sendMessage(
-                "[scarlet]Only players in an active personal team can use /over.[]"
+                    "[scarlet]Only players in an active personal team can use /over.[]"
             );
             return;
         }
 
         if (extinctionManager.blocksEarlyEnd()) {
             player.sendMessage(
-                "[scarlet]/over is disabled because EXTINCTION is approaching or already active.[]"
+                    "[scarlet]/over is disabled because EXTINCTION is approaching or already active.[]"
             );
             return;
         }
 
         TeamManager.EarlyEndStatus status =
-            teamManager.earlyEndStatus(team);
+                teamManager.earlyEndStatus(team);
 
         if (!status.eligible()) {
             showEarlyEndProblems(player, status);
@@ -144,23 +144,23 @@ final class RoundEndCommands {
 
         if (!teamManager.endRoundEarly(team)) {
             player.sendMessage(
-                "[scarlet]The early round-end conditions changed. Use /over again after checking the remaining requirements.[]"
+                    "[scarlet]The early round-end conditions changed. Use /over again after checking the remaining requirements.[]"
             );
         }
     }
 
     private void showEarlyEndProblems(
-        Player player,
-        TeamManager.EarlyEndStatus status
+            Player player,
+            TeamManager.EarlyEndStatus status
     ) {
         StringBuilder message = new StringBuilder(
-            "[scarlet]You cannot end the round early yet.[]"
+                "[scarlet]You cannot end the round early yet.[]"
         );
 
         if (status.additionalCoresNeededForHalf() > 0) {
             message.append("\n[lightgray]You need ")
-                .append(status.additionalCoresNeededForHalf())
-                .append(" more core");
+                    .append(status.additionalCoresNeededForHalf())
+                    .append(" more core");
 
             if (status.additionalCoresNeededForHalf() != 1) {
                 message.append("s");
@@ -174,10 +174,10 @@ final class RoundEndCommands {
 
             for (TeamManager.EarlyEndBlocker blocker : status.blockers()) {
                 message.append("\n[lightgray]- []")
-                    .append(teamManager.displayTeam(blocker.team()))
-                    .append("[lightgray]: destroy ")
-                    .append(blocker.remainingCores())
-                    .append(" remaining core");
+                        .append(teamManager.displayTeam(blocker.team()))
+                        .append("[lightgray]: destroy ")
+                        .append(blocker.remainingCores())
+                        .append(" remaining core");
 
                 if (blocker.remainingCores() != 1) {
                     message.append("s");
@@ -192,24 +192,24 @@ final class RoundEndCommands {
 
     private void announceOpeningPeriodEnded(long scheduledRoundSerial) {
         if (
-            !teamManager.isRoundActiveForSystems()
-                || scheduledRoundSerial != teamManager.roundSerial()
+                !teamManager.isRoundActiveForSystems()
+                        || scheduledRoundSerial != teamManager.roundSerial()
         ) {
             return;
         }
 
         String activeMatchPlayers =
-            teamManager.activeMatchPlayerNamesSummary();
+                teamManager.activeMatchPlayerNamesSummary();
 
         if (activeMatchPlayers.isBlank()) {
             return;
         }
 
         Call.sendMessage(
-            "[accent]The opening 10 minutes have passed.[]\n"
-                + "[lightgray]Match players: []"
-                + activeMatchPlayers
-                + "[lightgray].[]"
+                "[accent]The opening 10 minutes have passed.[]\n"
+                        + "[lightgray]Match players: []"
+                        + activeMatchPlayers
+                        + "[lightgray].[]"
         );
     }
 }

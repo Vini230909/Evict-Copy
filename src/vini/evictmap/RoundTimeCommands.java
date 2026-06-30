@@ -13,7 +13,7 @@ import java.util.Map;
 final class RoundTimeCommands {
 
     private final Map<String, Long> joinedAtMillisByPlayerUuid =
-        new HashMap<>();
+            new HashMap<>();
     private final TeamManager teamManager;
 
     RoundTimeCommands(TeamManager teamManager) {
@@ -22,8 +22,8 @@ final class RoundTimeCommands {
 
     void registerClientCommands(CommandHandler handler) {
         handler.register(
-            "time",
-            "Show round time and your time since first joining this round.",
+                "time",
+                "Show round time and your time since first joining this round.",
                 this::showTime
         );
     }
@@ -36,8 +36,8 @@ final class RoundTimeCommands {
     void handlePlayerJoin(Player player) {
         if (player != null) {
             joinedAtMillisByPlayerUuid.putIfAbsent(
-                player.uuid(),
-                System.currentTimeMillis()
+                    player.uuid(),
+                    System.currentTimeMillis()
             );
         }
     }
@@ -48,8 +48,8 @@ final class RoundTimeCommands {
         Groups.player.each(player -> {
             if (player != null) {
                 joinedAtMillisByPlayerUuid.putIfAbsent(
-                    player.uuid(),
-                    currentMillis
+                        player.uuid(),
+                        currentMillis
                 );
             }
         });
@@ -63,7 +63,7 @@ final class RoundTimeCommands {
 
         long currentMillis = System.currentTimeMillis();
         Long joinedAtMillis =
-            joinedAtMillisByPlayerUuid.get(player.uuid());
+                joinedAtMillisByPlayerUuid.get(player.uuid());
 
         if (joinedAtMillis == null) {
             joinedAtMillis = fallbackJoinTimeMillis(currentMillis);
@@ -71,15 +71,15 @@ final class RoundTimeCommands {
         }
 
         String roundTime = !teamManager.isRoundActiveForSystems()
-            ? "not running"
-            : formatDuration(teamManager.roundRuntimeMillis());
+                ? "not running"
+                : formatDuration(teamManager.roundRuntimeMillis());
 
         player.sendMessage(
-            "[accent]Round time: [white]"
-                + roundTime
-                + "[]\n[accent]Your first-join time: [white]"
-                + formatDuration(currentMillis - joinedAtMillis)
-                + "[]"
+                "[accent]Round time: [white]"
+                        + roundTime
+                        + "[]\n[accent]Your first-join time: [white]"
+                        + formatDuration(currentMillis - joinedAtMillis)
+                        + "[]"
         );
     }
 
@@ -87,8 +87,8 @@ final class RoundTimeCommands {
         long roundStartedAtMillis = teamManager.roundStartedAtMillis();
 
         if (
-            teamManager.isRoundActiveForSystems()
-                && roundStartedAtMillis > 0L
+                teamManager.isRoundActiveForSystems()
+                        && roundStartedAtMillis > 0L
         ) {
             return roundStartedAtMillis;
         }

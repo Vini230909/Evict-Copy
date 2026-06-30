@@ -45,7 +45,7 @@ final class ExtinctionManager {
     private float finalPhaseEndTicks = Float.POSITIVE_INFINITY;
 
     private final ArrayDeque<TeamManager.HexSlot> pendingRingSlots =
-        new ArrayDeque<>();
+            new ArrayDeque<>();
 
     private int collapsingRingDistance = -1;
     private boolean waitingForTerrainDrain = false;
@@ -87,38 +87,38 @@ final class ExtinctionManager {
         elapsedTicks = currentTimelineTicks();
 
         if (
-            !warningTenMinutesSent
-                && elapsedTicks >= WARNING_TEN_MINUTES_TICKS
+                !warningTenMinutesSent
+                        && elapsedTicks >= WARNING_TEN_MINUTES_TICKS
         ) {
             warningTenMinutesSent = true;
 
             Call.sendMessage(
-                "[scarlet]EXTINCTION begins in 10 minutes. "
-                    + "Outer hexes will collapse toward the center. "
-                    + "When only the middle area remains, control the middle "
-                    + "core to win the round.[]"
+                    "[scarlet]EXTINCTION begins in 10 minutes. "
+                            + "Outer hexes will collapse toward the center. "
+                            + "When only the middle area remains, control the middle "
+                            + "core to win the round.[]"
             );
         }
 
         if (
-            !warningFiveMinutesSent
-                && elapsedTicks >= WARNING_FIVE_MINUTES_TICKS
+                !warningFiveMinutesSent
+                        && elapsedTicks >= WARNING_FIVE_MINUTES_TICKS
         ) {
             warningFiveMinutesSent = true;
 
             Call.sendMessage(
-                "[scarlet]EXTINCTION begins in 5 minutes.[]"
+                    "[scarlet]EXTINCTION begins in 5 minutes.[]"
             );
         }
 
         if (
-            !warningOneMinuteSent
-                && elapsedTicks >= WARNING_ONE_MINUTE_TICKS
+                !warningOneMinuteSent
+                        && elapsedTicks >= WARNING_ONE_MINUTE_TICKS
         ) {
             warningOneMinuteSent = true;
 
             Call.sendMessage(
-                "[scarlet]EXTINCTION begins in 1 minute.[]"
+                    "[scarlet]EXTINCTION begins in 1 minute.[]"
             );
         }
 
@@ -148,10 +148,10 @@ final class ExtinctionManager {
         teamManager.setExtinctionActive(true);
 
         Call.sendMessage(
-            "[scarlet]EXTINCTION HAS STARTED. "
-                + "The outermost ring is collapsing core by core. "
-                + "Fight toward the middle: controlling the middle core in "
-                + "the final phase wins the round.[]"
+                "[scarlet]EXTINCTION HAS STARTED. "
+                        + "The outermost ring is collapsing core by core. "
+                        + "Fight toward the middle: controlling the middle core in "
+                        + "the final phase wins the round.[]"
         );
 
         nextRingCollapseTicks = elapsedTicks;
@@ -160,32 +160,32 @@ final class ExtinctionManager {
 
     private void updateRingCollapse() {
         if (
-            !teamManager.isRoundActiveForSystems()
-                || finalPhase
+                !teamManager.isRoundActiveForSystems()
+                        || finalPhase
         ) {
             return;
         }
 
         if (
-            pendingRingSlots.isEmpty()
-                && !waitingForTerrainDrain
-                && elapsedTicks >= nextRingCollapseTicks
+                pendingRingSlots.isEmpty()
+                        && !waitingForTerrainDrain
+                        && elapsedTicks >= nextRingCollapseTicks
         ) {
             beginNextRingCollapse();
         }
 
         if (
-            !pendingRingSlots.isEmpty()
-                && elapsedTicks >= nextHexCollapseTicks
+                !pendingRingSlots.isEmpty()
+                        && elapsedTicks >= nextHexCollapseTicks
         ) {
             TeamManager.HexSlot slot = pendingRingSlots.removeFirst();
 
             teamManager.collapseHexesForExtinction(
-                Collections.singletonList(slot)
+                    Collections.singletonList(slot)
             );
 
             nextHexCollapseTicks =
-                elapsedTicks + HEX_COLLAPSE_INTERVAL_TICKS;
+                    elapsedTicks + HEX_COLLAPSE_INTERVAL_TICKS;
 
             if (pendingRingSlots.isEmpty()) {
                 waitingForTerrainDrain = true;
@@ -193,8 +193,8 @@ final class ExtinctionManager {
         }
 
         if (
-            waitingForTerrainDrain
-                && !teamManager.hasPendingExtinctionTerrainChanges()
+                waitingForTerrainDrain
+                        && !teamManager.hasPendingExtinctionTerrainChanges()
         ) {
             finishCurrentRingCollapse();
         }
@@ -206,8 +206,8 @@ final class ExtinctionManager {
         for (TeamManager.HexSlot slot : teamManager.slots()) {
             if (!slot.extinct) {
                 outermostDistance = Math.max(
-                    outermostDistance,
-                    teamManager.gridDistanceFromCenter(slot)
+                        outermostDistance,
+                        teamManager.gridDistanceFromCenter(slot)
                 );
             }
         }
@@ -221,9 +221,9 @@ final class ExtinctionManager {
 
         for (TeamManager.HexSlot slot : teamManager.slots()) {
             if (
-                !slot.extinct
-                    && teamManager.gridDistanceFromCenter(slot)
-                        == outermostDistance
+                    !slot.extinct
+                            && teamManager.gridDistanceFromCenter(slot)
+                            == outermostDistance
             ) {
                 collapsing.add(slot);
             }
@@ -236,9 +236,9 @@ final class ExtinctionManager {
         nextHexCollapseTicks = elapsedTicks;
 
         Call.sendMessage(
-            "[scarlet]EXTINCTION: ring "
-                + outermostDistance
-                + " is collapsing core by core.[]"
+                "[scarlet]EXTINCTION: ring "
+                        + outermostDistance
+                        + " is collapsing core by core.[]"
         );
     }
 
@@ -255,9 +255,9 @@ final class ExtinctionManager {
         }
 
         Call.sendMessage(
-            "[scarlet]EXTINCTION: ring "
-                + collapsingRingDistance
-                + " fully collapsed. The next ring collapses in 90 seconds.[]"
+                "[scarlet]EXTINCTION: ring "
+                        + collapsingRingDistance
+                        + " fully collapsed. The next ring collapses in 90 seconds.[]"
         );
 
         nextRingCollapseTicks = elapsedTicks + RING_INTERVAL_TICKS;
@@ -267,8 +267,8 @@ final class ExtinctionManager {
     private boolean onlyFinalSevenRemain() {
         for (TeamManager.HexSlot slot : teamManager.slots()) {
             if (
-                !slot.extinct
-                    && teamManager.gridDistanceFromCenter(slot) > 1
+                    !slot.extinct
+                            && teamManager.gridDistanceFromCenter(slot) > 1
             ) {
                 return false;
             }
@@ -286,11 +286,11 @@ final class ExtinctionManager {
         finalPhaseEndTicks = elapsedTicks + FINAL_HOLD_TICKS;
 
         Call.sendMessage(
-            "[accent]FINAL EXTINCTION PHASE: the last outer ring disappeared. "
-                + "Only the middle hex and its six neighbouring hexes remain. "
-                + "You now have 4 minutes to conquer and control the middle "
-                + "core. Its owner when the timer ends wins the round, "
-                + "including Fallen.[]"
+                "[accent]FINAL EXTINCTION PHASE: the last outer ring disappeared. "
+                        + "Only the middle hex and its six neighbouring hexes remain. "
+                        + "You now have 4 minutes to conquer and control the middle "
+                        + "core. Its owner when the timer ends wins the round, "
+                        + "including Fallen.[]"
         );
     }
 

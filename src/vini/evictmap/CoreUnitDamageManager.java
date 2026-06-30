@@ -24,21 +24,21 @@ final class CoreUnitDamageManager {
 
         Set<BulletType> visited = new HashSet<>();
         int changed =
-            disableCoreUnitDamage(UnitTypes.alpha, visited)
-                + disableCoreUnitDamage(UnitTypes.beta, visited)
-                + disableCoreUnitDamage(UnitTypes.gamma, visited);
+                disableCoreUnitDamage(UnitTypes.alpha, visited)
+                        + disableCoreUnitDamage(UnitTypes.beta, visited)
+                        + disableCoreUnitDamage(UnitTypes.gamma, visited);
 
         applied = true;
 
         Log.info(
-            "[EvictMapGenerator] Disabled damage for @ core-unit bullet types.",
-            changed
+                "[EvictMapGenerator] Disabled damage for @ core-unit bullet types.",
+                changed
         );
     }
 
     private int disableCoreUnitDamage(
-        UnitType unitType,
-        Set<BulletType> visited
+            UnitType unitType,
+            Set<BulletType> visited
     ) {
         if (unitType == null) {
             return 0;
@@ -56,8 +56,8 @@ final class CoreUnitDamageManager {
     }
 
     private int disableBulletDamage(
-        BulletType bullet,
-        Set<BulletType> visited
+            BulletType bullet,
+            Set<BulletType> visited
     ) {
         if (bullet == null || !visited.add(bullet)) {
             return 0;
@@ -73,8 +73,8 @@ final class CoreUnitDamageManager {
          * those too so core-unit weapons cannot deal indirect damage.
          */
         return 1
-            + disableBulletDamage(bullet.fragBullet, visited)
-            + disableBulletDamage(bullet.intervalBullet, visited)
-            + disableBulletDamage(bullet.lightningType, visited);
+                + disableBulletDamage(bullet.fragBullet, visited)
+                + disableBulletDamage(bullet.intervalBullet, visited)
+                + disableBulletDamage(bullet.lightningType, visited);
     }
 }

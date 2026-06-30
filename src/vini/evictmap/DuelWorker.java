@@ -24,16 +24,16 @@ import mindustry.gen.Player;
  * (-Devict.duelWorker=true); on the hub this class does nothing.
  * - reads the hub handshake (the two player UUIDs + hub address),
  * - lets the world run for a brief settle window when a duelist joins so their
- *   unit spawns at their core and their client camera snaps onto it, then
- *   freezes the match (an instant freeze leaves the camera stuck at the map
- *   origin until the first unpause, because the spawn resolves on a world tick).
+ * unit spawns at their core and their client camera snaps onto it, then
+ * freezes the match (an instant freeze leaves the camera stuck at the map
+ * origin until the first unpause, because the spawn resolves on a world tick).
  * - once both are present, runs a 5-second countdown (HUD text), then unfreezes,
  * - if a player disconnects mid-match, pauses and shows a "Xs to rejoin"
- *   countdown; resumes when they return, or after the window if they do not,
+ * countdown; resumes when they return, or after the window if they do not,
  * - on an Evict victory writes a result file, returns both players to the hub,
  * - shuts down once it has sat empty for a grace period,
  * - writes status.properties periodically so the hub's evictduelstatus can show
- *   the live state, game time and connected players.
+ * the live state, game time and connected players.
  * Countdowns, status writes and the empty-shutdown run on a real-time executor,
  * because the game is paused during them and logic-timed tasks would stall.
  */
@@ -65,11 +65,11 @@ final class DuelWorker {
     private final boolean active;
 
     private final ScheduledExecutorService scheduler =
-        Executors.newSingleThreadScheduledExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "evict-duel-worker");
-            thread.setDaemon(true);
-            return thread;
-        });
+            Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "evict-duel-worker");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     private String hubIp = "";
     private int hubPort = 6567;
@@ -90,7 +90,9 @@ final class DuelWorker {
     private boolean settlePending = false;
     private String disconnectedName = "A player";
 
-    /** Shared id so each duel HUD update replaces the previous popup instead of stacking. */
+    /**
+     * Shared id so each duel HUD update replaces the previous popup instead of stacking.
+     */
     private static final String HUD_ID = "duel-hud";
     /**
      * How far above screen center the duel HUD sits, in UI units. This is bottom
@@ -108,14 +110,18 @@ final class DuelWorker {
         return active;
     }
 
-    /** True for the two duelists named in the handshake; everyone else spectates. */
+    /**
+     * True for the two duelists named in the handshake; everyone else spectates.
+     */
     boolean isParticipant(String uuid) {
         return handshakeLoaded
-            && uuid != null
-            && (uuid.equals(player1Uuid) || uuid.equals(player2Uuid));
+                && uuid != null
+                && (uuid.equals(player1Uuid) || uuid.equals(player2Uuid));
     }
 
-    /** Sends a spectator back to the hub this worker was launched from. */
+    /**
+     * Sends a spectator back to the hub this worker was launched from.
+     */
     void returnSpectatorToHub(Player player) {
         if (!active || player == null) {
             return;
@@ -123,7 +129,7 @@ final class DuelWorker {
 
         if (hubIp == null || hubIp.isBlank()) {
             player.sendMessage(
-                "[scarlet]Cannot find the lobby to return you to.[]"
+                    "[scarlet]Cannot find the lobby to return you to.[]"
             );
             return;
         }
@@ -132,7 +138,9 @@ final class DuelWorker {
         Call.connect(player.con, hubIp, hubPort);
     }
 
-    /** Called once the worker has hosted its round. */
+    /**
+     * Called once the worker has hosted its round.
+     */
     void begin() {
         if (!active) {
             return;
@@ -142,10 +150,10 @@ final class DuelWorker {
         scheduleShutdownIfEmpty(STARTUP_GRACE_SECONDS);
 
         scheduler.scheduleAtFixedRate(
-            () -> Core.app.post(this::writeStatus),
-            STATUS_INTERVAL_SECONDS,
-            STATUS_INTERVAL_SECONDS,
-            TimeUnit.SECONDS
+                () -> Core.app.post(this::writeStatus),
+                STATUS_INTERVAL_SECONDS,
+                STATUS_INTERVAL_SECONDS,
+                TimeUnit.SECONDS
         );
     }
 
@@ -227,14 +235,14 @@ final class DuelWorker {
         }
 
         scheduleShutdownIfEmpty(
-            resolved ? RESOLVED_GRACE_SECONDS : EMPTY_GRACE_SECONDS
+                resolved ? RESOLVED_GRACE_SECONDS : EMPTY_GRACE_SECONDS
         );
 
         if (
-            !matchStarted
-                || resolved
-                || pausedForDisconnect
-                || player == null
+                !matchStarted
+                        || resolved
+                        || pausedForDisconnect
+                        || player == null
         ) {
             return;
         }
@@ -267,7 +275,7 @@ final class DuelWorker {
         hideHud();
 
         Player winnerPlayer = Groups.player.find(
-            player -> player != null && player.team() == winner
+                player -> player != null && player.team() == winner
         );
 
         String winnerUuid = winnerPlayer != null ? winnerPlayer.uuid() : "";
@@ -276,28 +284,28 @@ final class DuelWorker {
         writeResult(winnerUuid, loserUuid);
 
         String winnerName =
-            winnerPlayer != null
-                ? PlayerNameFormatter.displayName(winnerPlayer)
-                : "The winner";
+                winnerPlayer != null
+                        ? PlayerNameFormatter.displayName(winnerPlayer)
+                        : "The winner";
 
         Call.sendMessage(
-            "[accent]" + winnerName
-                + "[accent] won the 1v1. Returning to the lobby in 5 seconds...[]"
+                "[accent]" + winnerName
+                        + "[accent] won the 1v1. Returning to the lobby in 5 seconds...[]"
         );
 
         Time.run(RETURN_DELAY_TICKS, this::returnPlayersToHub);
 
         Log.info(
-            "[EvictMapGenerator] Duel result: winner=@ loser=@.",
-            winnerUuid.isEmpty() ? "unknown" : winnerUuid,
-            loserUuid.isEmpty() ? "unknown" : loserUuid
+                "[EvictMapGenerator] Duel result: winner=@ loser=@.",
+                winnerUuid.isEmpty() ? "unknown" : winnerUuid,
+                loserUuid.isEmpty() ? "unknown" : loserUuid
         );
     }
 
     private void returnPlayersToHub() {
         if (hubIp == null || hubIp.isBlank()) {
             Log.err(
-                "[EvictMapGenerator] Duel worker has no hub address; cannot return players."
+                    "[EvictMapGenerator] Duel worker has no hub address; cannot return players."
             );
             return;
         }
@@ -309,9 +317,9 @@ final class DuelWorker {
         });
 
         Log.info(
-            "[EvictMapGenerator] Duel worker returned players to the lobby at @:@.",
-            hubIp,
-            hubPort
+                "[EvictMapGenerator] Duel worker returned players to the lobby at @:@.",
+                hubIp,
+                hubPort
         );
     }
 
@@ -330,16 +338,16 @@ final class DuelWorker {
             int remaining = second;
 
             scheduler.schedule(
-                () -> Core.app.post(() -> showCountdown(serial, remaining)),
-                COUNTDOWN_SECONDS - second,
-                TimeUnit.SECONDS
+                    () -> Core.app.post(() -> showCountdown(serial, remaining)),
+                    COUNTDOWN_SECONDS - second,
+                    TimeUnit.SECONDS
             );
         }
 
         scheduler.schedule(
-            () -> Core.app.post(() -> startMatch(serial)),
-            COUNTDOWN_SECONDS,
-            TimeUnit.SECONDS
+                () -> Core.app.post(() -> startMatch(serial)),
+                COUNTDOWN_SECONDS,
+                TimeUnit.SECONDS
         );
     }
 
@@ -360,7 +368,9 @@ final class DuelWorker {
         Call.infoPopup(text, HUD_ID, 3600f, Align.center, 0, 0, HUD_RAISE, 0);
     }
 
-    /** Removes the duel HUD popup. */
+    /**
+     * Removes the duel HUD popup.
+     */
     private void hideHud() {
         Call.infoPopup((String) null, HUD_ID, 0f, Align.center, 0, 0, HUD_RAISE, 0);
     }
@@ -377,9 +387,9 @@ final class DuelWorker {
         showHud("[green]GO![]");
 
         scheduler.schedule(
-            () -> Core.app.post(this::hideHud),
-            2,
-            TimeUnit.SECONDS
+                () -> Core.app.post(this::hideHud),
+                2,
+                TimeUnit.SECONDS
         );
     }
 
@@ -425,16 +435,16 @@ final class DuelWorker {
             int remaining = second;
 
             scheduler.schedule(
-                () -> Core.app.post(() -> showRejoinCountdown(serial, remaining)),
-                REJOIN_SECONDS - second,
-                TimeUnit.SECONDS
+                    () -> Core.app.post(() -> showRejoinCountdown(serial, remaining)),
+                    REJOIN_SECONDS - second,
+                    TimeUnit.SECONDS
             );
         }
 
         scheduler.schedule(
-            () -> Core.app.post(() -> expireDisconnectPause(serial)),
-            REJOIN_SECONDS,
-            TimeUnit.SECONDS
+                () -> Core.app.post(() -> expireDisconnectPause(serial)),
+                REJOIN_SECONDS,
+                TimeUnit.SECONDS
         );
     }
 
@@ -444,9 +454,9 @@ final class DuelWorker {
         }
 
         showHud(
-            "[scarlet]" + disconnectedName
-                + "[scarlet] left  -  [accent]" + remaining
-                + "s[scarlet] to rejoin, or the match continues[]"
+                "[scarlet]" + disconnectedName
+                        + "[scarlet] left  -  [accent]" + remaining
+                        + "s[scarlet] to rejoin, or the match continues[]"
         );
     }
 
@@ -469,8 +479,8 @@ final class DuelWorker {
 
         showHud(
                 !names.isEmpty()
-                ? "[accent]Waiting for players\n[white]" + names + "[]"
-                : "[accent]Waiting for players...[]"
+                        ? "[accent]Waiting for players\n[white]" + names + "[]"
+                        : "[accent]Waiting for players...[]"
         );
     }
 
@@ -483,8 +493,8 @@ final class DuelWorker {
         resumeGame();
         hideHud();
         Call.sendMessage(
-            "[scarlet]" + disconnectedName
-                + "[scarlet] did not return. The match continues.[]"
+                "[scarlet]" + disconnectedName
+                        + "[scarlet] did not return. The match continues.[]"
         );
     }
 
@@ -498,16 +508,16 @@ final class DuelWorker {
 
     private void scheduleShutdownIfEmpty(int seconds) {
         scheduler.schedule(
-            () -> Core.app.post(() -> {
-                if (Groups.player.isEmpty()) {
-                    Log.info(
-                        "[EvictMapGenerator] Duel worker is empty; shutting down to free the slot."
-                    );
-                    System.exit(0);
-                }
-            }),
-            seconds,
-            TimeUnit.SECONDS
+                () -> Core.app.post(() -> {
+                    if (Groups.player.isEmpty()) {
+                        Log.info(
+                                "[EvictMapGenerator] Duel worker is empty; shutting down to free the slot."
+                        );
+                        System.exit(0);
+                    }
+                }),
+                seconds,
+                TimeUnit.SECONDS
         );
     }
 
@@ -525,8 +535,8 @@ final class DuelWorker {
         Properties properties = new Properties();
         properties.setProperty("state", currentStateName());
         properties.setProperty(
-            "elapsedSeconds",
-            Long.toString(matchElapsedSeconds())
+                "elapsedSeconds",
+                Long.toString(matchElapsedSeconds())
         );
 
         StringBuilder players = new StringBuilder();
@@ -587,7 +597,7 @@ final class DuelWorker {
         }
 
         return Groups.player.find(
-            player -> player != null && player.uuid().equals(uuid)
+                player -> player != null && player.uuid().equals(uuid)
         ) != null;
     }
 
@@ -606,8 +616,8 @@ final class DuelWorker {
     private void loadHandshake() {
         if (!HANDSHAKE_FILE.exists()) {
             Log.warn(
-                "[EvictMapGenerator] Duel worker found no handshake file (@); start gate and return disabled.",
-                HANDSHAKE_FILE.getPath()
+                    "[EvictMapGenerator] Duel worker found no handshake file (@); start gate and return disabled.",
+                    HANDSHAKE_FILE.getPath()
             );
             return;
         }
@@ -624,16 +634,16 @@ final class DuelWorker {
             handshakeLoaded = true;
 
             Log.info(
-                "[EvictMapGenerator] Duel worker loaded handshake: hub=@:@ players=@ vs @.",
-                hubIp,
-                hubPort,
-                player1Uuid,
-                player2Uuid
+                    "[EvictMapGenerator] Duel worker loaded handshake: hub=@:@ players=@ vs @.",
+                    hubIp,
+                    hubPort,
+                    player1Uuid,
+                    player2Uuid
             );
         } catch (Exception exception) {
             Log.err(
-                "[EvictMapGenerator] Duel worker could not read the handshake file.",
-                exception
+                    "[EvictMapGenerator] Duel worker could not read the handshake file.",
+                    exception
             );
         }
     }
@@ -648,8 +658,8 @@ final class DuelWorker {
             properties.store(output, "Evict duel result");
         } catch (Exception exception) {
             Log.err(
-                "[EvictMapGenerator] Duel worker could not write the result file.",
-                exception
+                    "[EvictMapGenerator] Duel worker could not write the result file.",
+                    exception
             );
         }
     }

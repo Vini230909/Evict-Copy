@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
 final class PlayerNameFormatter {
 
     private static final Pattern HEX_COLOR_TAG =
-        Pattern.compile("\\[#([0-9a-fA-F]{6})(?:[0-9a-fA-F]{2})?]");
+            Pattern.compile("\\[#([0-9a-fA-F]{6})(?:[0-9a-fA-F]{2})?]");
 
     private PlayerNameFormatter() {
     }
@@ -37,8 +37,8 @@ final class PlayerNameFormatter {
          * player without a colored name never appears in an unrelated color.
          */
         return color == null
-            ? "[white]" + name + "[]"
-            : "[#" + color + "]" + name + "[]";
+                ? "[white]" + name + "[]"
+                : "[#" + color + "]" + name + "[]";
     }
 
     private static String explicitNameColor(String rawName) {
@@ -49,7 +49,7 @@ final class PlayerNameFormatter {
         Matcher matcher = HEX_COLOR_TAG.matcher(rawName);
 
         return matcher.find()
-            ? matcher.group(1).toLowerCase(Locale.ROOT)
-            : null;
+                ? matcher.group(1).toLowerCase(Locale.ROOT)
+                : null;
     }
 }

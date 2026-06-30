@@ -36,83 +36,83 @@ public class EvictMapPlugin extends Plugin {
     private final EvictRuntimeState runtime = new EvictRuntimeState();
     private final EvictSettings settings = new EvictSettings();
     private final CoreUnitDamageManager coreUnitDamageManager =
-        new CoreUnitDamageManager();
+            new CoreUnitDamageManager();
     private final BuildingDamageManager buildingDamageManager =
-        new BuildingDamageManager();
+            new BuildingDamageManager();
     private final PlayerDataManager playerDataManager =
-        new PlayerDataManager();
+            new PlayerDataManager();
     private final RankManager rankManager = new RankManager();
 
     private final TeamManager teamManager =
-        new TeamManager(this::handleVictory);
+            new TeamManager(this::handleVictory);
 
     private final DuelWorker duelWorkerReferee = new DuelWorker();
 
     private final AttritionManager attritionManager =
-        new AttritionManager(teamManager, settings);
+            new AttritionManager(teamManager, settings);
 
     private final InviteManager inviteManager =
-        new InviteManager(teamManager);
+            new InviteManager(teamManager);
 
     private final ExtinctionManager extinctionManager =
-        new ExtinctionManager(teamManager);
+            new ExtinctionManager(teamManager);
 
     private final FullassaultManager fullassaultManager =
-        new FullassaultManager(
-            teamManager
-        );
+            new FullassaultManager(
+                    teamManager
+            );
 
     private final RoundEndCommands roundEndCommands =
-        new RoundEndCommands(teamManager, extinctionManager);
+            new RoundEndCommands(teamManager, extinctionManager);
 
     private final RoundTimeCommands roundTimeCommands =
-        new RoundTimeCommands(teamManager);
+            new RoundTimeCommands(teamManager);
 
     private final DuelServerManager duelServerManager =
-        new DuelServerManager(settings, playerDataManager);
+            new DuelServerManager(settings, playerDataManager);
 
     private final DuelCommands duelCommands =
-        new DuelCommands(
-            duelServerManager,
-            duelWorkerReferee,
-            rankManager,
-            this::restartDuelMatch
-        );
+            new DuelCommands(
+                    duelServerManager,
+                    duelWorkerReferee,
+                    rankManager,
+                    this::restartDuelMatch
+            );
 
     private final HistoryCommands historyCommands =
-        new HistoryCommands(playerDataManager);
+            new HistoryCommands(playerDataManager);
 
     private final EvictHelpCommands helpCommands =
-        new EvictHelpCommands();
+            new EvictHelpCommands();
 
     private final EvictClientCommands clientCommands =
-        new EvictClientCommands(
-                fullassaultManager,
-            inviteManager,
-            roundEndCommands,
-            roundTimeCommands,
-            duelCommands,
-            historyCommands,
-            helpCommands
-        );
+            new EvictClientCommands(
+                    fullassaultManager,
+                    inviteManager,
+                    roundEndCommands,
+                    roundTimeCommands,
+                    duelCommands,
+                    historyCommands,
+                    helpCommands
+            );
 
     private final EvictTerrainGenerator terrainGenerator =
-        new EvictTerrainGenerator(settings);
+            new EvictTerrainGenerator(settings);
 
     private final EvictConsoleCommands consoleCommands =
-        new EvictConsoleCommands(
-            runtime,
-            settings,
-            terrainGenerator,
-            teamManager,
-            playerDataManager,
-            duelServerManager,
-            rankManager,
-            // evictgen regenerates the live map in place with no fresh snapshot,
-            // so connected clients only see the new terrain via the per-tile sync.
-            seed -> generate(seed, true),
-            attritionManager
-        );
+            new EvictConsoleCommands(
+                    runtime,
+                    settings,
+                    terrainGenerator,
+                    teamManager,
+                    playerDataManager,
+                    duelServerManager,
+                    rankManager,
+                    // evictgen regenerates the live map in place with no fresh snapshot,
+                    // so connected clients only see the new terrain via the per-tile sync.
+                    seed -> generate(seed, true),
+                    attritionManager
+            );
 
     private boolean refreshingWorldIndexes = false;
     private long connectedPlayerScanSerial = 0L;
@@ -123,11 +123,11 @@ public class EvictMapPlugin extends Plugin {
      * empty so the hub can free the slot.
      */
     private final boolean duelWorker =
-        "true".equals(System.getProperty("evict.duelWorker"));
+            "true".equals(System.getProperty("evict.duelWorker"));
 
     // pre-changing detector
     private final HashMap<Integer, CoreBlock.CoreBuild> prechanged =
-        new HashMap<>();
+            new HashMap<>();
 
     @Override
     public void init() {
@@ -140,7 +140,7 @@ public class EvictMapPlugin extends Plugin {
         // two levels up) so spectators and players still see real history.
         if (duelWorker) {
             playerDataManager.useHistoryDatabase(
-                new java.io.File("../../config/evict-players.db")
+                    new java.io.File("../../config/evict-players.db")
             );
 
             installDuelChatFilter();
@@ -148,7 +148,7 @@ public class EvictMapPlugin extends Plugin {
         coreUnitDamageManager.apply();
         buildingDamageManager.apply();
         teamManager.setExtinctionTerrainChangesPerTick(
-            settings.extinctionTerrainChangesPerTick()
+                settings.extinctionTerrainChangesPerTick()
         );
         teamManager.setInviteManager(inviteManager);
         teamManager.setDuelMode(duelWorker);
@@ -161,8 +161,8 @@ public class EvictMapPlugin extends Plugin {
             long seed = runtime.consumeNextSeed();
 
             Log.info(
-                "[EvictMapGenerator] World loaded. Generating Evict terrain with seed @.",
-                seed
+                    "[EvictMapGenerator] World loaded. Generating Evict terrain with seed @.",
+                    seed
             );
 
             try {
@@ -173,8 +173,8 @@ public class EvictMapPlugin extends Plugin {
                 generate(seed, false);
             } catch (Exception exception) {
                 Log.err(
-                    "[EvictMapGenerator] Generation failed.",
-                    exception
+                        "[EvictMapGenerator] Generation failed.",
+                        exception
                 );
             }
         });
@@ -185,8 +185,8 @@ public class EvictMapPlugin extends Plugin {
             }
 
             EvictRules.apply(
-                (float) settings.unitBuildSpeedMultiplier(),
-                syncedBannedBlocks()
+                    (float) settings.unitBuildSpeedMultiplier(),
+                    syncedBannedBlocks()
             );
             scheduleConnectedPlayerAssignmentScan();
 
@@ -195,7 +195,7 @@ public class EvictMapPlugin extends Plugin {
             }
 
             Log.info(
-                "[EvictMapGenerator] Re-applied Evict rules after host-mode initialization."
+                    "[EvictMapGenerator] Re-applied Evict rules after host-mode initialization."
             );
         });
 
@@ -213,8 +213,8 @@ public class EvictMapPlugin extends Plugin {
             // On the hub: a player who is mid-duel is bounced straight back to
             // their worker instead of being onboarded into the FFA round.
             if (
-                !duelWorker
-                    && duelServerManager.tryReturnToActiveDuel(event.player)
+                    !duelWorker
+                            && duelServerManager.tryReturnToActiveDuel(event.player)
             ) {
                 return;
             }
@@ -223,13 +223,13 @@ public class EvictMapPlugin extends Plugin {
             // /view spectator: park them on derelict (no cores) and skip the
             // normal FFA onboarding so they only watch.
             if (
-                duelWorker
-                    && !duelWorkerReferee.isParticipant(event.player.uuid())
+                    duelWorker
+                            && !duelWorkerReferee.isParticipant(event.player.uuid())
             ) {
                 teamManager.assignSpectator(event.player);
                 duelWorkerReferee.handlePlayerJoin(event.player);
                 event.player.sendMessage(
-                    "[accent]Spectating this 1v1. Use [white]/v[accent] to return to the lobby.[]"
+                        "[accent]Spectating this 1v1. Use [white]/v[accent] to return to the lobby.[]"
                 );
                 return;
             }
@@ -277,7 +277,7 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Log.info(
-            "[EvictMapGenerator] Loaded. Code revision 1.2.31. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.2.31. Use 'evictstatus' for commands and current settings."
         );
     }
 
@@ -302,20 +302,20 @@ public class EvictMapPlugin extends Plugin {
 
     /**
      * @param syncToClients whether the generated terrain is pushed to connected
-     *     clients tile-by-tile. Pass {@code false} for generation triggered by a
-     *     world (re)load - the vanilla world snapshot already carries the terrain,
-     *     and the extra per-tile flood is what dropped connected players with
-     *     "(error)" at match end. Pass {@code true} for in-place regeneration
-     *     (duel restart, evictgen) where no fresh snapshot is sent.
+     *                      clients tile-by-tile. Pass {@code false} for generation triggered by a
+     *                      world (re)load - the vanilla world snapshot already carries the terrain,
+     *                      and the extra per-tile flood is what dropped connected players with
+     *                      "(error)" at match end. Pass {@code true} for in-place regeneration
+     *                      (duel restart, evictgen) where no fresh snapshot is sent.
      */
     private void generate(long seed, boolean syncToClients) {
         EvictRules.apply(
-            (float) settings.unitBuildSpeedMultiplier(),
-            syncedBannedBlocks()
+                (float) settings.unitBuildSpeedMultiplier(),
+                syncedBannedBlocks()
         );
 
         EvictTerrainGenerator.GeneratedRound round =
-            terrainGenerator.generate(seed, syncToClients);
+                terrainGenerator.generate(seed, syncToClients);
 
         refreshWorldIndexes();
 
@@ -332,14 +332,14 @@ public class EvictMapPlugin extends Plugin {
         runtime.lastSeed = seed;
 
         Log.info(
-            "[EvictMapGenerator] Done. seed=@ normalHexes=@ filledHexes=@ nucleusCores=@ repairedConnectivityEdges=@ resources=@ teams=@",
-            seed,
-            round.normalHexes(),
-            round.filledHexes(),
-            round.normalHexes(),
-            round.repairedConnectivityEdges(),
-            round.resources().compact(),
-            teamManager.compactStatus()
+                "[EvictMapGenerator] Done. seed=@ normalHexes=@ filledHexes=@ nucleusCores=@ repairedConnectivityEdges=@ resources=@ teams=@",
+                seed,
+                round.normalHexes(),
+                round.filledHexes(),
+                round.normalHexes(),
+                round.repairedConnectivityEdges(),
+                round.resources().compact(),
+                teamManager.compactStatus()
         );
     }
 
@@ -347,42 +347,42 @@ public class EvictMapPlugin extends Plugin {
         long scanSerial = ++connectedPlayerScanSerial;
 
         scheduleConnectedPlayerAssignmentScan(
-            scanSerial,
-            CONNECTED_PLAYER_SCAN_ATTEMPTS,
-            CONNECTED_PLAYER_SCAN_INITIAL_DELAY_TICKS
+                scanSerial,
+                CONNECTED_PLAYER_SCAN_ATTEMPTS,
+                CONNECTED_PLAYER_SCAN_INITIAL_DELAY_TICKS
         );
 
         Log.info(
-            "[EvictMapGenerator] Scheduled connected-player start assignment scan for up to 30 seconds."
+                "[EvictMapGenerator] Scheduled connected-player start assignment scan for up to 30 seconds."
         );
     }
 
     private void scheduleConnectedPlayerAssignmentScan(
-        long scanSerial,
-        int attemptsRemaining,
-        float delayTicks
+            long scanSerial,
+            int attemptsRemaining,
+            float delayTicks
     ) {
         Time.run(
-            delayTicks,
-            () -> {
-                if (
-                    !runtime.autoGenerate
-                        || scanSerial != connectedPlayerScanSerial
-                        || attemptsRemaining <= 0
-                ) {
-                    return;
-                }
+                delayTicks,
+                () -> {
+                    if (
+                            !runtime.autoGenerate
+                                    || scanSerial != connectedPlayerScanSerial
+                                    || attemptsRemaining <= 0
+                    ) {
+                        return;
+                    }
 
-                assignConnectedPlayersAndRecordStats();
+                    assignConnectedPlayersAndRecordStats();
 
-                if (attemptsRemaining > 1) {
-                    scheduleConnectedPlayerAssignmentScan(
-                        scanSerial,
-                        attemptsRemaining - 1,
-                        CONNECTED_PLAYER_SCAN_INTERVAL_TICKS
-                    );
+                    if (attemptsRemaining > 1) {
+                        scheduleConnectedPlayerAssignmentScan(
+                                scanSerial,
+                                attemptsRemaining - 1,
+                                CONNECTED_PLAYER_SCAN_INTERVAL_TICKS
+                        );
+                    }
                 }
-            }
         );
     }
 
@@ -404,9 +404,9 @@ public class EvictMapPlugin extends Plugin {
         runtime.nextSeed = runtime.randomSeed();
 
         Log.info(
-            "[EvictMapGenerator] Round winner: team #@. Prepared random seed @ for the next generated round.",
-            winner.id,
-            runtime.nextSeed
+                "[EvictMapGenerator] Round winner: team #@. Prepared random seed @ for the next generated round.",
+                winner.id,
+                runtime.nextSeed
         );
 
         Events.fire(new GameOverEvent(winner));
@@ -434,8 +434,8 @@ public class EvictMapPlugin extends Plugin {
             }
 
             if (
-                duelWorkerReferee.isParticipant(player.uuid())
-                    || rankManager.canRestartMatches(player)
+                    duelWorkerReferee.isParticipant(player.uuid())
+                            || rankManager.canRestartMatches(player)
             ) {
                 return message;
             }
@@ -447,7 +447,7 @@ public class EvictMapPlugin extends Plugin {
 
     private void sendDuelTeamChat(Player sender, String message) {
         String line = "[#" + sender.team().color + "]<T>[] "
-            + sender.name + "[white]: " + message;
+                + sender.name + "[white]: " + message;
 
         Groups.player.each(target -> {
             if (target != null && target.team() == sender.team()) {
@@ -456,11 +456,13 @@ public class EvictMapPlugin extends Plugin {
         });
     }
 
-    /** On a duel worker, anyone who is not one of the two duelists is a viewer. */
+    /**
+     * On a duel worker, anyone who is not one of the two duelists is a viewer.
+     */
     private boolean isDuelSpectator(Player player) {
         return duelWorker
-            && player != null
-            && !duelWorkerReferee.isParticipant(player.uuid());
+                && player != null
+                && !duelWorkerReferee.isParticipant(player.uuid());
     }
 
     /**
@@ -476,8 +478,8 @@ public class EvictMapPlugin extends Plugin {
         long seed = runtime.randomSeed();
 
         Log.info(
-            "[EvictMapGenerator] Duel restart requested. Regenerating with seed @.",
-            seed
+                "[EvictMapGenerator] Duel restart requested. Regenerating with seed @.",
+                seed
         );
 
         try {
@@ -487,8 +489,8 @@ public class EvictMapPlugin extends Plugin {
             generate(seed, true);
         } catch (Exception exception) {
             Log.err(
-                "[EvictMapGenerator] Duel restart generation failed.",
-                exception
+                    "[EvictMapGenerator] Duel restart generation failed.",
+                    exception
             );
             return;
         }
@@ -504,7 +506,7 @@ public class EvictMapPlugin extends Plugin {
             Events.fire(new WorldLoadEvent());
 
             Log.info(
-                "[EvictMapGenerator] Rebuilt vanilla world indexes after runtime terrain generation."
+                    "[EvictMapGenerator] Rebuilt vanilla world indexes after runtime terrain generation."
             );
         } finally {
             refreshingWorldIndexes = false;

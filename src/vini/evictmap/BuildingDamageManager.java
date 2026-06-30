@@ -48,15 +48,15 @@ final class BuildingDamageManager {
 
             if (block instanceof PowerTurret turret) {
                 changed += scaleBulletBuildingDamage(
-                    turret.shootType,
-                    visited
+                        turret.shootType,
+                        visited
                 );
             }
 
             if (block instanceof ContinuousTurret turret) {
                 changed += scaleBulletBuildingDamage(
-                    turret.shootType,
-                    visited
+                        turret.shootType,
+                        visited
                 );
             }
         }
@@ -64,15 +64,15 @@ final class BuildingDamageManager {
         applied = true;
 
         Log.info(
-            "[EvictMapGenerator] Scaled @ building-fired bullet types to @% building damage.",
-            changed,
-            Math.round(BUILDING_TO_BUILDING_DAMAGE_MULTIPLIER * 100f)
+                "[EvictMapGenerator] Scaled @ building-fired bullet types to @% building damage.",
+                changed,
+                Math.round(BUILDING_TO_BUILDING_DAMAGE_MULTIPLIER * 100f)
         );
     }
 
     private int scaleAmmoTypes(
-        ObjectMap<?, BulletType> ammoTypes,
-        Set<BulletType> visited
+            ObjectMap<?, BulletType> ammoTypes,
+            Set<BulletType> visited
     ) {
         if (ammoTypes == null) {
             return 0;
@@ -88,19 +88,19 @@ final class BuildingDamageManager {
     }
 
     private int scaleBulletBuildingDamage(
-        BulletType bullet,
-        Set<BulletType> visited
+            BulletType bullet,
+            Set<BulletType> visited
     ) {
         if (bullet == null || !visited.add(bullet)) {
             return 0;
         }
 
         bullet.buildingDamageMultiplier *=
-            BUILDING_TO_BUILDING_DAMAGE_MULTIPLIER;
+                BUILDING_TO_BUILDING_DAMAGE_MULTIPLIER;
 
         return 1
-            + scaleBulletBuildingDamage(bullet.fragBullet, visited)
-            + scaleBulletBuildingDamage(bullet.intervalBullet, visited)
-            + scaleBulletBuildingDamage(bullet.lightningType, visited);
+                + scaleBulletBuildingDamage(bullet.fragBullet, visited)
+                + scaleBulletBuildingDamage(bullet.intervalBullet, visited)
+                + scaleBulletBuildingDamage(bullet.lightningType, visited);
     }
 }

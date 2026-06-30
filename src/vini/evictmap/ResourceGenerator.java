@@ -39,23 +39,23 @@ final class ResourceGenerator {
 
     private static final int ORE_MAX_RADIUS = 39;
     private static final int ORE_MAX_RADIUS_SQUARED =
-        ORE_MAX_RADIUS * ORE_MAX_RADIUS;
+            ORE_MAX_RADIUS * ORE_MAX_RADIUS;
 
     private static final int GUARANTEE_ORE_RADIUS = 32;
     private static final int GUARANTEE_ORE_RADIUS_SQUARED =
-        GUARANTEE_ORE_RADIUS * GUARANTEE_ORE_RADIUS;
+            GUARANTEE_ORE_RADIUS * GUARANTEE_ORE_RADIUS;
 
     private static final int ORE_CORE_SAFE_RADIUS = 4;
     private static final int ORE_CORE_SAFE_RADIUS_SQUARED =
-        ORE_CORE_SAFE_RADIUS * ORE_CORE_SAFE_RADIUS;
+            ORE_CORE_SAFE_RADIUS * ORE_CORE_SAFE_RADIUS;
 
     private static final int LIQUID_MAX_RADIUS = 31;
     private static final int LIQUID_MAX_RADIUS_SQUARED =
-        LIQUID_MAX_RADIUS * LIQUID_MAX_RADIUS;
+            LIQUID_MAX_RADIUS * LIQUID_MAX_RADIUS;
 
     private static final int LIQUID_CORE_SAFE_RADIUS = 8;
     private static final int LIQUID_CORE_SAFE_RADIUS_SQUARED =
-        LIQUID_CORE_SAFE_RADIUS * LIQUID_CORE_SAFE_RADIUS;
+            LIQUID_CORE_SAFE_RADIUS * LIQUID_CORE_SAFE_RADIUS;
 
     // ---------------------------------------------------------------------
     // Global warped-noise presets
@@ -69,6 +69,7 @@ final class ResourceGenerator {
      *   naturally resource-rich or resource-poor
      * - small tilts make some fields slightly stretched instead of circular
      */
+
     /**
      * Ore settings are loaded from persistent server configuration.
      * Tilt, coordinate warp and richness modifiers stay disabled for the
@@ -76,53 +77,53 @@ final class ResourceGenerator {
      */
     private static NoisePreset[] createOrePresets(EvictSettings settings) {
         EvictSettings.OreSettings copper =
-            settings.ore(EvictSettings.OreKind.COPPER);
+                settings.ore(EvictSettings.OreKind.COPPER);
         EvictSettings.OreSettings lead =
-            settings.ore(EvictSettings.OreKind.LEAD);
+                settings.ore(EvictSettings.OreKind.LEAD);
         EvictSettings.OreSettings coal =
-            settings.ore(EvictSettings.OreKind.COAL);
+                settings.ore(EvictSettings.OreKind.COAL);
         EvictSettings.OreSettings titanium =
-            settings.ore(EvictSettings.OreKind.TITANIUM);
+                settings.ore(EvictSettings.OreKind.TITANIUM);
         EvictSettings.OreSettings thorium =
-            settings.ore(EvictSettings.OreKind.THORIUM);
+                settings.ore(EvictSettings.OreKind.THORIUM);
         EvictSettings.OreSettings scrap =
-            settings.ore(EvictSettings.OreKind.SCRAP);
+                settings.ore(EvictSettings.OreKind.SCRAP);
 
         return new NoisePreset[]{
-            orePreset(Blocks.oreCopper, 101, copper, 125.0f),
-            orePreset(Blocks.oreLead, 211, lead, 120.0f),
-            orePreset(Blocks.oreCoal, 307, coal, 110.0f),
-            orePreset(Blocks.oreTitanium, 401, titanium, 105.0f),
-            orePreset(Blocks.oreThorium, 503, thorium, 105.0f),
-            orePreset(Blocks.oreScrap, 353, scrap, 110.0f)
+                orePreset(Blocks.oreCopper, 101, copper, 125.0f),
+                orePreset(Blocks.oreLead, 211, lead, 120.0f),
+                orePreset(Blocks.oreCoal, 307, coal, 110.0f),
+                orePreset(Blocks.oreTitanium, 401, titanium, 105.0f),
+                orePreset(Blocks.oreThorium, 503, thorium, 105.0f),
+                orePreset(Blocks.oreScrap, 353, scrap, 110.0f)
         };
     }
 
     private static NoisePreset orePreset(
-        Block block,
-        int seedOffset,
-        EvictSettings.OreSettings settings,
-        float richnessScale
+            Block block,
+            int seedOffset,
+            EvictSettings.OreSettings settings,
+            float richnessScale
     ) {
         return new NoisePreset(
-            block,
-            seedOffset,
-            (float)settings.scale(),
-            (float)settings.threshold(),
-            (float)settings.octaves(),
-            (float)settings.falloff(),
-            0.0f,
-            0.0f,
-            richnessScale,
-            0.0f
+                block,
+                seedOffset,
+                (float) settings.scale(),
+                (float) settings.threshold(),
+                (float) settings.octaves(),
+                (float) settings.falloff(),
+                0.0f,
+                0.0f,
+                richnessScale,
+                0.0f
         );
     }
 
     private static final NoisePreset WATER_PRESET =
-        new NoisePreset(Blocks.darksandWater, 701, 24.0f, 0.885f, 2f, 0.38f, 0.10f, 5.0f, 115.0f, 0.032f);
+            new NoisePreset(Blocks.darksandWater, 701, 24.0f, 0.885f, 2f, 0.38f, 0.10f, 5.0f, 115.0f, 0.032f);
 
     private static final NoisePreset TAR_PRESET =
-        new NoisePreset(Blocks.tar, 809, 21.0f, 0.935f, 2f, 0.35f, -0.08f, 4.5f, 105.0f, 0.024f);
+            new NoisePreset(Blocks.tar, 809, 21.0f, 0.935f, 2f, 0.35f, -0.08f, 4.5f, 105.0f, 0.024f);
 
     // ---------------------------------------------------------------------
     // Liquid patch tuning
@@ -167,18 +168,18 @@ final class ResourceGenerator {
     private static final int ORE_FALLBACK_MAX_LOCAL_RADIUS = 3;
 
     private static final int[][] DIRECTIONS_8 = new int[][]{
-        {-1, -1}, {0, -1}, {1, -1},
-        {-1,  0},          {1,  0},
-        {-1,  1}, {0,  1}, {1,  1}
+            {-1, -1}, {0, -1}, {1, -1},
+            {-1, 0}, {1, 0},
+            {-1, 1}, {0, 1}, {1, 1}
     };
 
     private ResourceGenerator() {
     }
 
     static Summary generate(
-        long mapSeed,
-        List<HexCenter> centers,
-        EvictSettings settings
+            long mapSeed,
+            List<HexCenter> centers,
+            EvictSettings settings
     ) {
         int seed = foldSeed(mapSeed ^ RESOURCE_SEED_XOR);
         Random correctionRandom = new Random(mapSeed ^ 0x464149522d455649L);
@@ -192,11 +193,11 @@ final class ResourceGenerator {
          * water and resources can coexist without another setting.
          */
         generateWaterPatches(
-            seed,
-            correctionRandom,
-            centers,
-            settings.water(),
-            corrections
+                seed,
+                correctionRandom,
+                centers,
+                settings.water(),
+                corrections
         );
         generateTarPatches(seed, correctionRandom, centers, corrections);
 
@@ -206,11 +207,11 @@ final class ResourceGenerator {
         }
 
         ensureEveryHexHasEveryOre(
-            seed,
-            correctionRandom,
-            centers,
-            corrections,
-            orePresets
+                seed,
+                correctionRandom,
+                centers,
+                corrections,
+                orePresets
         );
 
         return summarizeWorld(corrections);
@@ -218,11 +219,11 @@ final class ResourceGenerator {
 
     static String presetDescription(EvictSettings settings) {
         return "persistent editor-style ores: "
-            + settings.compactOreSettings()
-            + " + water patches: "
-            + settings.compactWaterSettings()
-            + " + bounded oil patches with 10% rare large patches"
-            + " + tiny ore-only per-hex fairness repairs";
+                + settings.compactOreSettings()
+                + " + water patches: "
+                + settings.compactWaterSettings()
+                + " + bounded oil patches with 10% rare large patches"
+                + " + tiny ore-only per-hex fairness repairs";
     }
 
     // ---------------------------------------------------------------------
@@ -230,11 +231,11 @@ final class ResourceGenerator {
     // ---------------------------------------------------------------------
 
     private static void generateWaterPatches(
-        int seed,
-        Random random,
-        List<HexCenter> centers,
-        EvictSettings.WaterSettings water,
-        CorrectionCounter corrections
+            int seed,
+            Random random,
+            List<HexCenter> centers,
+            EvictSettings.WaterSettings water,
+            CorrectionCounter corrections
     ) {
         if (centers.isEmpty()) {
             return;
@@ -247,15 +248,15 @@ final class ResourceGenerator {
          */
         for (HexCenter center : centers) {
             int patchAttempts = waterPatchAttemptsForHex(
-                random,
-                water.patchAttemptsPerHex()
+                    random,
+                    water.patchAttemptsPerHex()
             );
 
             for (int patch = 0; patch < patchAttempts; patch++) {
                 TilePoint start = bestLiquidPatchStart(
-                    seed,
-                    center,
-                    WATER_PRESET
+                        seed,
+                        center,
+                        WATER_PRESET
                 );
 
                 if (start == null) {
@@ -264,13 +265,13 @@ final class ResourceGenerator {
 
                 int targetSize = chooseWaterPatchSize(random, water);
                 int placed = growFloorPatch(
-                    seed,
-                    WATER_PRESET,
-                    center,
-                    start,
-                    Blocks.darksandWater,
-                    targetSize,
-                    waterPatchLocalRadius(targetSize)
+                        seed,
+                        WATER_PRESET,
+                        center,
+                        start,
+                        Blocks.darksandWater,
+                        targetSize,
+                        waterPatchLocalRadius(targetSize)
                 );
 
                 if (placed > 0) {
@@ -281,15 +282,15 @@ final class ResourceGenerator {
     }
 
     private static int waterPatchAttemptsForHex(
-        Random random,
-        double patchAttemptsPerHex
+            Random random,
+            double patchAttemptsPerHex
     ) {
-        int attempts = (int)Math.floor(patchAttemptsPerHex);
+        int attempts = (int) Math.floor(patchAttemptsPerHex);
         double fractionalAttempt = patchAttemptsPerHex - attempts;
 
         if (
-            fractionalAttempt > 0d
-                && random.nextDouble() < fractionalAttempt
+                fractionalAttempt > 0d
+                        && random.nextDouble() < fractionalAttempt
         ) {
             attempts++;
         }
@@ -298,27 +299,27 @@ final class ResourceGenerator {
     }
 
     private static int chooseWaterPatchSize(
-        Random random,
-        EvictSettings.WaterSettings water
+            Random random,
+            EvictSettings.WaterSettings water
     ) {
         return random.nextDouble() * 100d < water.largePatchChancePercent()
-            ? water.largePatchTiles()
-            : water.normalPatchTiles();
+                ? water.largePatchTiles()
+                : water.normalPatchTiles();
     }
 
     private static int waterPatchLocalRadius(int targetSize) {
         return Math.max(
-            1,
-            (int)Math.ceil(Math.sqrt(targetSize / Math.PI))
-                + WATER_PATCH_LOCAL_RADIUS_PADDING
+                1,
+                (int) Math.ceil(Math.sqrt(targetSize / Math.PI))
+                        + WATER_PATCH_LOCAL_RADIUS_PADDING
         );
     }
 
     private static void generateTarPatches(
-        int seed,
-        Random random,
-        List<HexCenter> centers,
-        CorrectionCounter corrections
+            int seed,
+            Random random,
+            List<HexCenter> centers,
+            CorrectionCounter corrections
     ) {
         for (HexCenter center : centers) {
             if (random.nextDouble() >= TAR_PATCH_CHANCE_PER_HEX) {
@@ -332,17 +333,17 @@ final class ResourceGenerator {
             }
 
             int targetSize = chooseTarPatchSize(
-                random
+                    random
             );
 
             int placed = growFloorPatch(
-                seed,
-                TAR_PRESET,
-                center,
-                start,
-                Blocks.tar,
-                targetSize,
-                TAR_PATCH_LOCAL_RADIUS
+                    seed,
+                    TAR_PRESET,
+                    center,
+                    start,
+                    Blocks.tar,
+                    targetSize,
+                    TAR_PATCH_LOCAL_RADIUS
             );
 
             if (placed > 0) {
@@ -352,40 +353,40 @@ final class ResourceGenerator {
     }
 
     private static int chooseTarPatchSize(
-        Random random
+            Random random
     ) {
         boolean rare = random.nextDouble() < RARE_LIQUID_PATCH_CHANCE;
 
         return rare
-            ? inclusiveRandom(random, ResourceGenerator.TAR_RARE_PATCH_MIN_SIZE, ResourceGenerator.TAR_RARE_PATCH_MAX_SIZE)
-            : inclusiveRandom(random, ResourceGenerator.TAR_NORMAL_PATCH_MIN_SIZE, ResourceGenerator.TAR_NORMAL_PATCH_MAX_SIZE);
+                ? inclusiveRandom(random, ResourceGenerator.TAR_RARE_PATCH_MIN_SIZE, ResourceGenerator.TAR_RARE_PATCH_MAX_SIZE)
+                : inclusiveRandom(random, ResourceGenerator.TAR_NORMAL_PATCH_MIN_SIZE, ResourceGenerator.TAR_NORMAL_PATCH_MAX_SIZE);
     }
 
     private static TilePoint bestLiquidPatchStart(
-        int seed,
-        HexCenter center,
-        NoisePreset preset
+            int seed,
+            HexCenter center,
+            NoisePreset preset
     ) {
         TilePoint best = null;
         float bestNoise = -Float.MAX_VALUE;
 
         for (
-            int y = center.y - LIQUID_MAX_RADIUS;
-            y <= center.y + LIQUID_MAX_RADIUS;
-            y++
+                int y = center.y - LIQUID_MAX_RADIUS;
+                y <= center.y + LIQUID_MAX_RADIUS;
+                y++
         ) {
             for (
-                int x = center.x - LIQUID_MAX_RADIUS;
-                x <= center.x + LIQUID_MAX_RADIUS;
-                x++
+                    int x = center.x - LIQUID_MAX_RADIUS;
+                    x <= center.x + LIQUID_MAX_RADIUS;
+                    x++
             ) {
                 Tile tile = Vars.world.tile(x, y);
 
                 if (
-                    tile == null
-                        || tile.block() != Blocks.air
-                        || tile.floor() != Blocks.darksand
-                        || !insideLiquidMaskForCenter(x, y, center)
+                        tile == null
+                                || tile.block() != Blocks.air
+                                || tile.floor() != Blocks.darksand
+                                || !insideLiquidMaskForCenter(x, y, center)
                 ) {
                     continue;
                 }
@@ -403,9 +404,9 @@ final class ResourceGenerator {
     }
 
     private static void generateOreNoise(
-        int seed,
-        List<HexCenter> centers,
-        NoisePreset preset
+            int seed,
+            List<HexCenter> centers,
+            NoisePreset preset
     ) {
         int width = Vars.world.width();
         int height = Vars.world.height();
@@ -415,10 +416,10 @@ final class ResourceGenerator {
                 Tile tile = Vars.world.tile(x, y);
 
                 if (
-                    tile == null
-                        || tile.block() != Blocks.air
-                        || !canCarryOreOverlay(tile)
-                        || !insideOreMask(x, y, centers)
+                        tile == null
+                                || tile.block() != Blocks.air
+                                || !canCarryOreOverlay(tile)
+                                || !insideOreMask(x, y, centers)
                 ) {
                     continue;
                 }
@@ -435,11 +436,11 @@ final class ResourceGenerator {
     // ---------------------------------------------------------------------
 
     private static void ensureEveryHexHasEveryOre(
-        int seed,
-        Random random,
-        List<HexCenter> centers,
-        CorrectionCounter corrections,
-        NoisePreset[] orePresets
+            int seed,
+            Random random,
+            List<HexCenter> centers,
+            CorrectionCounter corrections,
+            NoisePreset[] orePresets
     ) {
         for (HexCenter center : centers) {
             for (NoisePreset preset : orePresets) {
@@ -450,18 +451,18 @@ final class ResourceGenerator {
                 }
 
                 TilePoint start = bestOreFallbackStart(
-                    seed,
-                    center,
-                    preset,
-                    false
+                        seed,
+                        center,
+                        preset,
+                        false
                 );
 
                 if (start == null) {
                     start = bestOreFallbackStart(
-                        seed,
-                        center,
-                        preset,
-                        true
+                            seed,
+                            center,
+                            preset,
+                            true
                     );
                 }
 
@@ -470,21 +471,21 @@ final class ResourceGenerator {
                 }
 
                 int targetSize = Math.max(
-                    MIN_ORE_TILES_PER_HEX - existingTiles,
-                    inclusiveRandom(
-                        random,
-                        ORE_FALLBACK_MIN_SIZE,
-                        ORE_FALLBACK_MAX_SIZE
-                    )
+                        MIN_ORE_TILES_PER_HEX - existingTiles,
+                        inclusiveRandom(
+                                random,
+                                ORE_FALLBACK_MIN_SIZE,
+                                ORE_FALLBACK_MAX_SIZE
+                        )
                 );
 
                 int placed = growOrePatch(
-                    seed,
-                    preset,
-                    center,
-                    start,
-                    targetSize,
-                    ORE_FALLBACK_MAX_LOCAL_RADIUS
+                        seed,
+                        preset,
+                        center,
+                        start,
+                        targetSize,
+                        ORE_FALLBACK_MAX_LOCAL_RADIUS
                 );
 
                 if (placed > 0) {
@@ -495,20 +496,20 @@ final class ResourceGenerator {
     }
 
     private static int countOreTiles(
-        HexCenter center,
-        Block oreOverlay
+            HexCenter center,
+            Block oreOverlay
     ) {
         int count = 0;
 
         for (
-            int y = center.y - GUARANTEE_ORE_RADIUS;
-            y <= center.y + GUARANTEE_ORE_RADIUS;
-            y++
+                int y = center.y - GUARANTEE_ORE_RADIUS;
+                y <= center.y + GUARANTEE_ORE_RADIUS;
+                y++
         ) {
             for (
-                int x = center.x - GUARANTEE_ORE_RADIUS;
-                x <= center.x + GUARANTEE_ORE_RADIUS;
-                x++
+                    int x = center.x - GUARANTEE_ORE_RADIUS;
+                    x <= center.x + GUARANTEE_ORE_RADIUS;
+                    x++
             ) {
                 if (!insideGuaranteeOreMaskForCenter(x, y, center)) {
                     continue;
@@ -526,33 +527,33 @@ final class ResourceGenerator {
     }
 
     private static TilePoint bestOreFallbackStart(
-        int seed,
-        HexCenter center,
-        NoisePreset preset,
-        boolean allowOverwrite
+            int seed,
+            HexCenter center,
+            NoisePreset preset,
+            boolean allowOverwrite
     ) {
         TilePoint best = null;
         float bestNoise = -Float.MAX_VALUE;
 
         for (
-            int y = center.y - GUARANTEE_ORE_RADIUS;
-            y <= center.y + GUARANTEE_ORE_RADIUS;
-            y++
+                int y = center.y - GUARANTEE_ORE_RADIUS;
+                y <= center.y + GUARANTEE_ORE_RADIUS;
+                y++
         ) {
             for (
-                int x = center.x - GUARANTEE_ORE_RADIUS;
-                x <= center.x + GUARANTEE_ORE_RADIUS;
-                x++
+                    int x = center.x - GUARANTEE_ORE_RADIUS;
+                    x <= center.x + GUARANTEE_ORE_RADIUS;
+                    x++
             ) {
                 TilePoint point = new TilePoint(x, y);
                 Tile tile = Vars.world.tile(x, y);
 
                 if (
-                    tile == null
-                        || tile.block() != Blocks.air
-                        || !canCarryOreOverlay(tile)
-                        || !insideGuaranteeOreMaskForCenter(x, y, center)
-                        || (!allowOverwrite && tile.overlay() != Blocks.air)
+                        tile == null
+                                || tile.block() != Blocks.air
+                                || !canCarryOreOverlay(tile)
+                                || !insideGuaranteeOreMaskForCenter(x, y, center)
+                                || (!allowOverwrite && tile.overlay() != Blocks.air)
                 ) {
                     continue;
                 }
@@ -574,13 +575,13 @@ final class ResourceGenerator {
     // ---------------------------------------------------------------------
 
     private static int growFloorPatch(
-        int seed,
-        NoisePreset preset,
-        HexCenter center,
-        TilePoint start,
-        Block floor,
-        int targetSize,
-        int localRadius
+            int seed,
+            NoisePreset preset,
+            HexCenter center,
+            TilePoint start,
+            Block floor,
+            int targetSize,
+            int localRadius
     ) {
         PriorityQueue<Candidate> queue = candidateQueue();
         Set<TilePoint> queued = new HashSet<>();
@@ -593,8 +594,8 @@ final class ResourceGenerator {
             TilePoint point = queue.remove().point;
 
             if (
-                placed.contains(point)
-                    || !insideLocalRadius(point, start, localRadius)
+                    placed.contains(point)
+                            || !insideLocalRadius(point, start, localRadius)
             ) {
                 continue;
             }
@@ -602,10 +603,10 @@ final class ResourceGenerator {
             Tile tile = Vars.world.tile(point.x, point.y);
 
             if (
-                tile == null
-                    || tile.block() != Blocks.air
-                    || tile.floor() != Blocks.darksand
-                    || !insideLiquidMaskForCenter(point.x, point.y, center)
+                    tile == null
+                            || tile.block() != Blocks.air
+                            || tile.floor() != Blocks.darksand
+                            || !insideLiquidMaskForCenter(point.x, point.y, center)
             ) {
                 continue;
             }
@@ -638,8 +639,8 @@ final class ResourceGenerator {
             TilePoint point = queue.remove().point;
 
             if (
-                placed.contains(point)
-                    || !insideLocalRadius(point, start, localRadius)
+                    placed.contains(point)
+                            || !insideLocalRadius(point, start, localRadius)
             ) {
                 continue;
             }
@@ -647,10 +648,10 @@ final class ResourceGenerator {
             Tile tile = Vars.world.tile(point.x, point.y);
 
             if (
-                tile == null
-                    || tile.block() != Blocks.air
-                    || !canCarryOreOverlay(tile)
-                    || !insideGuaranteeOreMaskForCenter(point.x, point.y, center)
+                    tile == null
+                            || tile.block() != Blocks.air
+                            || !canCarryOreOverlay(tile)
+                            || !insideGuaranteeOreMaskForCenter(point.x, point.y, center)
             ) {
                 continue;
             }
@@ -666,33 +667,33 @@ final class ResourceGenerator {
 
     private static PriorityQueue<Candidate> candidateQueue() {
         return new PriorityQueue<>(
-            Comparator.comparingDouble((Candidate candidate) -> candidate.noise)
-                .reversed()
+                Comparator.comparingDouble((Candidate candidate) -> candidate.noise)
+                        .reversed()
         );
     }
 
     private static Candidate candidate(
-        int seed,
-        NoisePreset preset,
-        TilePoint point
+            int seed,
+            NoisePreset preset,
+            TilePoint point
     ) {
         return new Candidate(
-            point,
-            sample(seed, preset, point.x, point.y)
+                point,
+                sample(seed, preset, point.x, point.y)
         );
     }
 
     private static void enqueueNeighbours(
-        int seed,
-        NoisePreset preset,
-        TilePoint point,
-        PriorityQueue<Candidate> queue,
-        Set<TilePoint> queued
+            int seed,
+            NoisePreset preset,
+            TilePoint point,
+            PriorityQueue<Candidate> queue,
+            Set<TilePoint> queued
     ) {
         for (int[] direction : DIRECTIONS_8) {
             TilePoint neighbour = new TilePoint(
-                point.x + direction[0],
-                point.y + direction[1]
+                    point.x + direction[0],
+                    point.y + direction[1]
             );
 
             if (queued.add(neighbour)) {
@@ -706,61 +707,61 @@ final class ResourceGenerator {
     // ---------------------------------------------------------------------
 
     private static boolean insideOreMask(
-        int x,
-        int y,
-        List<HexCenter> centers
+            int x,
+            int y,
+            List<HexCenter> centers
     ) {
         int closestDistanceSquared =
-            closestCenterDistanceSquared(x, y, centers);
+                closestCenterDistanceSquared(x, y, centers);
 
         return closestDistanceSquared >= ORE_CORE_SAFE_RADIUS_SQUARED
-            && closestDistanceSquared <= ORE_MAX_RADIUS_SQUARED;
+                && closestDistanceSquared <= ORE_MAX_RADIUS_SQUARED;
     }
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     private static boolean canCarryOreOverlay(Tile tile) {
         return tile.floor() == Blocks.darksand
-            || tile.floor() == Blocks.darksandWater;
+                || tile.floor() == Blocks.darksandWater;
     }
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     private static boolean insideGuaranteeOreMaskForCenter(
-        int x,
-        int y,
-        HexCenter center
+            int x,
+            int y,
+            HexCenter center
     ) {
         int distanceSquared = squaredDistance(x, y, center.x, center.y);
 
         return distanceSquared >= ORE_CORE_SAFE_RADIUS_SQUARED
-            && distanceSquared <= GUARANTEE_ORE_RADIUS_SQUARED;
+                && distanceSquared <= GUARANTEE_ORE_RADIUS_SQUARED;
     }
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     private static boolean insideLiquidMaskForCenter(
-        int x,
-        int y,
-        HexCenter center
+            int x,
+            int y,
+            HexCenter center
     ) {
         int distanceSquared = squaredDistance(x, y, center.x, center.y);
 
         return distanceSquared >= LIQUID_CORE_SAFE_RADIUS_SQUARED
-            && distanceSquared <= LIQUID_MAX_RADIUS_SQUARED;
+                && distanceSquared <= LIQUID_MAX_RADIUS_SQUARED;
     }
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     private static boolean insideLocalRadius(
-        TilePoint point,
-        TilePoint start,
-        int radius
+            TilePoint point,
+            TilePoint start,
+            int radius
     ) {
         return squaredDistance(point.x, point.y, start.x, start.y)
-            <= radius * radius;
+                <= radius * radius;
     }
 
     private static int closestCenterDistanceSquared(
-        int x,
-        int y,
-        List<HexCenter> centers
+            int x,
+            int y,
+            List<HexCenter> centers
     ) {
         int closest = Integer.MAX_VALUE;
 
@@ -780,82 +781,82 @@ final class ResourceGenerator {
     // ---------------------------------------------------------------------
 
     private static boolean passesThreshold(
-        int baseSeed,
-        NoisePreset preset,
-        int x,
-        int y
+            int baseSeed,
+            NoisePreset preset,
+            int x,
+            int y
     ) {
         float richness = Simplex.noise2d(
-            baseSeed + preset.seedOffset + 30000,
-            2f,
-            0.5f,
-            1f / preset.richnessScale,
-            x + 41f,
-            y - 37f
+                baseSeed + preset.seedOffset + 30000,
+                2f,
+                0.5f,
+                1f / preset.richnessScale,
+                x + 41f,
+                y - 37f
         );
 
         float centeredRichness = (richness - 0.5f) * 2f;
         float effectiveThreshold =
-            preset.threshold - centeredRichness * preset.richnessStrength;
+                preset.threshold - centeredRichness * preset.richnessStrength;
 
         return sample(baseSeed, preset, x, y) > effectiveThreshold;
     }
 
     private static float sample(
-        int baseSeed,
-        NoisePreset preset,
-        int x,
-        int y
+            int baseSeed,
+            NoisePreset preset,
+            int x,
+            int y
     ) {
         float warpX = (
-            Simplex.noise2d(
-                baseSeed + preset.seedOffset + 10000,
-                2f,
-                0.5f,
-                1f / 90f,
-                x,
-                y
-            ) - 0.5f
+                Simplex.noise2d(
+                        baseSeed + preset.seedOffset + 10000,
+                        2f,
+                        0.5f,
+                        1f / 90f,
+                        x,
+                        y
+                ) - 0.5f
         ) * 2f * preset.warpStrength;
 
         float warpY = (
-            Simplex.noise2d(
-                baseSeed + preset.seedOffset + 20000,
-                2f,
-                0.5f,
-                1f / 90f,
-                x + 17f,
-                y - 23f
-            ) - 0.5f
+                Simplex.noise2d(
+                        baseSeed + preset.seedOffset + 20000,
+                        2f,
+                        0.5f,
+                        1f / 90f,
+                        x + 17f,
+                        y - 23f
+                ) - 0.5f
         ) * 2f * preset.warpStrength;
 
         return Simplex.noise2d(
-            baseSeed + preset.seedOffset,
-            preset.octaves,
-            preset.falloff,
-            1f / preset.scale,
-            x + 10f + warpX,
-            y + x * preset.tilt + 10f + warpY
+                baseSeed + preset.seedOffset,
+                preset.octaves,
+                preset.falloff,
+                1f / preset.scale,
+                x + 10f + warpX,
+                y + x * preset.tilt + 10f + warpY
         );
     }
 
     private static int foldSeed(long seed) {
-        return (int)(seed ^ (seed >>> 32));
+        return (int) (seed ^ (seed >>> 32));
     }
 
     private static int inclusiveRandom(
-        Random random,
-        int minimum,
-        int maximum
+            Random random,
+            int minimum,
+            int maximum
     ) {
         return minimum + random.nextInt(maximum - minimum + 1);
     }
 
     private static int squaredDistance(
-        int x1,
-        int y1,
-        int x2,
-        int y2
+            int x1,
+            int y1,
+            int x2,
+            int y2
     ) {
         int deltaX = x1 - x2;
         int deltaY = y1 - y2;
@@ -913,17 +914,17 @@ final class ResourceGenerator {
         }
 
         return new Summary(
-            waterTiles,
-            tarTiles,
-            copperTiles,
-            leadTiles,
-            coalTiles,
-            scrapTiles,
-            titaniumTiles,
-            thoriumTiles,
-            corrections.waterGeneratedPatches,
-            corrections.tarGeneratedPatches,
-            corrections.oreFallbackRepairs
+                waterTiles,
+                tarTiles,
+                copperTiles,
+                leadTiles,
+                coalTiles,
+                scrapTiles,
+                titaniumTiles,
+                thoriumTiles,
+                corrections.waterGeneratedPatches,
+                corrections.tarGeneratedPatches,
+                corrections.oreFallbackRepairs
         );
     }
 
@@ -931,44 +932,44 @@ final class ResourceGenerator {
     }
 
     record Summary(
-        int waterTiles,
-        int tarTiles,
-        int copperTiles,
-        int leadTiles,
-        int coalTiles,
-        int scrapTiles,
-        int titaniumTiles,
-        int thoriumTiles,
-        int waterGeneratedPatches,
-        int tarGeneratedPatches,
-        int oreFallbackRepairs
+            int waterTiles,
+            int tarTiles,
+            int copperTiles,
+            int leadTiles,
+            int coalTiles,
+            int scrapTiles,
+            int titaniumTiles,
+            int thoriumTiles,
+            int waterGeneratedPatches,
+            int tarGeneratedPatches,
+            int oreFallbackRepairs
     ) {
         String compact() {
             return "water=" + waterTiles
-                + ", tar=" + tarTiles
-                + ", copper=" + copperTiles
-                + ", lead=" + leadTiles
-                + ", coal=" + coalTiles
-                + ", scrap=" + scrapTiles
-                + ", titanium=" + titaniumTiles
-                + ", thorium=" + thoriumTiles
-                + ", waterPatches=" + waterGeneratedPatches
-                + ", tarPatches=" + tarGeneratedPatches
-                + ", oreFallbackRepairs=" + oreFallbackRepairs;
+                    + ", tar=" + tarTiles
+                    + ", copper=" + copperTiles
+                    + ", lead=" + leadTiles
+                    + ", coal=" + coalTiles
+                    + ", scrap=" + scrapTiles
+                    + ", titanium=" + titaniumTiles
+                    + ", thorium=" + thoriumTiles
+                    + ", waterPatches=" + waterGeneratedPatches
+                    + ", tarPatches=" + tarGeneratedPatches
+                    + ", oreFallbackRepairs=" + oreFallbackRepairs;
         }
     }
 
     private record NoisePreset(
-        Block block,
-        int seedOffset,
-        float scale,
-        float threshold,
-        float octaves,
-        float falloff,
-        float tilt,
-        float warpStrength,
-        float richnessScale,
-        float richnessStrength
+            Block block,
+            int seedOffset,
+            float scale,
+            float threshold,
+            float octaves,
+            float falloff,
+            float tilt,
+            float warpStrength,
+            float richnessScale,
+            float richnessStrength
     ) {
     }
 

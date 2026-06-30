@@ -30,17 +30,17 @@ final class EvictHelpCommands {
          * a filtered help menu without modifying Mindustry itself.
          */
         handler.<Player>register(
-            "help",
-            "[category] [page]",
-            "Lists commands.",
-            (args, player) -> showHelp(handler, args, player)
+                "help",
+                "[category] [page]",
+                "Lists commands.",
+                (args, player) -> showHelp(handler, args, player)
         );
     }
 
     private void showHelp(
-        CommandHandler handler,
-        String[] args,
-        Player player
+            CommandHandler handler,
+            String[] args,
+            Player player
     ) {
         HelpRequest request = parseRequest(args, player);
 
@@ -51,15 +51,15 @@ final class EvictHelpCommands {
         Seq<Command> commands = handler.getCommandList();
 
         int pages = Math.max(
-            1,
-            Mathf.ceil((float)commands.size / COMMANDS_PER_PAGE)
+                1,
+                Mathf.ceil((float) commands.size / COMMANDS_PER_PAGE)
         );
 
         if (request.page < 1 || request.page > pages) {
             player.sendMessage(
-                "[scarlet]'page' must be a number between[orange] 1[] and[orange] "
-                    + pages
-                    + "[scarlet]."
+                    "[scarlet]'page' must be a number between[orange] 1[] and[orange] "
+                            + pages
+                            + "[scarlet]."
             );
             return;
         }
@@ -69,11 +69,11 @@ final class EvictHelpCommands {
         StringBuilder result = new StringBuilder();
 
         result.append(
-            Strings.format(
-                "[orange]-- Page[lightgray] @[gray]/[lightgray]@[orange] --\n\n",
-                request.page,
-                pages
-            )
+                Strings.format(
+                        "[orange]-- Page[lightgray] @[gray]/[lightgray]@[orange] --\n\n",
+                        request.page,
+                        pages
+                )
         );
 
         int start = COMMANDS_PER_PAGE * pageIndex;
@@ -83,12 +83,12 @@ final class EvictHelpCommands {
             Command command = commands.get(index);
 
             result.append("[orange] /")
-                .append(command.text)
-                .append("[white] ")
-                .append(command.paramText)
-                .append("[lightgray] - ")
-                .append(command.description)
-                .append("\n");
+                    .append(command.text)
+                    .append("[white] ")
+                    .append(command.paramText)
+                    .append("[lightgray] - ")
+                    .append(command.description)
+                    .append("\n");
         }
 
         if (request.devCommands && pages > 1 && request.page < pages) {
@@ -110,7 +110,7 @@ final class EvictHelpCommands {
         }
 
         player.sendMessage(
-            "[scarlet]Use: /help [page] or /help dev [page][]"
+                "[scarlet]Use: /help [page] or /help dev [page][]"
         );
 
         return null;
@@ -126,8 +126,8 @@ final class EvictHelpCommands {
     }
 
     private record HelpRequest(
-        boolean devCommands,
-        int page
+            boolean devCommands,
+            int page
     ) {
     }
 }

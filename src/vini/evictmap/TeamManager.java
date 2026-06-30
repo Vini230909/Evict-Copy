@@ -29,9 +29,9 @@ import java.util.function.Predicate;
  * Implemented:
  * - every generated neutral core belongs to Fallen team #14
  * - a first-time player receives a random unique team ID from #1..#128,
- *   excluding #14
+ * excluding #14
  * - a safe unclaimed start hex is selected with two complete hexes between
- *   player starts
+ * player starts
  * - edge / filled-wall protection is preferred
  * - reconnecting during the same round returns to the same team
  * - if no safe start hex exists, the player remains playable in Fallen team
@@ -43,10 +43,10 @@ import java.util.function.Predicate;
  * - every synthetic building in the captured hex is removed
  * - the attacker receives a centered 3x3 Core Shard without bonus items
  * - existing attacker resources remain untouched because Mindustry cores
- *   intentionally share one team inventory
+ * intentionally share one team inventory
  * - personal-team elimination messages
  * - elimination and victory detection immediately after the successful
- *   destruction, before the delayed replacement Core Shard appears
+ * destruction, before the delayed replacement Core Shard appears
  * - Fallen can win only after at least one personal start core was assigned
  * - one guarded automatic random-seed round reset
  */
@@ -78,7 +78,7 @@ final class TeamManager {
      */
     private static final int EXTINCTION_HEX_RADIUS = 39;
     private static final int EXTINCTION_HEX_RADIUS_SQUARED =
-        EXTINCTION_HEX_RADIUS * EXTINCTION_HEX_RADIUS;
+            EXTINCTION_HEX_RADIUS * EXTINCTION_HEX_RADIUS;
 
     /**
      * Floor changes are network-synchronized. Sending thousands of floor
@@ -98,9 +98,9 @@ final class TeamManager {
     private final List<Integer> personalTeamCreationOrder = new ArrayList<>();
     private final Map<String, Integer> claimTeamIdByPlayerUuid = new HashMap<>();
     private final Map<Integer, Map<Integer, Integer>>
-        capturesByDefenderTeamId = new HashMap<>();
+            capturesByDefenderTeamId = new HashMap<>();
     private final Map<Integer, Integer> maximumOwnedHexesByTeamId =
-        new HashMap<>();
+            new HashMap<>();
     private final Set<Integer> usedPersonalTeamIds = new HashSet<>();
     private final Set<Integer> eliminatedTeamIds = new HashSet<>();
     private final ArrayDeque<Tile> extinctionTerrainQueue = new ArrayDeque<>();
@@ -108,7 +108,9 @@ final class TeamManager {
     private final Cons<Team> victoryHandler;
     private InviteManager inviteManager;
 
-    /** All core-capture and core-placement logic lives in its own file. */
+    /**
+     * All core-capture and core-placement logic lives in its own file.
+     */
     private final CoreCapture coreCapture = new CoreCapture(this);
 
     private Random random = new Random();
@@ -126,7 +128,7 @@ final class TeamManager {
      */
     private boolean duelMode = false;
     private int extinctionTerrainChangesPerTick =
-        DEFAULT_EXTINCTION_TERRAIN_CHANGES_PER_TICK;
+            DEFAULT_EXTINCTION_TERRAIN_CHANGES_PER_TICK;
     private long roundSerial = 0L;
     private long roundStartedAtMillis = 0L;
 
@@ -173,12 +175,12 @@ final class TeamManager {
         roundActive = true;
 
         Log.info(
-            "[EvictMapGenerator] Team round initialized. Fallen team=#@, neutralHexes=@, allowedPersonalTeams=#@..#@ except #@.",
-            FALLEN_TEAM_ID,
-            slots.size(),
-            FIRST_PERSONAL_TEAM_ID,
-            LAST_PERSONAL_TEAM_ID,
-            FALLEN_TEAM_ID
+                "[EvictMapGenerator] Team round initialized. Fallen team=#@, neutralHexes=@, allowedPersonalTeams=#@..#@ except #@.",
+                FALLEN_TEAM_ID,
+                slots.size(),
+                FIRST_PERSONAL_TEAM_ID,
+                LAST_PERSONAL_TEAM_ID,
+                FALLEN_TEAM_ID
         );
     }
 
@@ -200,8 +202,8 @@ final class TeamManager {
          */
         Groups.player.each(player -> {
             if (
-                player == null
-                    || teamIdByPlayerUuid.containsKey(player.uuid())
+                    player == null
+                            || teamIdByPlayerUuid.containsKey(player.uuid())
             ) {
                 return;
             }
@@ -239,12 +241,12 @@ final class TeamManager {
 
         if (existingTeamId != null) {
             if (
-                existingTeamId != FALLEN_TEAM_ID
-                    && uuid.equals(leaderUuidByTeamId.get(existingTeamId))
+                    existingTeamId != FALLEN_TEAM_ID
+                            && uuid.equals(leaderUuidByTeamId.get(existingTeamId))
             ) {
                 playerNameByTeamId.put(
-                    existingTeamId,
-                    PlayerNameFormatter.displayName(player)
+                        existingTeamId,
+                        PlayerNameFormatter.displayName(player)
                 );
             }
 
@@ -255,20 +257,20 @@ final class TeamManager {
 
                 if (claimantTeamId == null) {
                     player.sendMessage(
-                        "[accent]Reconnected as Fallen. Use /invite to view available teams.[]"
+                            "[accent]Reconnected as Fallen. Use /invite to view available teams.[]"
                     );
                 } else {
                     player.sendMessage(
-                        "[accent]Reconnected as Fallen. You were claimed by "
-                            + displayTeam(Team.get(claimantTeamId))
-                            + "'s team.[]"
+                            "[accent]Reconnected as Fallen. You were claimed by "
+                                    + displayTeam(Team.get(claimantTeamId))
+                                    + "'s team.[]"
                     );
                 }
             } else {
                 player.sendMessage(
-                    "[accent]Reconnected to your previous team: #"
-                        + existingTeamId
-                        + "."
+                        "[accent]Reconnected to your previous team: #"
+                                + existingTeamId
+                                + "."
                 );
             }
 
@@ -283,14 +285,14 @@ final class TeamManager {
             assignPlayerToTeam(player, FALLEN_TEAM);
 
             player.sendMessage(
-                "[scarlet]No safe starting hex is available. "
-                    + "You joined the Fallen team without a starting bonus."
+                    "[scarlet]No safe starting hex is available. "
+                            + "You joined the Fallen team without a starting bonus."
             );
 
             Log.info(
-                "[EvictMapGenerator] Player '@' joined Fallen team #@ because no safe personal start was available.",
-                player.name,
-                FALLEN_TEAM_ID
+                    "[EvictMapGenerator] Player '@' joined Fallen team #@ because no safe personal start was available.",
+                    player.name,
+                    FALLEN_TEAM_ID
             );
 
             return;
@@ -302,8 +304,8 @@ final class TeamManager {
         usedPersonalTeamIds.add(teamId);
         teamIdByPlayerUuid.put(uuid, teamId);
         playerNameByTeamId.put(
-            teamId,
-            PlayerNameFormatter.displayName(player)
+                teamId,
+                PlayerNameFormatter.displayName(player)
         );
         leaderUuidByTeamId.put(teamId, uuid);
         personalTeamCreationOrder.add(teamId);
@@ -312,18 +314,18 @@ final class TeamManager {
         assignPlayerToTeam(player, personalTeam);
 
         player.sendMessage(
-            "[accent]You claimed a protected starting hex as team #"
-                + teamId
-                + "."
+                "[accent]You claimed a protected starting hex as team #"
+                        + teamId
+                        + "."
         );
 
         Log.info(
-            "[EvictMapGenerator] Player '@' claimed hex (@,@) as team #@. protectionScore=@.",
-            player.name,
-            startHex.col,
-            startHex.row,
-            teamId,
-            startHex.protectedSides
+                "[EvictMapGenerator] Player '@' claimed hex (@,@) as team #@. protectionScore=@.",
+                player.name,
+                startHex.col,
+                startHex.row,
+                teamId,
+                startHex.protectedSides
         );
     }
 
@@ -333,11 +335,11 @@ final class TeamManager {
         for (HexSlot slot : slots) {
             if (slot.ownerTeamId != FALLEN_TEAM_ID) {
                 Log.info(
-                    "[EvictMapGenerator] claimed hex (@,@) -> team #@, protectionScore=@",
-                    slot.col,
-                    slot.row,
-                    slot.ownerTeamId,
-                    slot.protectedSides
+                        "[EvictMapGenerator] claimed hex (@,@) -> team #@, protectionScore=@",
+                        slot.col,
+                        slot.row,
+                        slot.ownerTeamId,
+                        slot.protectedSides
                 );
             }
         }
@@ -359,12 +361,12 @@ final class TeamManager {
         }
 
         return "Fallen=#" + FALLEN_TEAM_ID
-            + ", neutralHexes=" + neutral
-            + ", claimedHexes=" + claimed
-            + ", capturingHexes=" + capturing
-            + ", rememberedPlayers=" + teamIdByPlayerUuid.size()
-            + ", roundActivated=" + roundActivated
-            + ", resetting=" + resetting;
+                + ", neutralHexes=" + neutral
+                + ", claimedHexes=" + claimed
+                + ", capturingHexes=" + capturing
+                + ", rememberedPlayers=" + teamIdByPlayerUuid.size()
+                + ", roundActivated=" + roundActivated
+                + ", resetting=" + resetting;
     }
 
     private HexSlot chooseSafeStartHex() {
@@ -372,10 +374,10 @@ final class TeamManager {
 
         for (HexSlot slot : slots) {
             if (
-                !slot.extinct
-                    && slot.ownerTeamId == FALLEN_TEAM_ID
-                    && !slot.capturing
-                    && farEnoughFromClaimedTeamHexes(slot)
+                    !slot.extinct
+                            && slot.ownerTeamId == FALLEN_TEAM_ID
+                            && !slot.capturing
+                            && farEnoughFromClaimedTeamHexes(slot)
             ) {
                 candidates.add(slot);
             }
@@ -389,8 +391,8 @@ final class TeamManager {
 
         for (HexSlot slot : candidates) {
             bestProtectionScore = Math.max(
-                bestProtectionScore,
-                slot.protectedSides
+                    bestProtectionScore,
+                    slot.protectedSides
             );
         }
 
@@ -409,9 +411,9 @@ final class TeamManager {
     private boolean farEnoughFromClaimedTeamHexes(HexSlot candidate) {
         for (HexSlot occupied : slots) {
             if (
-                effectiveOwnerTeamId(occupied) != FALLEN_TEAM_ID
-                    && gridDistance(candidate, occupied)
-                        < MINIMUM_START_DISTANCE
+                    effectiveOwnerTeamId(occupied) != FALLEN_TEAM_ID
+                            && gridDistance(candidate, occupied)
+                            < MINIMUM_START_DISTANCE
             ) {
                 return false;
             }
@@ -424,13 +426,13 @@ final class TeamManager {
         List<Integer> available = new ArrayList<>();
 
         for (
-            int teamId = FIRST_PERSONAL_TEAM_ID;
-            teamId <= LAST_PERSONAL_TEAM_ID;
-            teamId++
+                int teamId = FIRST_PERSONAL_TEAM_ID;
+                teamId <= LAST_PERSONAL_TEAM_ID;
+                teamId++
         ) {
             if (
-                teamId != FALLEN_TEAM_ID
-                    && !usedPersonalTeamIds.contains(teamId)
+                    teamId != FALLEN_TEAM_ID
+                            && !usedPersonalTeamIds.contains(teamId)
             ) {
                 available.add(teamId);
             }
@@ -448,8 +450,8 @@ final class TeamManager {
 
         if (tile == null) {
             throw new IllegalStateException(
-                "Cannot claim missing core tile at "
-                    + slot.x + "," + slot.y + "."
+                    "Cannot claim missing core tile at "
+                            + slot.x + "," + slot.y + "."
             );
         }
 
@@ -473,11 +475,11 @@ final class TeamManager {
 
             if (clearedBuildings > 0) {
                 Log.info(
-                    "[EvictMapGenerator] Cleared @ building(s) from starting hex (@,@) before placing team #@'s core.",
-                    clearedBuildings,
-                    slot.col,
-                    slot.row,
-                    personalTeam.id
+                        "[EvictMapGenerator] Cleared @ building(s) from starting hex (@,@) before placing team #@'s core.",
+                        clearedBuildings,
+                        slot.col,
+                        slot.row,
+                        personalTeam.id
                 );
             }
 
@@ -491,14 +493,14 @@ final class TeamManager {
     }
 
     void announceEliminationIfNeeded(
-        Team defenderTeam,
-        Team attackerTeam
+            Team defenderTeam,
+            Team attackerTeam
     ) {
         if (
-            defenderTeam == FALLEN_TEAM
-                || defenderTeam == attackerTeam
-                || eliminatedTeamIds.contains(defenderTeam.id)
-                || ownsAnyHex(defenderTeam.id)
+                defenderTeam == FALLEN_TEAM
+                        || defenderTeam == attackerTeam
+                        || eliminatedTeamIds.contains(defenderTeam.id)
+                        || ownsAnyHex(defenderTeam.id)
         ) {
             return;
         }
@@ -507,68 +509,68 @@ final class TeamManager {
 
         Team claimantTeam = determineClaimantTeam(defenderTeam, attackerTeam);
         List<String> newlyEliminatedPlayerUuids =
-            moveEliminatedTeamPlayersToFallen(defenderTeam, claimantTeam);
+                moveEliminatedTeamPlayersToFallen(defenderTeam, claimantTeam);
 
         transferExistingClaims(defenderTeam, claimantTeam);
 
         if (inviteManager != null) {
             inviteManager.handleTeamEliminated(
-                defenderTeam,
-                claimantTeam,
-                newlyEliminatedPlayerUuids
+                    defenderTeam,
+                    claimantTeam,
+                    newlyEliminatedPlayerUuids
             );
         }
 
         String message =
-            "[accent]"
-                + displayTeam(defenderTeam)
-                + "[] has been eliminated by [scarlet]"
-                + displayTeam(attackerTeam)
-                + "[].";
+                "[accent]"
+                        + displayTeam(defenderTeam)
+                        + "[] has been eliminated by [scarlet]"
+                        + displayTeam(attackerTeam)
+                        + "[].";
 
         Call.sendMessage(message);
 
         Log.info(
-            "[EvictMapGenerator] Elimination: @ was eliminated by @. claimant=@.",
-            displayTeam(defenderTeam),
-            displayTeam(attackerTeam),
-            claimantTeam == null ? "none" : displayTeam(claimantTeam)
+                "[EvictMapGenerator] Elimination: @ was eliminated by @. claimant=@.",
+                displayTeam(defenderTeam),
+                displayTeam(attackerTeam),
+                claimantTeam == null ? "none" : displayTeam(claimantTeam)
         );
     }
 
     void recordCoreDestruction(
-        Team defenderTeam,
-        Team attackerTeam
+            Team defenderTeam,
+            Team attackerTeam
     ) {
         if (
-            defenderTeam == null
-                || attackerTeam == null
-                || defenderTeam == FALLEN_TEAM
-                || attackerTeam == FALLEN_TEAM
-                || defenderTeam == attackerTeam
-                || attackerTeam == Team.derelict
+                defenderTeam == null
+                        || attackerTeam == null
+                        || defenderTeam == FALLEN_TEAM
+                        || attackerTeam == FALLEN_TEAM
+                        || defenderTeam == attackerTeam
+                        || attackerTeam == Team.derelict
         ) {
             return;
         }
 
         Map<Integer, Integer> counts =
-            capturesByDefenderTeamId.computeIfAbsent(
-                defenderTeam.id,
-                ignored -> new HashMap<>()
-            );
+                capturesByDefenderTeamId.computeIfAbsent(
+                        defenderTeam.id,
+                        ignored -> new HashMap<>()
+                );
 
         counts.put(
-            attackerTeam.id,
-            counts.getOrDefault(attackerTeam.id, 0) + 1
+                attackerTeam.id,
+                counts.getOrDefault(attackerTeam.id, 0) + 1
         );
     }
 
     private Team determineClaimantTeam(
-        Team defenderTeam,
-        Team lastCoreAttacker
+            Team defenderTeam,
+            Team lastCoreAttacker
     ) {
         Map<Integer, Integer> counts =
-            capturesByDefenderTeamId.get(defenderTeam.id);
+                capturesByDefenderTeamId.get(defenderTeam.id);
 
         if (counts == null || counts.isEmpty()) {
             return validClaimant(lastCoreAttacker) ? lastCoreAttacker : null;
@@ -598,8 +600,8 @@ final class TeamManager {
         }
 
         if (
-            validClaimant(lastCoreAttacker)
-                && tiedTeamIds.contains(lastCoreAttacker.id)
+                validClaimant(lastCoreAttacker)
+                        && tiedTeamIds.contains(lastCoreAttacker.id)
         ) {
             return lastCoreAttacker;
         }
@@ -609,7 +611,7 @@ final class TeamManager {
 
     private Team determineSurrenderClaimantTeam(Team defenderTeam) {
         Map<Integer, Integer> counts =
-            capturesByDefenderTeamId.get(defenderTeam.id);
+                capturesByDefenderTeamId.get(defenderTeam.id);
 
         if (counts == null || counts.isEmpty()) {
             // No team ever destroyed this team's cores, so no one earned a
@@ -656,26 +658,26 @@ final class TeamManager {
 
     private boolean validClaimant(Team team) {
         return team != null
-            && team != FALLEN_TEAM
-            && team != Team.derelict
-            && isActivePersonalTeam(team.id);
+                && team != FALLEN_TEAM
+                && team != Team.derelict
+                && isActivePersonalTeam(team.id);
     }
 
     private List<String> moveEliminatedTeamPlayersToFallen(
-        Team defenderTeam,
-        Team claimantTeam
+            Team defenderTeam,
+            Team claimantTeam
     ) {
         return moveTeamPlayersToFallen(
-            defenderTeam,
-            claimantTeam,
-            "[scarlet]Your team was eliminated. You are now Fallen.[]"
+                defenderTeam,
+                claimantTeam,
+                "[scarlet]Your team was eliminated. You are now Fallen.[]"
         );
     }
 
     private List<String> moveTeamPlayersToFallen(
-        Team previousTeam,
-        Team claimantTeam,
-        String playerMessage
+            Team previousTeam,
+            Team claimantTeam,
+            String playerMessage
     ) {
         List<String> affectedUuids = new ArrayList<>();
 
@@ -708,9 +710,9 @@ final class TeamManager {
 
                 if (claimantTeam != null) {
                     player.sendMessage(
-                        "[accent]You were claimed by "
-                            + displayTeam(claimantTeam)
-                            + "'s team.[]"
+                            "[accent]You were claimed by "
+                                    + displayTeam(claimantTeam)
+                                    + "'s team.[]"
                     );
                 }
             }
@@ -720,8 +722,8 @@ final class TeamManager {
     }
 
     private void transferExistingClaims(
-        Team eliminatedClaimant,
-        Team replacementClaimant
+            Team eliminatedClaimant,
+            Team replacementClaimant
     ) {
         List<String> affectedUuids = new ArrayList<>();
 
@@ -768,9 +770,9 @@ final class TeamManager {
 
         for (HexSlot slot : slots) {
             if (
-                !slot.extinct
-                    && slot.capturing
-                    && slot.pendingCaptureTeamId == teamId
+                    !slot.extinct
+                            && slot.capturing
+                            && slot.pendingCaptureTeamId == teamId
             ) {
                 count++;
             }
@@ -787,22 +789,22 @@ final class TeamManager {
         int current = countOwnedHexes(teamId);
 
         maximumOwnedHexesByTeamId.put(
-            teamId,
-            Math.max(
-                current,
-                maximumOwnedHexesByTeamId.getOrDefault(teamId, 0)
-            )
+                teamId,
+                Math.max(
+                        current,
+                        maximumOwnedHexesByTeamId.getOrDefault(teamId, 0)
+                )
         );
     }
 
     boolean surrenderTeam(Team team) {
         if (
-            !roundActive
-                || resetting
-                || team == null
-                || team == FALLEN_TEAM
-                || team == Team.derelict
-                || !isActivePersonalTeam(team.id)
+                !roundActive
+                        || resetting
+                        || team == null
+                        || team == FALLEN_TEAM
+                        || team == Team.derelict
+                        || !isActivePersonalTeam(team.id)
         ) {
             return false;
         }
@@ -846,11 +848,11 @@ final class TeamManager {
         eliminatedTeamIds.add(team.id);
 
         List<String> surrenderedPlayerUuids =
-            moveTeamPlayersToFallen(
-                team,
-                claimantTeam,
-                "[scarlet]Your team surrendered. You are now Fallen.[]"
-            );
+                moveTeamPlayersToFallen(
+                        team,
+                        claimantTeam,
+                        "[scarlet]Your team surrendered. You are now Fallen.[]"
+                );
 
         /*
          * If this team lost cores before surrendering, use core-kill scores
@@ -861,30 +863,30 @@ final class TeamManager {
 
         if (inviteManager != null) {
             inviteManager.handleTeamEliminated(
-                team,
-                claimantTeam,
-                surrenderedPlayerUuids
+                    team,
+                    claimantTeam,
+                    surrenderedPlayerUuids
             );
         }
 
         String surrenderMessage =
-            "[scarlet]"
-                + surrenderName
-                + "[] has surrendered.";
+                "[scarlet]"
+                        + surrenderName
+                        + "[] has surrendered.";
 
         if (claimantTeam != null) {
             surrenderMessage +=
-                " [lightgray]Their players were claimed by []"
-                    + displayTeam(claimantTeam)
-                    + "[lightgray].[]";
+                    " [lightgray]Their players were claimed by []"
+                            + displayTeam(claimantTeam)
+                            + "[lightgray].[]";
         }
 
         Call.sendMessage(surrenderMessage);
 
         Log.info(
-            "[EvictMapGenerator] Surrender: @ gave up. Buildings and units removed. claimant=@.",
-            surrenderName,
-            claimantTeam == null ? "none" : displayTeam(claimantTeam)
+                "[EvictMapGenerator] Surrender: @ gave up. Buildings and units removed. claimant=@.",
+                surrenderName,
+                claimantTeam == null ? "none" : displayTeam(claimantTeam)
         );
 
         checkVictory();
@@ -892,27 +894,27 @@ final class TeamManager {
     }
 
     private void placeFallenCoresAfterSurrender(
-        List<HexSlot> surrenderedSlots
+            List<HexSlot> surrenderedSlots
     ) {
         for (HexSlot slot : surrenderedSlots) {
             Tile centerTile = Vars.world.tile(slot.x, slot.y);
 
             if (centerTile == null) {
                 Log.err(
-                    "[EvictMapGenerator] Cannot place Fallen surrender core: missing center tile for hex (@,@).",
-                    slot.col,
-                    slot.row
+                        "[EvictMapGenerator] Cannot place Fallen surrender core: missing center tile for hex (@,@).",
+                        slot.col,
+                        slot.row
                 );
                 continue;
             }
 
             if (
-                !coreCapture.placeCore(
-                    slot,
-                    Blocks.coreNucleus,
-                    FALLEN_TEAM,
-                    "surrender"
-                )
+                    !coreCapture.placeCore(
+                            slot,
+                            Blocks.coreNucleus,
+                            FALLEN_TEAM,
+                            "surrender"
+                    )
             ) {
                 slot.ownerTeamId = Team.derelict.id;
                 slot.pendingCaptureTeamId = Team.derelict.id;
@@ -920,8 +922,8 @@ final class TeamManager {
         }
 
         Log.info(
-            "[EvictMapGenerator] Restored @ surrendered hexes with Fallen Nucleus cores.",
-            surrenderedSlots.size()
+                "[EvictMapGenerator] Restored @ surrendered hexes with Fallen Nucleus cores.",
+                surrenderedSlots.size()
         );
     }
 
@@ -931,10 +933,10 @@ final class TeamManager {
 
         for (Tile tile : Vars.world.tiles) {
             if (
-                tile != null
-                    && tile.build != null
-                    && tile.isCenter()
-                    && tile.build.team == team
+                    tile != null
+                            && tile.build != null
+                            && tile.isCenter()
+                            && tile.build.team == team
             ) {
                 buildingTiles.add(tile);
             }
@@ -951,9 +953,9 @@ final class TeamManager {
         try {
             for (Tile tile : buildingTiles) {
                 if (
-                    tile.build != null
-                        && tile.isCenter()
-                        && tile.build.team == team
+                        tile.build != null
+                                && tile.isCenter()
+                                && tile.build.team == team
                 ) {
                     tile.build.kill();
                 }
@@ -971,11 +973,11 @@ final class TeamManager {
 
     EarlyEndStatus earlyEndStatus(Team candidate) {
         if (
-            candidate == null
-                || candidate == FALLEN_TEAM
-                || candidate == Team.derelict
-                || !isActivePersonalTeam(candidate.id)
-                || slots.isEmpty()
+                candidate == null
+                        || candidate == FALLEN_TEAM
+                        || candidate == Team.derelict
+                        || !isActivePersonalTeam(candidate.id)
+                        || slots.isEmpty()
         ) {
             return new EarlyEndStatus(false, 0, 0, List.of());
         }
@@ -993,31 +995,31 @@ final class TeamManager {
          */
         for (int teamId : personalTeamCreationOrder) {
             if (
-                teamId == candidate.id
-                    || !isActivePersonalTeam(teamId)
+                    teamId == candidate.id
+                            || !isActivePersonalTeam(teamId)
             ) {
                 continue;
             }
 
             int remainingCores = countOwnedHexes(teamId);
             int maximumCores =
-                maximumOwnedHexesByTeamId.getOrDefault(teamId, remainingCores);
+                    maximumOwnedHexesByTeamId.getOrDefault(teamId, remainingCores);
 
             if (maximumCores > 1) {
                 blockers.add(
-                    new EarlyEndBlocker(
-                        Team.get(teamId),
-                        remainingCores
-                    )
+                        new EarlyEndBlocker(
+                                Team.get(teamId),
+                                remainingCores
+                        )
                 );
             }
         }
 
         return new EarlyEndStatus(
-            additionalNeeded == 0 && blockers.isEmpty(),
-            owned,
-            additionalNeeded,
-            blockers
+                additionalNeeded == 0 && blockers.isEmpty(),
+                owned,
+                additionalNeeded,
+                blockers
         );
     }
 
@@ -1032,18 +1034,18 @@ final class TeamManager {
         roundActive = false;
 
         Call.sendMessage(
-            "[accent]"
-                + displayTeam(winner)
-                + "'s team[] ended the round early after securing at least "
-                + "50% of all cores with no remaining established enemy team "
-                + "to conquer."
+                "[accent]"
+                        + displayTeam(winner)
+                        + "'s team[] ended the round early after securing at least "
+                        + "50% of all cores with no remaining established enemy team "
+                        + "to conquer."
         );
 
         Log.info(
-            "[EvictMapGenerator] Early round end: @ owns @/@ cores and has no remaining established enemy team to conquer.",
-            displayTeam(winner),
-            status.ownedCores(),
-            slots.size()
+                "[EvictMapGenerator] Early round end: @ owns @/@ cores and has no remaining established enemy team to conquer.",
+                displayTeam(winner),
+                status.ownedCores(),
+                slots.size()
         );
 
         victoryHandler.get(winner);
@@ -1052,9 +1054,9 @@ final class TeamManager {
 
     void checkVictory() {
         if (
-            !roundActive
-                || resetting
-                || slots.isEmpty()
+                !roundActive
+                        || resetting
+                        || slots.isEmpty()
         ) {
             return;
         }
@@ -1130,17 +1132,17 @@ final class TeamManager {
         roundActive = false;
 
         String victoryReason = extinctionActive
-            ? " has secured every surviving hex during EXTINCTION and won "
-                + "the round."
-            : " has conquered every hex and won the round.";
+                ? " has secured every surviving hex during EXTINCTION and won "
+                  + "the round."
+                : " has conquered every hex and won the round.";
 
         Call.sendMessage(
-            "[accent]" + displayTeam(winner) + "[]" + victoryReason
+                "[accent]" + displayTeam(winner) + "[]" + victoryReason
         );
 
         Log.info(
-            "[EvictMapGenerator] Victory: @ won the round@ Starting guarded post-game reset.",
-            displayTeam(winner),
+                "[EvictMapGenerator] Victory: @ won the round@ Starting guarded post-game reset.",
+                displayTeam(winner),
                 "."
         );
 
@@ -1149,10 +1151,10 @@ final class TeamManager {
 
     boolean isFallenPlayer(Player player) {
         return player != null
-            && teamIdByPlayerUuid.getOrDefault(
+                && teamIdByPlayerUuid.getOrDefault(
                 player.uuid(),
                 FALLEN_TEAM_ID
-            ) == FALLEN_TEAM_ID;
+        ) == FALLEN_TEAM_ID;
     }
 
     boolean isPersonalRoundPlayer(Player player) {
@@ -1163,8 +1165,8 @@ final class TeamManager {
         Integer teamId = teamIdByPlayerUuid.get(player.uuid());
 
         return teamId != null
-            && teamId != FALLEN_TEAM_ID
-            && teamId != Team.derelict.id;
+                && teamId != FALLEN_TEAM_ID
+                && teamId != Team.derelict.id;
     }
 
     List<String> playerUuidsForTeam(Team team) {
@@ -1190,14 +1192,14 @@ final class TeamManager {
         }
 
         return player.uuid().equals(
-            leaderUuidByTeamId.get(player.team().id)
+                leaderUuidByTeamId.get(player.team().id)
         );
     }
 
     boolean isActivePersonalTeam(int teamId) {
         return teamId != FALLEN_TEAM_ID
-            && !eliminatedTeamIds.contains(teamId)
-            && ownsAnyHex(teamId);
+                && !eliminatedTeamIds.contains(teamId)
+                && ownsAnyHex(teamId);
     }
 
     Player onlineLeader(Team team) {
@@ -1217,8 +1219,8 @@ final class TeamManager {
             Team team = Team.get(teamId);
 
             if (
-                isActivePersonalTeam(teamId)
-                    && onlineLeader(team) != null
+                    isActivePersonalTeam(teamId)
+                            && onlineLeader(team) != null
             ) {
                 result.add(team);
             }
@@ -1232,8 +1234,8 @@ final class TeamManager {
 
         for (int teamId : personalTeamCreationOrder) {
             if (
-                !isActivePersonalTeam(teamId)
-                    || nonFallenCoreKills(teamId) <= 0
+                    !isActivePersonalTeam(teamId)
+                            || nonFallenCoreKills(teamId) <= 0
             ) {
                 continue;
             }
@@ -1258,11 +1260,11 @@ final class TeamManager {
         }
 
         Integer claimantTeamId =
-            claimTeamIdByPlayerUuid.get(player.uuid());
+                claimTeamIdByPlayerUuid.get(player.uuid());
 
         if (
-            claimantTeamId != null
-                && claimantTeamId != targetTeam.id
+                claimantTeamId != null
+                        && claimantTeamId != targetTeam.id
         ) {
             return false;
         }
@@ -1272,9 +1274,9 @@ final class TeamManager {
         assignPlayerToTeam(player, targetTeam);
 
         player.sendMessage(
-            "[green]You joined "
-                + displayTeam(targetTeam)
-                + "'s team.[]"
+                "[green]You joined "
+                        + displayTeam(targetTeam)
+                        + "'s team.[]"
         );
 
         return true;
@@ -1298,8 +1300,8 @@ final class TeamManager {
         String playerName = playerNameByTeamId.get(team.id);
 
         return playerName == null || playerName.isBlank()
-            ? "Team #" + team.id
-            : playerName;
+                ? "Team #" + team.id
+                : playerName;
     }
 
     private long squaredDistance(int tileX, int tileY, HexSlot slot) {
@@ -1372,8 +1374,8 @@ final class TeamManager {
 
     int gridDistanceFromCenter(HexSlot slot) {
         return gridDistance(
-            new HexSlot(CENTER_COL, CENTER_ROW, 0, 0, 0),
-            slot
+                new HexSlot(CENTER_COL, CENTER_ROW, 0, 0, 0),
+                slot
         );
     }
 
@@ -1389,10 +1391,10 @@ final class TeamManager {
 
     void collapseHexesForExtinction(List<HexSlot> collapsingSlots) {
         if (
-            !roundActive
-                || resetting
-                || collapsingSlots == null
-                || collapsingSlots.isEmpty()
+                !roundActive
+                        || resetting
+                        || collapsingSlots == null
+                        || collapsingSlots.isEmpty()
         ) {
             return;
         }
@@ -1416,14 +1418,14 @@ final class TeamManager {
 
         for (Tile tile : Vars.world.tiles) {
             if (
-                tile != null
-                    && belongsToCollapsedHex(tile.x, tile.y, collapsing)
+                    tile != null
+                            && belongsToCollapsedHex(tile.x, tile.y, collapsing)
             ) {
                 terrainTiles.add(tile);
 
                 if (
-                    tile.build != null
-                        && tile.isCenter()
+                        tile.build != null
+                                && tile.isCenter()
                 ) {
                     buildingCenters.add(tile);
                 }
@@ -1432,12 +1434,12 @@ final class TeamManager {
 
         Groups.unit.each(unit -> {
             if (
-                unit != null
-                    && unit.isAdded()
-                    && belongsToCollapsedHex(
-                        unit.tileX(),
-                        unit.tileY(),
-                        collapsing
+                    unit != null
+                            && unit.isAdded()
+                            && belongsToCollapsedHex(
+                            unit.tileX(),
+                            unit.tileY(),
+                            collapsing
                     )
             ) {
                 unitsToKill.add(unit);
@@ -1474,11 +1476,11 @@ final class TeamManager {
         checkVictory();
 
         Log.info(
-            "[EvictMapGenerator] Extinction collapsed @ hexes, removed @ building centers, killed @ units and queued @ terrain tiles for throttled removal.",
-            collapsing.size(),
-            buildingCenters.size(),
-            unitsToKill.size(),
-            terrainTiles.size()
+                "[EvictMapGenerator] Extinction collapsed @ hexes, removed @ building centers, killed @ units and queued @ terrain tiles for throttled removal.",
+                collapsing.size(),
+                buildingCenters.size(),
+                unitsToKill.size(),
+                terrainTiles.size()
         );
     }
 
@@ -1493,8 +1495,8 @@ final class TeamManager {
 
         try {
             while (
-                changed < extinctionTerrainChangesPerTick
-                    && !extinctionTerrainQueue.isEmpty()
+                    changed < extinctionTerrainChangesPerTick
+                            && !extinctionTerrainQueue.isEmpty()
             ) {
                 Tile tile = extinctionTerrainQueue.removeFirst();
 
@@ -1520,13 +1522,13 @@ final class TeamManager {
 
     void setExtinctionTerrainChangesPerTick(int amount) {
         if (
-            amount < 1
-                || amount > MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK
+                amount < 1
+                        || amount > MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK
         ) {
             throw new IllegalArgumentException(
-                "Extinction terrain changes per tick must be between 1 and "
-                    + MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK
-                    + "."
+                    "Extinction terrain changes per tick must be between 1 and "
+                            + MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK
+                            + "."
             );
         }
 
@@ -1535,10 +1537,10 @@ final class TeamManager {
 
     void finishExtinction(Team winner) {
         if (
-            !roundActive
-                || resetting
-                || winner == null
-                || winner == Team.derelict
+                !roundActive
+                        || resetting
+                        || winner == null
+                        || winner == Team.derelict
         ) {
             return;
         }
@@ -1548,23 +1550,23 @@ final class TeamManager {
 
         if (winner == FALLEN_TEAM) {
             Call.sendMessage(
-                "[scarlet]Fallen[] won EXTINCTION because no active personal team controlled the final center core."
+                    "[scarlet]Fallen[] won EXTINCTION because no active personal team controlled the final center core."
             );
 
             Log.info(
-                "[EvictMapGenerator] Extinction winner: Fallen. No active personal team controlled the final center core. Starting guarded post-game reset."
+                    "[EvictMapGenerator] Extinction winner: Fallen. No active personal team controlled the final center core. Starting guarded post-game reset."
             );
         } else {
             Call.sendMessage(
-                "[accent]"
-                    + displayTeam(winner)
-                    + "[] won EXTINCTION by controlling the center core"
-                    + " after the 4-minute final hold."
+                    "[accent]"
+                            + displayTeam(winner)
+                            + "[] won EXTINCTION by controlling the center core"
+                            + " after the 4-minute final hold."
             );
 
             Log.info(
-                "[EvictMapGenerator] Extinction winner: @. Starting guarded post-game reset.",
-                displayTeam(winner)
+                    "[EvictMapGenerator] Extinction winner: @. Starting guarded post-game reset.",
+                    displayTeam(winner)
             );
         }
 
@@ -1576,8 +1578,8 @@ final class TeamManager {
 
         for (int teamId : teamIds) {
             if (
-                eliminatedTeamIds.contains(teamId)
-                    || ownsAnyHex(teamId)
+                    eliminatedTeamIds.contains(teamId)
+                            || ownsAnyHex(teamId)
             ) {
                 continue;
             }
@@ -1592,10 +1594,10 @@ final class TeamManager {
 
     private void eliminateTeamThroughExtinction(Team team) {
         if (
-            team == null
-                || team == FALLEN_TEAM
-                || team == Team.derelict
-                || eliminatedTeamIds.contains(team.id)
+                team == null
+                        || team == FALLEN_TEAM
+                        || team == Team.derelict
+                        || eliminatedTeamIds.contains(team.id)
         ) {
             return;
         }
@@ -1603,11 +1605,11 @@ final class TeamManager {
         eliminatedTeamIds.add(team.id);
 
         List<String> eliminatedPlayerUuids =
-            moveTeamPlayersToFallen(
-                team,
-                null,
-                "[scarlet]Your team was consumed by EXTINCTION. You are now Fallen.[]"
-            );
+                moveTeamPlayersToFallen(
+                        team,
+                        null,
+                        "[scarlet]Your team was consumed by EXTINCTION. You are now Fallen.[]"
+                );
 
         /*
          * Extinction has no conquering team. Existing claims held by the
@@ -1617,29 +1619,29 @@ final class TeamManager {
 
         if (inviteManager != null) {
             inviteManager.handleTeamEliminated(
-                team,
-                null,
-                eliminatedPlayerUuids
+                    team,
+                    null,
+                    eliminatedPlayerUuids
             );
         }
 
         Call.sendMessage(
-            "[scarlet]"
-                + displayTeam(team)
-                + "[] was eliminated by EXTINCTION."
+                "[scarlet]"
+                        + displayTeam(team)
+                        + "[] was eliminated by EXTINCTION."
         );
 
         Log.info(
-            "[EvictMapGenerator] Extinction elimination: @ lost every surviving core.",
-            displayTeam(team)
+                "[EvictMapGenerator] Extinction elimination: @ lost every surviving core.",
+                displayTeam(team)
         );
     }
 
     private boolean hasActivePersonalTeam() {
         for (int teamId : personalTeamCreationOrder) {
             if (
-                !eliminatedTeamIds.contains(teamId)
-                    && ownsAnyHex(teamId)
+                    !eliminatedTeamIds.contains(teamId)
+                            && ownsAnyHex(teamId)
             ) {
                 return true;
             }
@@ -1649,15 +1651,15 @@ final class TeamManager {
     }
 
     private boolean belongsToCollapsedHex(
-        int tileX,
-        int tileY,
-        Set<HexSlot> collapsing
+            int tileX,
+            int tileY,
+            Set<HexSlot> collapsing
     ) {
         HexSlot closest = closestHexSlotIncludingExtinct(tileX, tileY);
 
         return closest != null
-            && collapsing.contains(closest)
-            && squaredDistance(tileX, tileY, closest)
+                && collapsing.contains(closest)
+                && squaredDistance(tileX, tileY, closest)
                 <= EXTINCTION_HEX_RADIUS_SQUARED;
     }
 
@@ -1703,11 +1705,11 @@ final class TeamManager {
 
         for (HexSlot slot : slots) {
             if (
-                !slot.extinct
-                    && slot.x >= minX
-                    && slot.x <= maxX
-                    && slot.y >= minY
-                    && slot.y <= maxY
+                    !slot.extinct
+                            && slot.x >= minX
+                            && slot.x <= maxX
+                            && slot.y >= minY
+                            && slot.y <= maxY
             ) {
                 return slot;
             }
@@ -1744,8 +1746,8 @@ final class TeamManager {
         }
 
         return Math.max(
-            0L,
-            System.currentTimeMillis() - roundStartedAtMillis
+                0L,
+                System.currentTimeMillis() - roundStartedAtMillis
         );
     }
 
@@ -1778,8 +1780,8 @@ final class TeamManager {
              * the unit hex and its direct neighbors instead of every slot.
              */
             if (
-                isSameOrAdjacentHex(unitHex, coreHex)
-                    && effectiveCoreOwnerTeamId(coreHex) == teamId
+                    isSameOrAdjacentHex(unitHex, coreHex)
+                            && effectiveCoreOwnerTeamId(coreHex) == teamId
             ) {
                 return true;
             }
@@ -1804,8 +1806,8 @@ final class TeamManager {
 
         if (rowDelta == 1 || rowDelta == -1) {
             return a.row % 2 == 0
-                ? colDelta == 0 || colDelta == 1
-                : colDelta == 0 || colDelta == -1;
+                    ? colDelta == 0 || colDelta == 1
+                    : colDelta == 0 || colDelta == -1;
         }
 
         return false;
@@ -1934,15 +1936,15 @@ final class TeamManager {
         result.add(new GridPos(position.col + 1, position.row));
 
         if (position.row % 2 == 0) {
-            result.add(new GridPos(position.col,     position.row - 1));
+            result.add(new GridPos(position.col, position.row - 1));
             result.add(new GridPos(position.col + 1, position.row - 1));
-            result.add(new GridPos(position.col,     position.row + 1));
+            result.add(new GridPos(position.col, position.row + 1));
             result.add(new GridPos(position.col + 1, position.row + 1));
         } else {
             result.add(new GridPos(position.col - 1, position.row - 1));
-            result.add(new GridPos(position.col,     position.row - 1));
+            result.add(new GridPos(position.col, position.row - 1));
             result.add(new GridPos(position.col - 1, position.row + 1));
-            result.add(new GridPos(position.col,     position.row + 1));
+            result.add(new GridPos(position.col, position.row + 1));
         }
 
         return result;
@@ -1950,9 +1952,9 @@ final class TeamManager {
 
     private boolean validGridPos(GridPos position) {
         return position.row >= 0
-            && position.row < ROWS
-            && position.col >= 0
-            && position.col < colsForRow(position.row);
+                && position.row < ROWS
+                && position.col >= 0
+                && position.col < colsForRow(position.row);
     }
 
     private int colsForRow(int row) {
@@ -1960,16 +1962,16 @@ final class TeamManager {
     }
 
     record EarlyEndStatus(
-        boolean eligible,
-        int ownedCores,
-        int additionalCoresNeededForHalf,
-        List<EarlyEndBlocker> blockers
+            boolean eligible,
+            int ownedCores,
+            int additionalCoresNeededForHalf,
+            List<EarlyEndBlocker> blockers
     ) {
     }
 
     record EarlyEndBlocker(
-        Team team,
-        int remainingCores
+            Team team,
+            int remainingCores
     ) {
     }
 
@@ -1986,11 +1988,11 @@ final class TeamManager {
         boolean extinct = false;
 
         HexSlot(
-            int col,
-            int row,
-            int x,
-            int y,
-            int protectedSides
+                int col,
+                int row,
+                int x,
+                int y,
+                int protectedSides
         ) {
             this.col = col;
             this.row = row;

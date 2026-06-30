@@ -16,13 +16,13 @@ final class EvictClientCommands {
     private final EvictHelpCommands help;
 
     EvictClientCommands(
-        FullassaultManager fullassault,
-        InviteManager invites,
-        RoundEndCommands roundEnd,
-        RoundTimeCommands roundTime,
-        DuelCommands duels,
-        HistoryCommands history,
-        EvictHelpCommands help
+            FullassaultManager fullassault,
+            InviteManager invites,
+            RoundEndCommands roundEnd,
+            RoundTimeCommands roundTime,
+            DuelCommands duels,
+            HistoryCommands history,
+            EvictHelpCommands help
     ) {
         this.fullassault = fullassault;
         this.invites = invites;

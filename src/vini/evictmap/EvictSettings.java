@@ -34,11 +34,11 @@ final class EvictSettings {
         final double defaultFalloff;
 
         OreKind(
-            String key,
-            double defaultScale,
-            double defaultThreshold,
-            double defaultOctaves,
-            double defaultFalloff
+                String key,
+                double defaultScale,
+                double defaultThreshold,
+                double defaultOctaves,
+                double defaultFalloff
         ) {
             this.key = key;
             this.defaultScale = defaultScale;
@@ -49,23 +49,23 @@ final class EvictSettings {
     }
 
     record OreSettings(
-        double scale,
-        double threshold,
-        double octaves,
-        double falloff
+            double scale,
+            double threshold,
+            double octaves,
+            double falloff
     ) {
     }
 
     record WaterSettings(
-        double patchAttemptsPerHex,
-        int normalPatchTiles,
-        double largePatchChancePercent,
-        int largePatchTiles
+            double patchAttemptsPerHex,
+            int normalPatchTiles,
+            double largePatchChancePercent,
+            int largePatchTiles
     ) {
     }
 
     private static final File SETTINGS_FILE =
-        new File("config/evict-map-generator.properties");
+            new File("config/evict-map-generator.properties");
     private static final double DEFAULT_UNIT_BUILD_SPEED_MULTIPLIER = 1.4d;
     private static final double MIN_UNIT_BUILD_SPEED_MULTIPLIER = 0d;
     private static final double MAX_UNIT_BUILD_SPEED_MULTIPLIER = 100d;
@@ -75,7 +75,7 @@ final class EvictSettings {
     private static final double DEFAULT_WATER_PATCH_ATTEMPTS_PER_HEX = 1d;
     private static final int DEFAULT_WATER_NORMAL_PATCH_TILES = 3;
     private static final double DEFAULT_WATER_LARGE_PATCH_CHANCE_PERCENT =
-        13.33d;
+            13.33d;
     private static final int DEFAULT_WATER_LARGE_PATCH_TILES = 8;
     private static final double MAX_WATER_PATCH_ATTEMPTS_PER_HEX = 5d;
     private static final int MIN_WATER_PATCH_TILES = 1;
@@ -103,7 +103,7 @@ final class EvictSettings {
     private double openPercent = 25d;
     private double passagePercent = 25d;
     private int extinctionTerrainChangesPerTick =
-        DEFAULT_EXTINCTION_TERRAIN_CHANGES_PER_TICK;
+            DEFAULT_EXTINCTION_TERRAIN_CHANGES_PER_TICK;
 
     /**
      * Multiplier applied to unit factory build speed every round via
@@ -131,26 +131,26 @@ final class EvictSettings {
      */
     private final LinkedHashSet<String> bannedBlockNames = new LinkedHashSet<>();
     private WaterSettings waterSettings =
-        new WaterSettings(
-            DEFAULT_WATER_PATCH_ATTEMPTS_PER_HEX,
-            DEFAULT_WATER_NORMAL_PATCH_TILES,
-            DEFAULT_WATER_LARGE_PATCH_CHANCE_PERCENT,
-            DEFAULT_WATER_LARGE_PATCH_TILES
-        );
+            new WaterSettings(
+                    DEFAULT_WATER_PATCH_ATTEMPTS_PER_HEX,
+                    DEFAULT_WATER_NORMAL_PATCH_TILES,
+                    DEFAULT_WATER_LARGE_PATCH_CHANCE_PERCENT,
+                    DEFAULT_WATER_LARGE_PATCH_TILES
+            );
 
     private final EnumMap<OreKind, OreSettings> oreSettings =
-        new EnumMap<>(OreKind.class);
+            new EnumMap<>(OreKind.class);
 
     EvictSettings() {
         for (OreKind kind : OreKind.values()) {
             oreSettings.put(
-                kind,
-                new OreSettings(
-                    kind.defaultScale,
-                    kind.defaultThreshold,
-                    kind.defaultOctaves,
-                    kind.defaultFalloff
-                )
+                    kind,
+                    new OreSettings(
+                            kind.defaultScale,
+                            kind.defaultThreshold,
+                            kind.defaultOctaves,
+                            kind.defaultFalloff
+                    )
             );
         }
     }
@@ -159,8 +159,8 @@ final class EvictSettings {
         if (!SETTINGS_FILE.exists()) {
             save();
             Log.info(
-                "[EvictMapGenerator] Created persistent settings file: @",
-                SETTINGS_FILE.getPath()
+                    "[EvictMapGenerator] Created persistent settings file: @",
+                    SETTINGS_FILE.getPath()
             );
             return;
         }
@@ -171,174 +171,174 @@ final class EvictSettings {
             properties.load(input);
 
             setCoreAttritionPercentagesWithoutSaving(
-                readDouble(
-                    properties,
-                    "attrition.core.tier1To3Percent",
                     readDouble(
-                        properties,
-                        "attrition.tier1To3Percent",
-                        coreAttritionTier1To3Percent
-                    )
-                ),
-                readDouble(
-                    properties,
-                    "attrition.core.tier4Percent",
+                            properties,
+                            "attrition.core.tier1To3Percent",
+                            readDouble(
+                                    properties,
+                                    "attrition.tier1To3Percent",
+                                    coreAttritionTier1To3Percent
+                            )
+                    ),
                     readDouble(
-                        properties,
-                        "attrition.tier4Percent",
-                        coreAttritionTier4Percent
-                    )
-                ),
-                readDouble(
-                    properties,
-                    "attrition.core.tier5Percent",
+                            properties,
+                            "attrition.core.tier4Percent",
+                            readDouble(
+                                    properties,
+                                    "attrition.tier4Percent",
+                                    coreAttritionTier4Percent
+                            )
+                    ),
                     readDouble(
-                        properties,
-                        "attrition.tier5Percent",
-                        coreAttritionTier5Percent
+                            properties,
+                            "attrition.core.tier5Percent",
+                            readDouble(
+                                    properties,
+                                    "attrition.tier5Percent",
+                                    coreAttritionTier5Percent
+                            )
                     )
-                )
             );
 
             setRangeAttritionPercentWithoutSaving(
-                readDouble(
-                    properties,
-                    "attrition.range.percent",
-                    rangeAttritionPercent
-                )
+                    readDouble(
+                            properties,
+                            "attrition.range.percent",
+                            rangeAttritionPercent
+                    )
             );
 
             setWallPercentagesWithoutSaving(
-                readDouble(
-                    properties,
-                    "wall.fullPercent",
-                    fullWallPercent
-                ),
-                readDouble(
-                    properties,
-                    "wall.smallPercent",
-                    smallWallPercent
-                ),
-                readDouble(
-                    properties,
-                    "wall.openPercent",
-                    openPercent
-                ),
-                readDouble(
-                    properties,
-                    "wall.passagePercent",
-                    passagePercent
-                )
+                    readDouble(
+                            properties,
+                            "wall.fullPercent",
+                            fullWallPercent
+                    ),
+                    readDouble(
+                            properties,
+                            "wall.smallPercent",
+                            smallWallPercent
+                    ),
+                    readDouble(
+                            properties,
+                            "wall.openPercent",
+                            openPercent
+                    ),
+                    readDouble(
+                            properties,
+                            "wall.passagePercent",
+                            passagePercent
+                    )
             );
 
             setExtinctionTerrainChangesPerTickWithoutSaving(
-                readInt(
-                    properties,
-                    "extinction.terrainChangesPerTick",
-                    extinctionTerrainChangesPerTick
-                )
+                    readInt(
+                            properties,
+                            "extinction.terrainChangesPerTick",
+                            extinctionTerrainChangesPerTick
+                    )
             );
 
             setUnitBuildSpeedMultiplierWithoutSaving(
-                readDouble(
-                    properties,
-                    "rules.unitBuildSpeedMultiplier",
-                    unitBuildSpeedMultiplier
-                )
+                    readDouble(
+                            properties,
+                            "rules.unitBuildSpeedMultiplier",
+                            unitBuildSpeedMultiplier
+                    )
             );
 
             setWaterSettingsWithoutSaving(
-                readDouble(
-                    properties,
-                    "water.patchAttemptsPerHex",
-                    legacyWaterPatchAttemptsPerHex(properties)
-                ),
-                readInt(
-                    properties,
-                    "water.normalPatchTiles",
-                    waterSettings.normalPatchTiles()
-                ),
-                readDouble(
-                    properties,
-                    "water.largePatchChancePercent",
-                    legacyLargePatchChancePercent(properties)
-                ),
-                readInt(
-                    properties,
-                    "water.largePatchTiles",
-                    waterSettings.largePatchTiles()
-                )
+                    readDouble(
+                            properties,
+                            "water.patchAttemptsPerHex",
+                            legacyWaterPatchAttemptsPerHex(properties)
+                    ),
+                    readInt(
+                            properties,
+                            "water.normalPatchTiles",
+                            waterSettings.normalPatchTiles()
+                    ),
+                    readDouble(
+                            properties,
+                            "water.largePatchChancePercent",
+                            legacyLargePatchChancePercent(properties)
+                    ),
+                    readInt(
+                            properties,
+                            "water.largePatchTiles",
+                            waterSettings.largePatchTiles()
+                    )
             );
 
             for (OreKind kind : OreKind.values()) {
                 OreSettings current = ore(kind);
 
                 setOreSettingsWithoutSaving(
-                    kind,
-                    readDouble(
-                        properties,
-                        oreProperty(kind, "scale"),
-                        current.scale()
-                    ),
-                    readDouble(
-                        properties,
-                        oreProperty(kind, "threshold"),
-                        current.threshold()
-                    ),
-                    readDouble(
-                        properties,
-                        oreProperty(kind, "octaves"),
-                        current.octaves()
-                    ),
-                    readDouble(
-                        properties,
-                        oreProperty(kind, "falloff"),
-                        current.falloff()
-                    )
+                        kind,
+                        readDouble(
+                                properties,
+                                oreProperty(kind, "scale"),
+                                current.scale()
+                        ),
+                        readDouble(
+                                properties,
+                                oreProperty(kind, "threshold"),
+                                current.threshold()
+                        ),
+                        readDouble(
+                                properties,
+                                oreProperty(kind, "octaves"),
+                                current.octaves()
+                        ),
+                        readDouble(
+                                properties,
+                                oreProperty(kind, "falloff"),
+                                current.falloff()
+                        )
                 );
             }
 
             setDuelServerWithoutSaving(
-                readString(properties, "duel.server.ip", duelServerIp),
-                readInt(properties, "duel.server.port", duelServerPort),
-                readInt(properties, "duel.maxWorkers", duelMaxWorkers),
-                readString(properties, "duel.worker.map", duelWorkerMap)
+                    readString(properties, "duel.server.ip", duelServerIp),
+                    readInt(properties, "duel.server.port", duelServerPort),
+                    readInt(properties, "duel.maxWorkers", duelMaxWorkers),
+                    readString(properties, "duel.worker.map", duelWorkerMap)
             );
             duelWorkerJarName =
-                readString(properties, "duel.worker.jar", duelWorkerJarName);
+                    readString(properties, "duel.worker.jar", duelWorkerJarName);
 
             setBannedBlockNamesWithoutSaving(
-                splitBannedBlockNames(
-                    readString(properties, "rules.bannedBlocks", "")
-                )
+                    splitBannedBlockNames(
+                            readString(properties, "rules.bannedBlocks", "")
+                    )
             );
 
             // Backfill newly introduced properties after plugin upgrades.
             save();
 
             Log.info(
-                "[EvictMapGenerator] Loaded persistent settings: coreAttrition=@; rangeAttrition=@; walls=@; water=@; extinctionTerrain=@; unitBuildSpeed=@; bannedBlocks=@; ores=@",
-                compactCoreAttritionSettings(),
-                compactRangeAttritionSettings(),
-                compactWallSettings(),
-                compactWaterSettings(),
-                compactExtinctionTerrainSettings(),
-                compactUnitBuildSpeedSettings(),
-                compactBannedBlockSettings(),
-                compactOreSettings()
+                    "[EvictMapGenerator] Loaded persistent settings: coreAttrition=@; rangeAttrition=@; walls=@; water=@; extinctionTerrain=@; unitBuildSpeed=@; bannedBlocks=@; ores=@",
+                    compactCoreAttritionSettings(),
+                    compactRangeAttritionSettings(),
+                    compactWallSettings(),
+                    compactWaterSettings(),
+                    compactExtinctionTerrainSettings(),
+                    compactUnitBuildSpeedSettings(),
+                    compactBannedBlockSettings(),
+                    compactOreSettings()
             );
         } catch (Exception exception) {
             Log.err(
-                "[EvictMapGenerator] Could not load persistent settings. Keeping defaults.",
-                exception
+                    "[EvictMapGenerator] Could not load persistent settings. Keeping defaults.",
+                    exception
             );
         }
     }
 
     void setCoreAttritionPercentages(
-        double tier1To3,
-        double tier4,
-        double tier5
+            double tier1To3,
+            double tier4,
+            double tier5
     ) {
         setCoreAttritionPercentagesWithoutSaving(tier1To3, tier4, tier5);
         save();
@@ -350,16 +350,16 @@ final class EvictSettings {
     }
 
     void setWallPercentages(
-        double fullWall,
-        double smallWall,
-        double open,
-        double passage
+            double fullWall,
+            double smallWall,
+            double open,
+            double passage
     ) {
         setWallPercentagesWithoutSaving(
-            fullWall,
-            smallWall,
-            open,
-            passage
+                fullWall,
+                smallWall,
+                open,
+                passage
         );
         save();
     }
@@ -375,10 +375,10 @@ final class EvictSettings {
     }
 
     void setDuelServer(
-        String ip,
-        int basePort,
-        int maxWorkers,
-        String map
+            String ip,
+            int basePort,
+            int maxWorkers,
+            String map
     ) {
         setDuelServerWithoutSaving(ip, basePort, maxWorkers, map);
         save();
@@ -416,8 +416,8 @@ final class EvictSettings {
 
     String compactBannedBlockSettings() {
         return bannedBlockNames.isEmpty()
-            ? "none"
-            : String.join(", ", bannedBlockNames);
+                ? "none"
+                : String.join(", ", bannedBlockNames);
     }
 
     boolean duelServerConfigured() {
@@ -432,62 +432,62 @@ final class EvictSettings {
         int lastPort = duelServerPort + duelMaxWorkers - 1;
 
         return duelServerIp
-            + " ports " + duelServerPort + "-" + lastPort
-            + " (" + duelMaxWorkers + " workers, map=" + duelWorkerMap + ")";
+                + " ports " + duelServerPort + "-" + lastPort
+                + " (" + duelMaxWorkers + " workers, map=" + duelWorkerMap + ")";
     }
 
     private void setDuelServerWithoutSaving(
-        String ip,
-        int basePort,
-        int maxWorkers,
-        String map
+            String ip,
+            int basePort,
+            int maxWorkers,
+            String map
     ) {
         duelServerIp = ip == null ? "" : ip.trim();
         duelServerPort = validateIntRange(
-            "Duel base port",
-            basePort,
-            MIN_PORT,
-            MAX_PORT
+                "Duel base port",
+                basePort,
+                MIN_PORT,
+                MAX_PORT
         );
         duelMaxWorkers = validateIntRange(
-            "Duel max workers",
-            maxWorkers,
-            MIN_DUEL_WORKERS,
-            MAX_DUEL_WORKERS
+                "Duel max workers",
+                maxWorkers,
+                MIN_DUEL_WORKERS,
+                MAX_DUEL_WORKERS
         );
         duelWorkerMap = map == null || map.isBlank()
-            ? DEFAULT_DUEL_WORKER_MAP
-            : map.trim();
+                ? DEFAULT_DUEL_WORKER_MAP
+                : map.trim();
     }
 
     void setWaterSettings(
-        double patchAttemptsPerHex,
-        int normalPatchTiles,
-        double largePatchChancePercent,
-        int largePatchTiles
+            double patchAttemptsPerHex,
+            int normalPatchTiles,
+            double largePatchChancePercent,
+            int largePatchTiles
     ) {
         setWaterSettingsWithoutSaving(
-            patchAttemptsPerHex,
-            normalPatchTiles,
-            largePatchChancePercent,
-            largePatchTiles
+                patchAttemptsPerHex,
+                normalPatchTiles,
+                largePatchChancePercent,
+                largePatchTiles
         );
         save();
     }
 
     void setOreSettings(
-        OreKind kind,
-        double scale,
-        double threshold,
-        double octaves,
-        double falloff
+            OreKind kind,
+            double scale,
+            double threshold,
+            double octaves,
+            double falloff
     ) {
         setOreSettingsWithoutSaving(
-            kind,
-            scale,
-            threshold,
-            octaves,
-            falloff
+                kind,
+                scale,
+                threshold,
+                octaves,
+                falloff
         );
         save();
     }
@@ -542,8 +542,8 @@ final class EvictSettings {
 
     String compactCoreAttritionSettings() {
         return "T1-T3=" + formatPercent(coreAttritionTier1To3Percent)
-            + "%, T4=" + formatPercent(coreAttritionTier4Percent)
-            + "%, T5=" + formatPercent(coreAttritionTier5Percent) + "%";
+                + "%, T4=" + formatPercent(coreAttritionTier4Percent)
+                + "%, T5=" + formatPercent(coreAttritionTier5Percent) + "%";
     }
 
     String compactRangeAttritionSettings() {
@@ -552,9 +552,9 @@ final class EvictSettings {
 
     String compactWallSettings() {
         return "full-wall=" + formatPercent(fullWallPercent)
-            + "%, small-wall=" + formatPercent(smallWallPercent)
-            + "%, open=" + formatPercent(openPercent)
-            + "%, passage=" + formatPercent(passagePercent) + "%";
+                + "%, small-wall=" + formatPercent(smallWallPercent)
+                + "%, open=" + formatPercent(openPercent)
+                + "%, passage=" + formatPercent(passagePercent) + "%";
     }
 
     String compactExtinctionTerrainSettings() {
@@ -567,14 +567,14 @@ final class EvictSettings {
 
     String compactWaterSettings() {
         return "tries-per-hex="
-            + formatNumber(waterSettings.patchAttemptsPerHex())
-            + ", normal="
-            + waterSettings.normalPatchTiles()
-            + " tiles, large="
-            + formatPercent(waterSettings.largePatchChancePercent())
-            + "% at "
-            + waterSettings.largePatchTiles()
-            + " tiles";
+                + formatNumber(waterSettings.patchAttemptsPerHex())
+                + ", normal="
+                + waterSettings.normalPatchTiles()
+                + " tiles, large="
+                + formatPercent(waterSettings.largePatchChancePercent())
+                + "% at "
+                + waterSettings.largePatchTiles()
+                + " tiles";
     }
 
     String compactOreSettings() {
@@ -595,36 +595,36 @@ final class EvictSettings {
         OreSettings ore = ore(kind);
 
         return kind.key
-            + "(scale=" + formatNumber(ore.scale())
-            + ", threshold=" + formatNumber(ore.threshold())
-            + ", octaves=" + formatNumber(ore.octaves())
-            + ", falloff=" + formatNumber(ore.falloff())
-            + ")";
+                + "(scale=" + formatNumber(ore.scale())
+                + ", threshold=" + formatNumber(ore.threshold())
+                + ", octaves=" + formatNumber(ore.octaves())
+                + ", falloff=" + formatNumber(ore.falloff())
+                + ")";
     }
 
     private void setCoreAttritionPercentagesWithoutSaving(
-        double tier1To3,
-        double tier4,
-        double tier5
+            double tier1To3,
+            double tier4,
+            double tier5
     ) {
         coreAttritionTier1To3Percent =
-            validatePercentage("T1-T3 core attrition", tier1To3);
+                validatePercentage("T1-T3 core attrition", tier1To3);
         coreAttritionTier4Percent =
-            validatePercentage("T4 core attrition", tier4);
+                validatePercentage("T4 core attrition", tier4);
         coreAttritionTier5Percent =
-            validatePercentage("T5 core attrition", tier5);
+                validatePercentage("T5 core attrition", tier5);
     }
 
     private void setRangeAttritionPercentWithoutSaving(double percent) {
         rangeAttritionPercent =
-            validatePercentage("Range attrition", percent);
+                validatePercentage("Range attrition", percent);
     }
 
     private void setWallPercentagesWithoutSaving(
-        double possiblyInvalidFullWall,
-        double possiblyInvalidSmallWall,
-        double possiblyInvalidOpen,
-        double possiblyInvalidPassage
+            double possiblyInvalidFullWall,
+            double possiblyInvalidSmallWall,
+            double possiblyInvalidOpen,
+            double possiblyInvalidPassage
     ) {
         double fullWall = validatePercentage("full-wall", possiblyInvalidFullWall);
         double smallWall = validatePercentage("small-wall", possiblyInvalidSmallWall);
@@ -635,7 +635,7 @@ final class EvictSettings {
 
         if (Math.abs(sum - 100d) > 0.0001d) {
             throw new IllegalArgumentException(
-                "Wall percentages must add up to exactly 100."
+                    "Wall percentages must add up to exactly 100."
             );
         }
 
@@ -647,15 +647,15 @@ final class EvictSettings {
 
     private void setExtinctionTerrainChangesPerTickWithoutSaving(int amount) {
         if (
-            amount < MIN_EXTINCTION_TERRAIN_CHANGES_PER_TICK
-                || amount > MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK
+                amount < MIN_EXTINCTION_TERRAIN_CHANGES_PER_TICK
+                        || amount > MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK
         ) {
             throw new IllegalArgumentException(
-                "Extinction terrain changes per tick must be between "
-                    + MIN_EXTINCTION_TERRAIN_CHANGES_PER_TICK
-                    + " and "
-                    + MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK
-                    + "."
+                    "Extinction terrain changes per tick must be between "
+                            + MIN_EXTINCTION_TERRAIN_CHANGES_PER_TICK
+                            + " and "
+                            + MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK
+                            + "."
             );
         }
 
@@ -664,56 +664,56 @@ final class EvictSettings {
 
     private void setUnitBuildSpeedMultiplierWithoutSaving(double multiplier) {
         unitBuildSpeedMultiplier = validateRange(
-            "Unit build speed multiplier",
-            multiplier,
-            MIN_UNIT_BUILD_SPEED_MULTIPLIER,
-            MAX_UNIT_BUILD_SPEED_MULTIPLIER
+                "Unit build speed multiplier",
+                multiplier,
+                MIN_UNIT_BUILD_SPEED_MULTIPLIER,
+                MAX_UNIT_BUILD_SPEED_MULTIPLIER
         );
     }
 
     private void setWaterSettingsWithoutSaving(
-        double possiblyInvalidPatchAttemptsPerHex,
-        int possiblyInvalidNormalPatchTiles,
-        double possiblyInvalidLargePatchChancePercent,
-        int possiblyInvalidLargePatchTiles
+            double possiblyInvalidPatchAttemptsPerHex,
+            int possiblyInvalidNormalPatchTiles,
+            double possiblyInvalidLargePatchChancePercent,
+            int possiblyInvalidLargePatchTiles
     ) {
         double patchAttemptsPerHex = validateRange(
-            "Water patch tries per hex",
+                "Water patch tries per hex",
                 possiblyInvalidPatchAttemptsPerHex,
-            0d,
-            MAX_WATER_PATCH_ATTEMPTS_PER_HEX
+                0d,
+                MAX_WATER_PATCH_ATTEMPTS_PER_HEX
         );
         int normalPatchTiles = validateIntRange(
-            "Water normal patch tiles",
+                "Water normal patch tiles",
                 possiblyInvalidNormalPatchTiles,
-            MIN_WATER_PATCH_TILES,
-            MAX_WATER_PATCH_TILES
+                MIN_WATER_PATCH_TILES,
+                MAX_WATER_PATCH_TILES
         );
         double largePatchChancePercent = validatePercentage(
-            "Water large patch chance",
+                "Water large patch chance",
                 possiblyInvalidLargePatchChancePercent
         );
         int largePatchTiles = validateIntRange(
-            "Water large patch tiles",
+                "Water large patch tiles",
                 possiblyInvalidLargePatchTiles,
-            MIN_WATER_PATCH_TILES,
-            MAX_WATER_PATCH_TILES
+                MIN_WATER_PATCH_TILES,
+                MAX_WATER_PATCH_TILES
         );
 
         waterSettings = new WaterSettings(
-            patchAttemptsPerHex,
-            normalPatchTiles,
-            largePatchChancePercent,
-            largePatchTiles
+                patchAttemptsPerHex,
+                normalPatchTiles,
+                largePatchChancePercent,
+                largePatchTiles
         );
     }
 
     private void setOreSettingsWithoutSaving(
-        OreKind kind,
-        double possiblyInvalidScale,
-        double possiblyInvalidThreshold,
-        double possiblyInvalidOctaves,
-        double possiblyInvalidFalloff
+            OreKind kind,
+            double possiblyInvalidScale,
+            double possiblyInvalidThreshold,
+            double possiblyInvalidOctaves,
+            double possiblyInvalidFalloff
     ) {
         if (kind == null) {
             throw new IllegalArgumentException("Ore kind is required.");
@@ -725,8 +725,8 @@ final class EvictSettings {
         double falloff = validateRange(kind.key + " falloff", possiblyInvalidFalloff, 0d, 1d);
 
         oreSettings.put(
-            kind,
-            new OreSettings(scale, threshold, octaves, falloff)
+                kind,
+                new OreSettings(scale, threshold, octaves, falloff)
         );
     }
 
@@ -770,9 +770,9 @@ final class EvictSettings {
 
     private double validatePositiveFinite(String name, double value) {
         if (
-            Double.isNaN(value)
-                || Double.isInfinite(value)
-                || value <= 0d
+                Double.isNaN(value)
+                        || Double.isInfinite(value)
+                        || value <= 0d
         ) {
             throw new IllegalArgumentException(name + " must be greater than 0.");
         }
@@ -781,19 +781,19 @@ final class EvictSettings {
     }
 
     private double validateRange(
-        String name,
-        double value,
-        double minimum,
-        double maximum
+            String name,
+            double value,
+            double minimum,
+            double maximum
     ) {
         if (
-            Double.isNaN(value)
-                || Double.isInfinite(value)
-                || value < minimum
-                || value > maximum
+                Double.isNaN(value)
+                        || Double.isInfinite(value)
+                        || value < minimum
+                        || value > maximum
         ) {
             throw new IllegalArgumentException(
-                name + " must be between " + minimum + " and " + maximum + "."
+                    name + " must be between " + minimum + " and " + maximum + "."
             );
         }
 
@@ -801,14 +801,14 @@ final class EvictSettings {
     }
 
     private int validateIntRange(
-        String name,
-        int value,
-        int minimum,
-        int maximum
+            String name,
+            int value,
+            int minimum,
+            int maximum
     ) {
         if (value < minimum || value > maximum) {
             throw new IllegalArgumentException(
-                name + " must be between " + minimum + " and " + maximum + "."
+                    name + " must be between " + minimum + " and " + maximum + "."
             );
         }
 
@@ -817,13 +817,13 @@ final class EvictSettings {
 
     private double validatePercentage(String name, double value) {
         if (
-            Double.isNaN(value)
-                || Double.isInfinite(value)
-                || value < 0d
-                || value > 100d
+                Double.isNaN(value)
+                        || Double.isInfinite(value)
+                        || value < 0d
+                        || value > 100d
         ) {
             throw new IllegalArgumentException(
-                name + " must be between 0 and 100."
+                    name + " must be between 0 and 100."
             );
         }
 
@@ -831,9 +831,9 @@ final class EvictSettings {
     }
 
     private double readDouble(
-        Properties properties,
-        String key,
-        double fallback
+            Properties properties,
+            String key,
+            double fallback
     ) {
         String value = properties.getProperty(key);
 
@@ -845,9 +845,9 @@ final class EvictSettings {
     }
 
     private int readInt(
-        Properties properties,
-        String key,
-        int fallback
+            Properties properties,
+            String key,
+            int fallback
     ) {
         String value = properties.getProperty(key);
 
@@ -859,9 +859,9 @@ final class EvictSettings {
     }
 
     private String readString(
-        Properties properties,
-        String key,
-        String fallback
+            Properties properties,
+            String key,
+            String fallback
     ) {
         String value = properties.getProperty(key);
 
@@ -870,7 +870,7 @@ final class EvictSettings {
 
     private double legacyWaterPatchAttemptsPerHex(Properties properties) {
         String legacyPercent = properties.getProperty(
-            "water.patchAttemptsPercentPerHex"
+                "water.patchAttemptsPercentPerHex"
         );
 
         if (legacyPercent == null || legacyPercent.isBlank()) {
@@ -892,14 +892,14 @@ final class EvictSettings {
         }
 
         double smallWeight = readDouble(
-            properties,
-            "water.smallPatchWeight",
-            0d
+                properties,
+                "water.smallPatchWeight",
+                0d
         );
         double mediumWeight = readDouble(
-            properties,
-            "water.mediumPatchWeight",
-            0d
+                properties,
+                "water.mediumPatchWeight",
+                0d
         );
         double largeWeight = Double.parseDouble(largeValue.trim());
         double totalWeight = smallWeight + mediumWeight + largeWeight;
@@ -916,106 +916,106 @@ final class EvictSettings {
 
         if (parent != null && !parent.exists() && !parent.mkdirs()) {
             Log.err(
-                "[EvictMapGenerator] Could not create settings directory: @",
-                parent.getPath()
+                    "[EvictMapGenerator] Could not create settings directory: @",
+                    parent.getPath()
             );
             return;
         }
 
         Properties properties = new Properties();
         properties.setProperty(
-            "attrition.core.tier1To3Percent",
-            Double.toString(coreAttritionTier1To3Percent)
+                "attrition.core.tier1To3Percent",
+                Double.toString(coreAttritionTier1To3Percent)
         );
         properties.setProperty(
-            "attrition.core.tier4Percent",
-            Double.toString(coreAttritionTier4Percent)
+                "attrition.core.tier4Percent",
+                Double.toString(coreAttritionTier4Percent)
         );
         properties.setProperty(
-            "attrition.core.tier5Percent",
-            Double.toString(coreAttritionTier5Percent)
+                "attrition.core.tier5Percent",
+                Double.toString(coreAttritionTier5Percent)
         );
         properties.setProperty(
-            "attrition.range.percent",
-            Double.toString(rangeAttritionPercent)
+                "attrition.range.percent",
+                Double.toString(rangeAttritionPercent)
         );
         properties.setProperty(
-            "wall.fullPercent",
-            Double.toString(fullWallPercent)
+                "wall.fullPercent",
+                Double.toString(fullWallPercent)
         );
         properties.setProperty(
-            "wall.smallPercent",
-            Double.toString(smallWallPercent)
+                "wall.smallPercent",
+                Double.toString(smallWallPercent)
         );
         properties.setProperty(
-            "wall.openPercent",
-            Double.toString(openPercent)
+                "wall.openPercent",
+                Double.toString(openPercent)
         );
         properties.setProperty(
-            "wall.passagePercent",
-            Double.toString(passagePercent)
+                "wall.passagePercent",
+                Double.toString(passagePercent)
         );
         properties.setProperty(
-            "extinction.terrainChangesPerTick",
-            Integer.toString(extinctionTerrainChangesPerTick)
+                "extinction.terrainChangesPerTick",
+                Integer.toString(extinctionTerrainChangesPerTick)
         );
         properties.setProperty(
-            "rules.unitBuildSpeedMultiplier",
-            Double.toString(unitBuildSpeedMultiplier)
+                "rules.unitBuildSpeedMultiplier",
+                Double.toString(unitBuildSpeedMultiplier)
         );
         properties.setProperty(
-            "duel.server.ip",
-            duelServerIp == null ? "" : duelServerIp
+                "duel.server.ip",
+                duelServerIp == null ? "" : duelServerIp
         );
         properties.setProperty(
-            "duel.server.port",
-            Integer.toString(duelServerPort)
+                "duel.server.port",
+                Integer.toString(duelServerPort)
         );
         properties.setProperty(
-            "duel.maxWorkers",
-            Integer.toString(duelMaxWorkers)
+                "duel.maxWorkers",
+                Integer.toString(duelMaxWorkers)
         );
         properties.setProperty("duel.worker.map", duelWorkerMap);
         properties.setProperty("duel.worker.jar", duelWorkerJarName);
         properties.setProperty(
-            "rules.bannedBlocks",
-            String.join(",", bannedBlockNames)
+                "rules.bannedBlocks",
+                String.join(",", bannedBlockNames)
         );
         properties.setProperty(
-            "water.patchAttemptsPerHex",
-            Double.toString(waterSettings.patchAttemptsPerHex())
+                "water.patchAttemptsPerHex",
+                Double.toString(waterSettings.patchAttemptsPerHex())
         );
         properties.setProperty(
-            "water.normalPatchTiles",
-            Integer.toString(waterSettings.normalPatchTiles())
+                "water.normalPatchTiles",
+                Integer.toString(waterSettings.normalPatchTiles())
         );
         properties.setProperty(
-            "water.largePatchChancePercent",
-            Double.toString(waterSettings.largePatchChancePercent())
+                "water.largePatchChancePercent",
+                Double.toString(waterSettings.largePatchChancePercent())
         );
         properties.setProperty(
-            "water.largePatchTiles",
-            Integer.toString(waterSettings.largePatchTiles())
+                "water.largePatchTiles",
+                Integer.toString(waterSettings.largePatchTiles())
         );
 
         for (OreKind kind : OreKind.values()) {
             OreSettings ore = ore(kind);
 
             properties.setProperty(
-                oreProperty(kind, "scale"),
-                Double.toString(ore.scale())
+                    oreProperty(kind, "scale"),
+                    Double.toString(ore.scale())
             );
             properties.setProperty(
-                oreProperty(kind, "threshold"),
-                Double.toString(ore.threshold())
+                    oreProperty(kind, "threshold"),
+                    Double.toString(ore.threshold())
             );
             properties.setProperty(
-                oreProperty(kind, "octaves"),
-                Double.toString(ore.octaves())
+                    oreProperty(kind, "octaves"),
+                    Double.toString(ore.octaves())
             );
             properties.setProperty(
-                oreProperty(kind, "falloff"),
-                Double.toString(ore.falloff())
+                    oreProperty(kind, "falloff"),
+                    Double.toString(ore.falloff())
             );
         }
 
@@ -1023,8 +1023,8 @@ final class EvictSettings {
             properties.store(output, "EvictMapGenerator persistent settings");
         } catch (IOException exception) {
             Log.err(
-                "[EvictMapGenerator] Could not save persistent settings.",
-                exception
+                    "[EvictMapGenerator] Could not save persistent settings.",
+                    exception
             );
         }
     }
