@@ -10,10 +10,8 @@ import mindustry.gen.Player;
 
 /**
  * Replaces vanilla /help with a filtered Evict help menu.
- *
  * Normal /help never exposes development commands. Development commands remain
  * discoverable for every player through /help dev and are paginated separately.
- *
  * Supported forms:
  * - /help
  * - /help 2
@@ -25,7 +23,7 @@ final class EvictHelpCommands {
     private static final int COMMANDS_PER_PAGE = 6;
 
     void registerClientCommands(CommandHandler handler) {
-        /**
+        /*
          * CommandHandler.register intentionally replaces any earlier command
          * with the same name. NetServer registers vanilla /help before plugins
          * register their client commands, so registering this last gives Evict
@@ -34,7 +32,7 @@ final class EvictHelpCommands {
         handler.<Player>register(
             "help",
             "[category] [page]",
-            "Lists normal commands.",
+            "Lists commands.",
             (args, player) -> showHelp(handler, args, player)
         );
     }
@@ -50,10 +48,7 @@ final class EvictHelpCommands {
             return;
         }
 
-        Seq<Command> commands = filteredCommands(
-            handler,
-            request.devCommands
-        );
+        Seq<Command> commands = handler.getCommandList();
 
         int pages = Math.max(
             1,
@@ -70,16 +65,12 @@ final class EvictHelpCommands {
         }
 
         int pageIndex = request.page - 1;
-        String categoryName = request.devCommands
-            ? "Dev Commands"
-            : "Commands";
 
         StringBuilder result = new StringBuilder();
 
         result.append(
             Strings.format(
-                "[orange]-- @ Page[lightgray] @[gray]/[lightgray]@[orange] --\n\n",
-                categoryName,
+                "[orange]-- Page[lightgray] @[gray]/[lightgray]@[orange] --\n\n",
                 request.page,
                 pages
             )
@@ -101,33 +92,10 @@ final class EvictHelpCommands {
         }
 
         if (request.devCommands && pages > 1 && request.page < pages) {
-            result.append(
-                "\n[lightgray]Next page: [orange]/help dev "
-                    + (request.page + 1)
-                    + "[]"
-            );
+            result.append("\n[lightgray]Next page: [orange]/help dev ").append(request.page + 1).append("[]");
         }
 
         player.sendMessage(result.toString());
-    }
-
-    private Seq<Command> filteredCommands(
-        CommandHandler handler,
-        boolean devCommands
-    ) {
-        Seq<Command> result = new Seq<>();
-
-        for (Command command : handler.getCommandList()) {
-            boolean isHelpCommand = command.text.equals("help");
-            boolean isDevCommand =
-                EvictCommandCatalog.DEV_COMMANDS.contains(command.text);
-
-            if (!isHelpCommand && devCommands == isDevCommand) {
-                result.add(command);
-            }
-        }
-
-        return result;
     }
 
     private HelpRequest parseRequest(String[] args, Player player) {
@@ -136,22 +104,9 @@ final class EvictHelpCommands {
         }
 
         if (args.length == 1) {
-            if (args[0].equalsIgnoreCase("dev")) {
-                return new HelpRequest(true, 1);
-            }
-
             Integer page = parsePositivePage(args[0], player);
 
             return page == null ? null : new HelpRequest(false, page);
-        }
-
-        if (
-            args.length == 2
-                && args[0].equalsIgnoreCase("dev")
-        ) {
-            Integer page = parsePositivePage(args[1], player);
-
-            return page == null ? null : new HelpRequest(true, page);
         }
 
         player.sendMessage(
