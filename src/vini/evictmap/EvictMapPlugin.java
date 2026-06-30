@@ -111,8 +111,7 @@ public class EvictMapPlugin extends Plugin {
                     rankManager,
                     // evictgen regenerates the live map in place with no fresh snapshot,
                     // so connected clients only see the new terrain via the per-tile sync.
-                    seed -> generate(seed, true),
-                    attritionManager
+                    seed -> generate(seed, true)
             );
 
     private boolean refreshingWorldIndexes = false;

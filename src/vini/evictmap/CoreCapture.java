@@ -164,11 +164,11 @@ final class CoreCapture {
         }
 
         int removed = clearBuildingsInHex(c.hex);
-        int killed = c.attrition.handleCoreExplosionAttrition(c.hex.x, c.hex.y);
+        c.attrition.handleCoreExplosionAttrition(c.hex.x, c.hex.y);
 
         Log.info(
-                "[EvictMapGenerator] Cleared @ synthetic buildings and removed @ units through capture attrition from hex (@,@).",
-                removed, killed, c.hex.col, c.hex.row
+                "[EvictMapGenerator] Cleared @ synthetic buildings from hex (@,@).",
+                removed, c.hex.col, c.hex.row
         );
 
         // Ownership is already the attacker's now, so elimination and victory

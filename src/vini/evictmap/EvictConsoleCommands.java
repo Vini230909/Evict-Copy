@@ -7,7 +7,6 @@ import mindustry.content.Blocks;
 import mindustry.game.Team;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
-import vini.evictmap.gameplay.AttritionManager;
 
 import java.util.Map;
 import java.util.function.LongConsumer;
@@ -25,7 +24,6 @@ final class EvictConsoleCommands {
     private final DuelServerManager duelServerManager;
     private final RankManager rankManager;
     private final LongConsumer generate;
-    private final AttritionManager attritionManager;
 
     private static final int MAX_CORECAP_INCREMENT = 10000;
 
@@ -39,8 +37,7 @@ final class EvictConsoleCommands {
             PlayerDataManager playerDataManager,
             DuelServerManager duelServerManager,
             RankManager rankManager,
-            LongConsumer generate,
-            AttritionManager attritionManager
+            LongConsumer generate
     ) {
         this.runtime = runtime;
         this.settings = settings;
@@ -50,7 +47,6 @@ final class EvictConsoleCommands {
         this.duelServerManager = duelServerManager;
         this.rankManager = rankManager;
         this.generate = generate;
-        this.attritionManager = attritionManager;
     }
 
     void register(CommandHandler handler) {
@@ -580,7 +576,7 @@ final class EvictConsoleCommands {
             return;
         }
 
-        /**
+        /*
          * Vanilla calculates the final cap from the base rule plus the team's
          * accumulated per-building modifiers. Increase all three vanilla core
          * blocks for future captures and adjust already existing cores once.
