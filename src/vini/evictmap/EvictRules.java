@@ -8,7 +8,6 @@ import java.util.Set;
 
 /**
  * Applies the fixed rules for every Evict round.
- *
  * This class intentionally owns only rules. It does not know anything about
  * generation, players, captures or commands.
  */
@@ -36,7 +35,7 @@ final class EvictRules {
         // duel-synced multiplier from EvictSettings (default 1.4x).
         Vars.state.rules.unitBuildSpeedMultiplier = unitBuildSpeedMultiplier;
 
-        // /corecap is based on the variable per-core cap system.
+        // core cap is based on the variable per-core cap system.
         Vars.state.rules.unitCapVariable = true;
 
         Vars.state.rules.canGameOver = false;
