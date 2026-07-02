@@ -19,6 +19,7 @@ import mindustry.gen.Player;
 import mindustry.mod.Plugin;
 import mindustry.world.blocks.storage.CoreBlock;
 import vini.evictmap.gameplay.AttritionManager;
+import vini.evictmap.gameplay.ExtinctionManager;
 
 import java.util.HashMap;
 
@@ -64,7 +65,7 @@ public class EvictMapPlugin extends Plugin {
             );
 
     private final RoundEndCommands roundEndCommands =
-            new RoundEndCommands(teamManager, extinctionManager);
+            new RoundEndCommands(teamManager);
 
     private final RoundTimeCommands roundTimeCommands =
             new RoundTimeCommands(teamManager);
@@ -277,7 +278,7 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.2.31. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.2.32. Use 'evictstatus' for commands and current settings."
         );
     }
 

@@ -118,7 +118,6 @@ public final class TeamManager {
     private boolean roundActivated = false;
     private boolean resetting = false;
     private boolean suppressCoreChangeEvents = false;
-    private boolean extinctionActive = false;
 
     /**
      * 1v1 duel-worker mode. In a duel only the two players matter: Fallen cores
@@ -171,7 +170,6 @@ public final class TeamManager {
         roundStartedAtMillis = System.currentTimeMillis();
         roundActivated = false;
         resetting = false;
-        extinctionActive = false;
         roundActive = true;
 
         Log.info(
@@ -1131,10 +1129,7 @@ public final class TeamManager {
         resetting = true;
         roundActive = false;
 
-        String victoryReason = extinctionActive
-                ? " has secured every surviving hex during EXTINCTION and won "
-                  + "the round."
-                : " has conquered every hex and won the round.";
+        String victoryReason = " has conquered every hex and won the round.";
 
         Call.sendMessage(
                 "[accent]" + displayTeam(winner) + "[]" + victoryReason
@@ -1368,28 +1363,14 @@ public final class TeamManager {
         }
     }
 
-    void setExtinctionActive(boolean active) {
-        extinctionActive = active;
-    }
-
-    int gridDistanceFromCenter(HexSlot slot) {
+    public int gridDistanceFromCenter(HexSlot slot) {
         return gridDistance(
                 new HexSlot(CENTER_COL, CENTER_ROW, 0, 0, 0),
                 slot
         );
     }
 
-    Team centerHexOwner() {
-        for (HexSlot slot : slots) {
-            if (slot.col == CENTER_COL && slot.row == CENTER_ROW) {
-                return Team.get(effectiveCoreOwnerTeamId(slot));
-            }
-        }
-
-        return Team.derelict;
-    }
-
-    void collapseHexesForExtinction(List<HexSlot> collapsingSlots) {
+    public void collapseHexesForExtinction(List<HexSlot> collapsingSlots) {
         if (
                 !roundActive
                         || resetting
@@ -1512,10 +1493,6 @@ public final class TeamManager {
         }
     }
 
-    boolean hasPendingExtinctionTerrainChanges() {
-        return !extinctionTerrainQueue.isEmpty();
-    }
-
     int extinctionTerrainChangesPerTick() {
         return extinctionTerrainChangesPerTick;
     }
@@ -1535,7 +1512,7 @@ public final class TeamManager {
         extinctionTerrainChangesPerTick = amount;
     }
 
-    void finishExtinction(Team winner) {
+    public void finishExtinction(Team winner) {
         if (
                 !roundActive
                         || resetting
@@ -1679,7 +1656,7 @@ public final class TeamManager {
         return closest;
     }
 
-    List<HexSlot> slots() {
+    public List<HexSlot> slots() {
         return slots;
     }
 
@@ -1740,7 +1717,7 @@ public final class TeamManager {
         suppressCoreChangeEvents = suppressed;
     }
 
-    long roundRuntimeMillis() {
+    public long roundRuntimeMillis() {
         if (roundStartedAtMillis == 0L) {
             return 0L;
         }
@@ -1753,6 +1730,10 @@ public final class TeamManager {
 
     long roundStartedAtMillis() {
         return roundStartedAtMillis;
+    }
+
+    void setElapsedTimeMillis(long time) {
+        roundStartedAtMillis = System.currentTimeMillis() - time;
     }
 
     /**
@@ -1975,7 +1956,7 @@ public final class TeamManager {
     ) {
     }
 
-    static final class HexSlot {
+    public static final class HexSlot {
         final int col;
         final int row;
         final int x;
@@ -1985,7 +1966,7 @@ public final class TeamManager {
         int ownerTeamId = FALLEN_TEAM_ID;
         boolean capturing = false;
         int pendingCaptureTeamId = FALLEN_TEAM_ID;
-        boolean extinct = false;
+        public boolean extinct = false;
 
         HexSlot(
                 int col,

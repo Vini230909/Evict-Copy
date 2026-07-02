@@ -405,6 +405,32 @@ final class EvictConsoleCommands {
                 "Manage tournament ranks by UUID. 'add <uuid> [commentator]' grants (default commentator), 'remove <uuid>' revokes, no args lists. Commentators get a [C] tag and may /restart 1v1s they spectate.",
                 this::handleRankCommand
         );
+
+        handler.register(
+                "evicttime",
+                "[time]",
+                "Set the elapsed in-game time to a given number of seconds, or shows the elapsed time if used without arguments",
+                this::handleSetTimeCommand
+        );
+    }
+
+    private void handleSetTimeCommand(String[] args) {
+        if (args.length == 0) {
+            Log.info("[EvictMapGenerator] time = @", teamManager.roundRuntimeMillis() / 1000);
+            return;
+        }
+
+        long parsedTime;
+        try {
+            parsedTime = Long.parseLong(args[0]);
+        } catch (NumberFormatException e) {
+            Log.err("[EvictMapGenerator] time must be a long");
+            return;
+        }
+
+        Log.info("[EvictMapGenerator] setting time to @", parsedTime);
+
+        teamManager.setElapsedTimeMillis(parsedTime * 1000);
     }
 
     private void handleRankCommand(String[] args) {

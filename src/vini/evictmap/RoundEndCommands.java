@@ -19,7 +19,6 @@ final class RoundEndCommands {
             10f * 60f * 60f;
 
     private final TeamManager teamManager;
-    private final ExtinctionManager extinctionManager;
 
     /**
      * On a duel worker `/die` is always available (no leader or opening-period
@@ -30,11 +29,9 @@ final class RoundEndCommands {
             "true".equals(System.getProperty("evict.duelWorker"));
 
     RoundEndCommands(
-            TeamManager teamManager,
-            ExtinctionManager extinctionManager
+            TeamManager teamManager
     ) {
         this.teamManager = teamManager;
-        this.extinctionManager = extinctionManager;
     }
 
     void registerClientCommands(CommandHandler handler) {
@@ -123,13 +120,6 @@ final class RoundEndCommands {
         ) {
             player.sendMessage(
                     "[scarlet]Only players in an active personal team can use /over.[]"
-            );
-            return;
-        }
-
-        if (extinctionManager.blocksEarlyEnd()) {
-            player.sendMessage(
-                    "[scarlet]/over is disabled because EXTINCTION is approaching or already active.[]"
             );
             return;
         }
