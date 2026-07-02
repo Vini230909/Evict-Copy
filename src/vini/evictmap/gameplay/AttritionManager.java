@@ -23,11 +23,13 @@ import java.util.function.Function;
  * Every {@link EvictSettings#rangeAttritionInterval()} ticks, units which are not
  * {@link TeamManager#isWithinOneHexOfOwnedCore} are killed with a probability of
  * {@link EvictSettings#rangeAttritionChance()}. This is called range attrition.
+ * </p>
  * <p>
  * Every time a core is taken, units which are within {@link EvictSettings#coreAttritionRadius()}
  * tiles of that core are killed with a probability of {@link EvictSettings#coreAttritionTier1To3Chance()},
  * {@link EvictSettings#coreAttritionTier4Chance()} or {@link EvictSettings#coreAttritionTier5Chance()}
  * (depending on the tier of the unit). This is called core explosion (or core) attrition.
+ * </p>
  */
 public final class AttritionManager implements GameplayManagerInterface {
     /**
@@ -133,10 +135,12 @@ public final class AttritionManager implements GameplayManagerInterface {
         this.settings = settings;
     }
 
+    @Override
     public void beginRound() {
         rangeAttritionTimer = 0f;
     }
 
+    @Override
     public void update() {
         /*
          * We handle range attrition in the update method, but core capture attrition
@@ -160,6 +164,7 @@ public final class AttritionManager implements GameplayManagerInterface {
         );
     }
 
+    @Override
     public void endRound() {
     }
 
