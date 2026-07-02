@@ -67,8 +67,7 @@ public final class RulesApplier {
         Vars.state.rules.winWave = 0;
         Vars.state.rules.pvp = true;
         Vars.state.rules.pvpAutoPause = false; // (we implement our own)
-        Vars.state.rules.attackMode = false;
-        Vars.state.rules.editor = false;
+        Vars.state.rules.canGameOver = false;
         Vars.state.rules.reactorExplosions = false;
         Vars.state.rules.possessionAllowed = false;
         Vars.state.rules.unitDamageMultiplier = 0.5f;

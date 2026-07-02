@@ -83,6 +83,7 @@ public final class ExtinctionManager implements GameplayManagerInterface {
     @Override
     public void beginRound() {
         state = State.NO_WARNING_SENT;
+        queueOfHexesToCollapse.clear();
     }
 
     @Override
