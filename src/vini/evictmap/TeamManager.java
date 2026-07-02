@@ -53,7 +53,7 @@ import java.util.function.Predicate;
 public final class TeamManager {
 
     static final int FALLEN_TEAM_ID = 14;
-    static final Team FALLEN_TEAM = Team.get(FALLEN_TEAM_ID);
+    public static final Team FALLEN_TEAM = Team.get(FALLEN_TEAM_ID);
 
     private static final int FIRST_PERSONAL_TEAM_ID = 1;
     private static final int LAST_PERSONAL_TEAM_ID = 128;

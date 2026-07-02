@@ -19,6 +19,7 @@ import mindustry.gen.Player;
 import mindustry.mod.Plugin;
 import mindustry.world.blocks.storage.CoreBlock;
 import vini.evictmap.gameplay.AttritionManager;
+import vini.evictmap.gameplay.RulesApplier;
 import vini.evictmap.gameplay.ExtinctionManager;
 import vini.evictmap.gameplay.AttackManager;
 
@@ -38,10 +39,6 @@ public class EvictMapPlugin extends Plugin {
 
     private final EvictRuntimeState runtime = new EvictRuntimeState();
     private final EvictSettings settings = new EvictSettings();
-    private final CoreUnitDamageManager coreUnitDamageManager =
-            new CoreUnitDamageManager();
-    private final BuildingDamageManager buildingDamageManager =
-            new BuildingDamageManager();
     private final PlayerDataManager playerDataManager =
             new PlayerDataManager();
     private final RankManager rankManager = new RankManager();
@@ -147,8 +144,7 @@ public class EvictMapPlugin extends Plugin {
 
             installDuelChatFilter();
         }
-        coreUnitDamageManager.apply();
-        buildingDamageManager.apply();
+        RulesApplier.applyRules(false);
         teamManager.setExtinctionTerrainChangesPerTick(
                 settings.extinctionTerrainChangesPerTick()
         );
@@ -186,19 +182,13 @@ public class EvictMapPlugin extends Plugin {
                 return;
             }
 
-            EvictRules.apply(
-                    (float) settings.unitBuildSpeedMultiplier(),
-                    syncedBannedBlocks()
-            );
             scheduleConnectedPlayerAssignmentScan();
 
             if (duelWorker) {
                 duelWorkerReferee.begin();
             }
 
-            Log.info(
-                    "[EvictMapGenerator] Re-applied Evict rules after host-mode initialization."
-            );
+            RulesApplier.applyRules(false);
         });
 
         Events.on(PlayerJoin.class, event -> {
@@ -294,15 +284,6 @@ public class EvictMapPlugin extends Plugin {
     }
 
     /**
-     * Banned blocks to enforce in the round rules. A duel worker mirrors the
-     * hub's banned set, synced into its settings file at spawn. The hub returns
-     * null so {@link EvictRules} leaves its live bans (map / admin) untouched.
-     */
-    private java.util.Set<String> syncedBannedBlocks() {
-        return duelWorker ? settings.bannedBlockNames() : null;
-    }
-
-    /**
      * @param syncToClients whether the generated terrain is pushed to connected
      *                      clients tile-by-tile. Pass {@code false} for generation triggered by a
      *                      world (re)load - the vanilla world snapshot already carries the terrain,
@@ -311,11 +292,6 @@ public class EvictMapPlugin extends Plugin {
      *                      (duel restart, evictgen) where no fresh snapshot is sent.
      */
     private void generate(long seed, boolean syncToClients) {
-        EvictRules.apply(
-                (float) settings.unitBuildSpeedMultiplier(),
-                syncedBannedBlocks()
-        );
-
         EvictTerrainGenerator.GeneratedRound round =
                 terrainGenerator.generate(seed, syncToClients);
 
