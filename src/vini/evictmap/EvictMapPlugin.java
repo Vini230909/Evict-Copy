@@ -65,7 +65,7 @@ public class EvictMapPlugin extends Plugin {
             );
 
     private final RoundEndCommands roundEndCommands =
-            new RoundEndCommands(teamManager);
+            new RoundEndCommands(teamManager, duelWorkerReferee);
 
     private final RoundTimeCommands roundTimeCommands =
             new RoundTimeCommands(teamManager);
@@ -154,6 +154,55 @@ public class EvictMapPlugin extends Plugin {
         teamManager.setInviteManager(inviteManager);
         teamManager.setDuelMode(duelWorker);
 
+        // Teams-mode workers put a whole handshake roster on one Mindustry
+        // team; on the hub (and in other modes) the resolver finds no
+        // teammates and normal per-player assignment applies.
+        if (duelWorker) {
+            teamManager.setTeammateResolver(duelWorkerReferee::rosterTeammates);
+
+            // A leaving participant only pauses the match while their team is
+            // still in the running; an eliminated FFA player walking out must
+            // not freeze the survivors.
+            duelWorkerReferee.setStillCompeting(
+                    player -> player != null
+                            && teamManager.isActivePersonalTeam(player.team().id)
+            );
+
+            // A knocked-out FFA or Teams player is free: demoted to a
+            // spectator, they can watch, /v back to the lobby, or disconnect -
+            // the hub will let them join the main round normally instead of
+            // bouncing them back into this match. In two-team games the
+            // deciding elimination fires this too, harmlessly: the victory
+            // resolves right after from the unchanged rosters.
+            teamManager.setDuelEliminationHandler(team -> {
+                MatchMode workerMode = duelWorkerReferee.matchMode();
+
+                if (
+                        workerMode != MatchMode.FFA
+                                && workerMode != MatchMode.TEAMS
+                ) {
+                    return;
+                }
+
+                for (String uuid : teamManager.playerUuidsForTeam(team)) {
+                    duelWorkerReferee.demoteToSpectator(uuid);
+
+                    Player member = Groups.player.find(
+                            online -> online != null && online.uuid().equals(uuid)
+                    );
+
+                    if (member != null) {
+                        teamManager.assignSpectator(member);
+                        member.sendMessage(
+                                "[scarlet]You are out of the "
+                                        + workerMode.label()
+                                        + " match.[] [accent]You are now spectating - use [white]/v[accent] to return to the lobby.[]"
+                        );
+                    }
+                }
+            });
+        }
+
         Events.on(WorldLoadEvent.class, event -> {
             if (!runtime.autoGenerate || refreshingWorldIndexes) {
                 return;
@@ -189,9 +238,28 @@ public class EvictMapPlugin extends Plugin {
 
             if (duelWorker) {
                 duelWorkerReferee.begin();
+
+                // The handshake is loaded now, so the referee knows the mode:
+                // gate the victory check on the full roster count, and open
+                // the sandbox /invite flow for spectators.
+                teamManager.setDuelMinimumTeams(
+                        duelWorkerReferee.victoryMinimumTeams()
+                );
+
+                if (duelWorkerReferee.isSandboxMode()) {
+                    inviteManager.enableSandboxJoinMode(
+                            duelWorkerReferee::addSandboxParticipant
+                    );
+                }
             }
 
             RulesApplier.applyRules();
+
+            // A sandbox session plays with infinite resources; applyRules
+            // resets the flag, so re-apply it after every rules pass.
+            if (duelWorker && duelWorkerReferee.isSandboxMode()) {
+                Vars.state.rules.infiniteResources = true;
+            }
         });
 
         Events.on(PlayerJoin.class, event -> {
@@ -214,7 +282,7 @@ public class EvictMapPlugin extends Plugin {
                 return;
             }
 
-            // On a duel worker anyone who is not one of the two duelists is a
+            // On a duel worker anyone who is not a rostered participant is a
             // /view spectator: park them on derelict (no cores) and skip the
             // normal FFA onboarding so they only watch.
             if (
@@ -224,8 +292,33 @@ public class EvictMapPlugin extends Plugin {
                 teamManager.assignSpectator(event.player);
                 duelWorkerReferee.handlePlayerJoin(event.player);
                 event.player.sendMessage(
-                        "[accent]Spectating this 1v1. Use [white]/v[accent] to return to the lobby.[]"
+                        "[accent]Spectating this match. Use [white]/v[accent] to return to the lobby.[]"
                 );
+
+                if (duelWorkerReferee.isSandboxMode()) {
+                    event.player.sendMessage(
+                            "[accent]This is a sandbox - use [white]/invite[accent] to ask to join it.[]"
+                    );
+
+                    // Tell the sandbox players someone arrived who could be
+                    // invited in.
+                    String viewerName =
+                            PlayerNameFormatter.displayName(event.player);
+
+                    Groups.player.each(online -> {
+                        if (
+                                online != null
+                                        && online != event.player
+                                        && duelWorkerReferee.isParticipant(online.uuid())
+                        ) {
+                            online.sendMessage(
+                                    "[accent]" + viewerName
+                                            + "[accent] is watching your sandbox. They can ask to join with [white]/invite[accent]; use [white]/invite[accent] to accept requests.[]"
+                            );
+                        }
+                    });
+                }
+
                 return;
             }
 
@@ -440,6 +533,13 @@ public class EvictMapPlugin extends Plugin {
                 return message;
             }
 
+            // Training and Sandbox are casual sessions: the players and the
+            // viewers share one global chat instead of viewers being routed
+            // to their own team chat.
+            if (duelWorkerReferee.matchMode().solo()) {
+                return message;
+            }
+
             if (
                     duelWorkerReferee.isParticipant(player.uuid())
                             || rankManager.canRestartMatches(player)
@@ -488,6 +588,10 @@ public class EvictMapPlugin extends Plugin {
                 "[EvictMapGenerator] Duel restart requested. Regenerating with seed @.",
                 seed
         );
+
+        // A restart is a fresh match: knocked-out FFA players are participants
+        // again, and the regeneration below re-onboards them onto a team.
+        duelWorkerReferee.restoreOutParticipants();
 
         try {
             // In-place duel restart keeps both duelists and spectators connected

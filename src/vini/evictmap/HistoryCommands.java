@@ -13,12 +13,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * /history (alias /h): first pick a player, then page through that player's 1v1
- * matches.
- * Every match is one entry: win/lose from the picked player's perspective, both
- * names, and an elo line. ELO is not computed yet, so the line shows a zero
- * delta for now. Because this server only runs ranked Evict 1v1s, the map/mode
- * line and the map/time filters from the reference design are left out.
+ * /history (alias /h): first pick a player, then page through that player's
+ * 1v1, Teams and FFA matches.
+ * A 1v1 entry is win/lose from the picked player's perspective, both names,
+ * and an elo line (ELO is not computed yet, so the line shows a zero delta).
+ * Teams and FFA entries list everyone with just win/lose below - they are
+ * unranked. Training and Sandbox sessions leave no history.
  */
 final class HistoryCommands {
 
@@ -57,7 +57,7 @@ final class HistoryCommands {
     void registerClientCommands(CommandHandler handler) {
         handler.<Player>register(
                 "history",
-                "Pick a player and view their 1v1 match history.",
+                "Pick a player and view their 1v1, Teams and FFA match history.",
                 (args, player) -> openPicker(player)
         );
 
@@ -112,7 +112,7 @@ final class HistoryCommands {
                 player.con,
                 pickerMenuId,
                 "[orange]History",
-                "Select a player to view their 1v1 history.",
+                "Select a player to view their match history.",
                 rows.toArray(new String[0][])
         );
     }
@@ -192,7 +192,7 @@ final class HistoryCommands {
         StringBuilder message = new StringBuilder();
 
         if (matches.isEmpty()) {
-            message.append("[gray]No 1v1 matches yet.[]");
+            message.append("[gray]No matches yet.[]");
         }
 
         for (int index = start; index < end; index++) {
@@ -227,14 +227,53 @@ final class HistoryCommands {
             String subjectUuid,
             PlayerDataManager.DuelMatch match
     ) {
+        // An FFA entry lists every participant with just win/lose below it -
+        // FFAs are unranked, so there is no elo line.
+        if (MatchMode.FFA.id().equals(match.mode())) {
+            String participants = String.join(
+                    " [white]vs[] ",
+                    match.participantNamesPacked().split("\n")
+            );
+
+            return "[lightgray]FFA[]\n" + participants + "\n"
+                    + winLose(subjectUuid.equals(match.winnerUuid()));
+        }
+
+        // A Teams entry shows both rosters (winners listed first); the uuid
+        // columns pack the whole roster, so membership decides win/lose.
+        if (MatchMode.TEAMS.id().equals(match.mode())) {
+            return "[lightgray]Teams[]\n"
+                    + match.winnerName() + " [white]vs[] " + match.loserName()
+                    + "\n"
+                    + winLose(packedContainsUuid(match.winnerUuid(), subjectUuid));
+        }
+
         boolean won = subjectUuid.equals(match.winnerUuid());
         String subject = won ? match.winnerName() : match.loserName();
         String opponent = won ? match.loserName() : match.winnerName();
-        String result = won ? "[green]win[]" : "[scarlet]lose[]";
         String eloDelta = won ? "[green]+0[]" : "[scarlet]-0[]";
 
-        return result + "\n" + subject + " [white]vs[] " + opponent
+        return "[lightgray]1v1[]\n"
+                + winLose(won) + "\n" + subject + " [white]vs[] " + opponent
                 + "\n[gray]elo: []" + eloDelta;
+    }
+
+    private static String winLose(boolean won) {
+        return won ? "[green]win[]" : "[scarlet]lose[]";
+    }
+
+    private static boolean packedContainsUuid(String packed, String uuid) {
+        if (packed == null || packed.isBlank()) {
+            return false;
+        }
+
+        for (String entry : packed.split(",")) {
+            if (entry.trim().equals(uuid)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private List<Player> onlinePlayers() {

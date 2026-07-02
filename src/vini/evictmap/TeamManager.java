@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
@@ -126,6 +127,27 @@ public final class TeamManager {
      * match ends the instant only one of the two players is left.
      */
     private boolean duelMode = false;
+
+    /**
+     * In duel mode: how many personal teams must exist before a victory can be
+     * decided. 2 for 1v1/Teams, the participant count for FFA, and effectively
+     * infinite for Training/Sandbox so those matches only end through /die.
+     */
+    private int duelMinimumTeams = 2;
+
+    /**
+     * On a worker hosting a Teams match this maps a joining player to the
+     * teammates named in the hub handshake, so the whole roster shares one
+     * Mindustry team instead of each member claiming their own hex.
+     */
+    private Function<String, List<String>> teammateUuidsResolver;
+
+    /**
+     * In duel mode: called with a team that was just eliminated or
+     * surrendered (in place of the normal move-to-Fallen). An FFA worker
+     * uses it to demote knocked-out players to spectators.
+     */
+    private Cons<Team> duelEliminationHandler;
     private int extinctionTerrainChangesPerTick =
             DEFAULT_EXTINCTION_TERRAIN_CHANGES_PER_TICK;
     private long roundSerial = 0L;
@@ -141,6 +163,20 @@ public final class TeamManager {
 
     void setDuelMode(boolean duelMode) {
         this.duelMode = duelMode;
+    }
+
+    void setDuelMinimumTeams(int duelMinimumTeams) {
+        this.duelMinimumTeams = Math.max(1, duelMinimumTeams);
+    }
+
+    void setTeammateResolver(
+            Function<String, List<String>> teammateUuidsResolver
+    ) {
+        this.teammateUuidsResolver = teammateUuidsResolver;
+    }
+
+    void setDuelEliminationHandler(Cons<Team> duelEliminationHandler) {
+        this.duelEliminationHandler = duelEliminationHandler;
     }
 
     void beginRound(List<HexSlot> newSlots, long seed) {
@@ -275,6 +311,32 @@ public final class TeamManager {
             return;
         }
 
+        /*
+         * On a worker hosting a Teams match: if a handshake teammate already
+         * claimed a personal team, join it instead of claiming a second hex.
+         * The first roster member to arrive becomes the team's leader.
+         */
+        Team teammateTeam = registeredTeammateTeam(uuid);
+
+        if (teammateTeam != null) {
+            teamIdByPlayerUuid.put(uuid, teammateTeam.id);
+            assignPlayerToTeam(player, teammateTeam);
+
+            player.sendMessage(
+                    "[accent]You joined "
+                            + displayTeam(teammateTeam)
+                            + "[accent]'s team.[]"
+            );
+
+            Log.info(
+                    "[EvictMapGenerator] Player '@' joined teammate team #@.",
+                    player.name,
+                    teammateTeam.id
+            );
+
+            return;
+        }
+
         HexSlot startHex = chooseSafeStartHex();
         Integer teamId = chooseUnusedPersonalTeamId();
 
@@ -325,6 +387,37 @@ public final class TeamManager {
                 teamId,
                 startHex.protectedSides
         );
+    }
+
+    /**
+     * The already-registered personal team of a handshake teammate, or null
+     * when the player has no teammates or none of them claimed a team yet.
+     */
+    private Team registeredTeammateTeam(String uuid) {
+        if (teammateUuidsResolver == null) {
+            return null;
+        }
+
+        List<String> teammateUuids = teammateUuidsResolver.apply(uuid);
+
+        if (teammateUuids == null) {
+            return null;
+        }
+
+        for (String teammateUuid : teammateUuids) {
+            Integer teamId = teamIdByPlayerUuid.get(teammateUuid);
+
+            if (
+                    teamId != null
+                            && teamId != FALLEN_TEAM_ID
+                            && teamId != Team.derelict.id
+                            && !eliminatedTeamIds.contains(teamId)
+            ) {
+                return Team.get(teamId);
+            }
+        }
+
+        return null;
     }
 
     void logStatus() {
@@ -679,9 +772,14 @@ public final class TeamManager {
     ) {
         List<String> affectedUuids = new ArrayList<>();
 
-        // In a duel the loser stays on their own (now core-less) team rather than
-        // becoming Fallen, which is not a playable team in 1v1.
+        // In a duel the loser stays on their own (now core-less) team rather
+        // than becoming Fallen, which is not a playable team. The elimination
+        // handler lets an FFA worker demote the knocked-out players instead.
         if (duelMode) {
+            if (duelEliminationHandler != null) {
+                duelEliminationHandler.get(previousTeam);
+            }
+
             return affectedUuids;
         }
 
@@ -1060,11 +1158,12 @@ public final class TeamManager {
         }
 
         /*
-         * In a duel the result can only be decided once both players have taken
-         * a start core. Otherwise, while only one has joined, ignoring Fallen
-         * would make that lone player an instant "winner".
+         * In a duel the result can only be decided once every roster team has
+         * taken a start core. Otherwise, while only some have joined, ignoring
+         * Fallen would make an early joiner an instant "winner". Training and
+         * Sandbox set an unreachable minimum so they never end by victory.
          */
-        if (duelMode && personalTeamCreationOrder.size() < 2) {
+        if (duelMode && personalTeamCreationOrder.size() < duelMinimumTeams) {
             return;
         }
 
@@ -1266,6 +1365,45 @@ public final class TeamManager {
 
         teamIdByPlayerUuid.put(player.uuid(), targetTeam.id);
         claimTeamIdByPlayerUuid.remove(player.uuid());
+        assignPlayerToTeam(player, targetTeam);
+
+        player.sendMessage(
+                "[green]You joined "
+                        + displayTeam(targetTeam)
+                        + "'s team.[]"
+        );
+
+        return true;
+    }
+
+    /**
+     * True for a player parked on derelict as a match spectator.
+     */
+    boolean isSpectatorPlayer(Player player) {
+        if (player == null) {
+            return false;
+        }
+
+        Integer teamId = teamIdByPlayerUuid.get(player.uuid());
+
+        return teamId != null && teamId == Team.derelict.id;
+    }
+
+    /**
+     * Moves a derelict spectator into an active personal team. Used on a
+     * sandbox worker when the sandbox owner accepts a spectator's /invite
+     * join request.
+     */
+    boolean joinSpectatorToTeam(Player player, Team targetTeam) {
+        if (
+                targetTeam == null
+                        || !isSpectatorPlayer(player)
+                        || !isActivePersonalTeam(targetTeam.id)
+        ) {
+            return false;
+        }
+
+        teamIdByPlayerUuid.put(player.uuid(), targetTeam.id);
         assignPlayerToTeam(player, targetTeam);
 
         player.sendMessage(

@@ -127,11 +127,13 @@ gradle jar
 
 `DuelCommands.java`
 - `/play` and `/p`
-- 1v1 challenge menu, accept/decline
-- Asks `DuelServerManager` to host a worker and redirect both players
+- Game-mode menu (1v1 / Teams / FFA / Training / Sandbox)
+- 1v1 challenge menu, accept/decline; Teams/FFA roster pick menus and group
+  invites (`MatchMode.java` holds the mode ids shared with the workers)
+- Asks `DuelServerManager` to host a worker and redirect the rostered players
 
 `DuelServerManager.java`
-- On-demand 1v1 worker pool on the hub
+- On-demand match worker pool on the hub
 - Reserves a free port, provisions a worker folder from the hub files,
   spawns a worker process, hosts it, polls readiness, then redirects
 - Frees the slot when the worker process exits; max-lifetime + shutdown cleanup
@@ -288,7 +290,7 @@ config/evict-players.db
 - Teams that expanded beyond one core must be fully eliminated.
 - Disabled once the 10-minute Extinction warning begins.
 
-### Duel (1v1)
+### Matches (/play)
 
 ```text
 /play
@@ -296,11 +298,45 @@ config/evict-players.db
 ```
 
 - Available to every player.
-- Opens a menu of other online players, two per row, with a bottom cancel
-  button.
-- Selecting a player sends that player an accept/decline challenge menu.
-- A single Mindustry process hosts only one game, so each duel runs on its own
+- First opens a game-mode menu: `1v1`, `Teams`, `FFA`, `Training`, `Sandbox`.
+- **1v1**: a menu of other online players, two per row, with a bottom cancel
+  button. Selecting a player sends that player an accept/decline challenge
+  menu. The only ranked mode (recorded via `result.properties` on the hub).
+- **Teams**: up to 8 rosters are built purely through pick menus (no typed
+  input); the challenger starts on Team 1 and picks always fill the current
+  team. Two full-width bottom buttons: `Next team` starts the following team
+  (only once the current one has at least one player; the button disappears
+  at the 8-team cap) and `Done` sends the invites (an empty trailing team is
+  dropped silently; at least two teams are required). A player can never be
+  picked twice and uneven team sizes are allowed. Every picked player
+  receives an accept/decline invite; the match starts only when everyone
+  accepted, and any decline or disconnect cancels it for all. A team knocked
+  out mid-match (3+ team games) is freed like an FFA loser. Finished Teams
+  matches are stored in `/history` as an unranked entry (all rosters,
+  win/lose, no ELO).
+- **FFA**: pick any number of players (bottom Done button), same invite flow,
+  every player fights on their own team. A knocked-out player is demoted to a
+  spectator: the match no longer waits for them, `/v` returns them to the
+  lobby, and the hub lets them join the normal round instead of bouncing them
+  back (the worker publishes an `out` list in `status.properties`). Finished
+  FFAs are stored in `/history` as an unranked entry listing every participant
+  with just win/lose (no ELO, no ranked counters).
+- **Training**: the requester plays alone on a worker; nothing can be won or
+  lost. `/die` ends the session (no ELO) and returns them to the hub.
+- **Sandbox**: like Training but with infinite resources; spectators who
+  `/view` the session may `/invite` to request joining, and the sandbox owner
+  accepts with the normal leader-side `/invite` flow (the spectator is then
+  promoted to a full participant).
+- All modes run on the same generated Evict map with the same worker rules:
+  wait-for-everyone start gate, 5s countdown, disconnect pause and rejoin
+  window.
+- A single Mindustry process hosts only one game, so each match runs on its own
   worker server process. Workers are spawned on demand, never kept idle.
+- The hub-worker handshake (`duel.properties`) carries `mode`, `team.count`
+  and `team.N` UUID lists; the result file carries `mode`, `winner.uuid(s)`,
+  `loser.uuid(s)` and `reason`. Only `1v1` results are recorded as ranked;
+  `teams` and `ffa` results become unranked `/history` entries; Training and
+  Sandbox are never recorded.
 - On accept, `DuelServerManager` reserves a free worker port, provisions the
   worker folder from the hub's own jar/`config/mods`/`config/maps` if missing,
   launches `java -Devict.duelWorker=true -jar <jar>`, injects `config port` and

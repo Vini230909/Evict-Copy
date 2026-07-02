@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * /invite workflow for eliminated and late-join Fallen spectators.
@@ -19,6 +20,9 @@ import java.util.Map;
  * - Claimed Fallen players can only be pulled into their claimant's team.
  * - Requests disappear when their sender disconnects.
  * - Claims persist through reconnects for the current round.
+ * On a Sandbox worker the same workflow additionally lets derelict spectators
+ * request to join the sandbox team; an accepted spectator is promoted to a
+ * full match participant.
  */
 final class InviteManager {
 
@@ -28,8 +32,29 @@ final class InviteManager {
 
     private long sequence = 0L;
 
+    /**
+     * Sandbox-worker mode: spectators may request to join, and this hook
+     * promotes an accepted spectator into the match roster.
+     */
+    private boolean sandboxJoinMode = false;
+    private Consumer<Player> sandboxPromotionHook;
+
     InviteManager(TeamManager teamManager) {
         this.teamManager = teamManager;
+    }
+
+    void enableSandboxJoinMode(Consumer<Player> promotionHook) {
+        this.sandboxJoinMode = true;
+        this.sandboxPromotionHook = promotionHook;
+    }
+
+    /**
+     * True when this player may use the requester side of /invite: Fallen on
+     * the hub, or a derelict spectator on a sandbox worker.
+     */
+    private boolean isEligibleRequester(Player player) {
+        return teamManager.isFallenPlayer(player)
+                || (sandboxJoinMode && teamManager.isSpectatorPlayer(player));
     }
 
     void registerClientCommands(CommandHandler handler) {
@@ -104,7 +129,7 @@ final class InviteManager {
             return;
         }
 
-        if (teamManager.isFallenPlayer(player)) {
+        if (isEligibleRequester(player)) {
             handleFallenInvite(args, player);
             return;
         }
@@ -212,14 +237,23 @@ final class InviteManager {
 
         LeaderEntry entry = entries.get(selectedIndex - 1);
 
-        if (
-                !teamManager.joinFallenPlayerToTeam(entry.player, leader.team())
-        ) {
+        boolean wasSpectator =
+                sandboxJoinMode && teamManager.isSpectatorPlayer(entry.player);
+
+        boolean joined = wasSpectator
+                ? teamManager.joinSpectatorToTeam(entry.player, leader.team())
+                : teamManager.joinFallenPlayerToTeam(entry.player, leader.team());
+
+        if (!joined) {
             leader.sendMessage(
                     "[scarlet]That player can no longer join your team.[]"
             );
             cleanupInvalidRequests();
             return;
+        }
+
+        if (wasSpectator && sandboxPromotionHook != null) {
+            sandboxPromotionHook.accept(entry.player);
         }
 
         handlePlayerJoinedTeam(entry.player.uuid());
@@ -256,7 +290,7 @@ final class InviteManager {
             Player requester = onlinePlayer(request.playerUuid);
 
             if (
-                    teamManager.isFallenPlayer(requester)
+                    isEligibleRequester(requester)
                             && teamManager.claimTeamId(request.playerUuid) == null
             ) {
                 result.add(
@@ -395,7 +429,7 @@ final class InviteManager {
             Player requester = onlinePlayer(request.playerUuid);
 
             if (
-                    !teamManager.isFallenPlayer(requester)
+                    !isEligibleRequester(requester)
                             || teamManager.claimTeamId(request.playerUuid) != null
                             || !teamManager.isActivePersonalTeam(request.targetTeamId)
             ) {

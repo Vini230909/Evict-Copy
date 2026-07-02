@@ -19,19 +19,23 @@ final class RoundEndCommands {
             10f * 60f * 60f;
 
     private final TeamManager teamManager;
+    private final DuelWorker duelWorkerReferee;
 
     /**
      * On a duel worker `/die` is always available (no leader or opening-period
-     * gate) and `/over` is disabled, because a duel ends only by owning all
-     * cores. Normal Evict keeps both unchanged.
+     * gate) and `/over` is disabled, because a match ends only by owning all
+     * cores - except in Training/Sandbox, where /die ends the session via the
+     * referee. Normal Evict keeps both unchanged.
      */
     private final boolean duelWorker =
             "true".equals(System.getProperty("evict.duelWorker"));
 
     RoundEndCommands(
-            TeamManager teamManager
+            TeamManager teamManager,
+            DuelWorker duelWorkerReferee
     ) {
         this.teamManager = teamManager;
+        this.duelWorkerReferee = duelWorkerReferee;
     }
 
     void registerClientCommands(CommandHandler handler) {
@@ -91,6 +95,14 @@ final class RoundEndCommands {
             player.sendMessage(
                     "[scarlet]Your team can no longer surrender right now.[]"
             );
+            return;
+        }
+
+        // In Training/Sandbox there is no opponent left to win, so the
+        // referee ends the session and returns everyone to the hub. No ELO
+        // or match result is recorded for these modes.
+        if (duelWorker) {
+            duelWorkerReferee.handleParticipantSurrender(player);
         }
     }
 

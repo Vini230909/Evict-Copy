@@ -176,7 +176,77 @@ final class PlayerDataManager {
     }
 
     /**
-     * A player's 1v1 matches, most recent first.
+     * Records a finished FFA as an unranked history entry: one row listing
+     * every participant, a win only in the sense of /history rendering. No
+     * ranked counters or ELO are touched. Called on the hub once a worker
+     * reports an FFA result.
+     */
+    void recordFfaMatch(
+            String winnerUuid,
+            String winnerName,
+            List<String> participantUuids,
+            List<String> participantNames
+    ) {
+        if (
+                winnerUuid == null
+                        || winnerUuid.isEmpty()
+                        || participantUuids == null
+                        || participantUuids.isEmpty()
+        ) {
+            return;
+        }
+
+        long playedAtMillis = System.currentTimeMillis();
+        String safeWinnerName = safeName(winnerName);
+        String uuidsPacked = String.join(",", participantUuids);
+        String namesPacked = String.join("\n", participantNames);
+
+        enqueue(() -> insertFfaMatch(
+                playedAtMillis,
+                winnerUuid,
+                safeWinnerName,
+                uuidsPacked,
+                namesPacked
+        ));
+    }
+
+    /**
+     * Records a finished Teams match as an unranked history entry: the two
+     * rosters and who won. No ranked counters or ELO are touched. Called on
+     * the hub once a worker reports a Teams result.
+     */
+    void recordTeamsMatch(
+            List<String> winnerUuids,
+            String winnerTeamLabel,
+            List<String> loserUuids,
+            String loserTeamLabel
+    ) {
+        if (
+                winnerUuids == null
+                        || winnerUuids.isEmpty()
+                        || loserUuids == null
+                        || loserUuids.isEmpty()
+        ) {
+            return;
+        }
+
+        long playedAtMillis = System.currentTimeMillis();
+        String winnersPacked = String.join(",", winnerUuids);
+        String losersPacked = String.join(",", loserUuids);
+        String winnerLabel = safeName(winnerTeamLabel);
+        String loserLabel = safeName(loserTeamLabel);
+
+        enqueue(() -> insertTeamsMatch(
+                playedAtMillis,
+                winnersPacked,
+                winnerLabel,
+                losersPacked,
+                loserLabel
+        ));
+    }
+
+    /**
+     * A player's 1v1, Teams and FFA matches, most recent first.
      */
     void findDuelHistory(
             String uuid,
@@ -329,9 +399,11 @@ final class PlayerDataManager {
                             + ")"
             );
 
-            // One row per finished 1v1. Names are the colored display names at
-            // match time so /history can render them without the players being
-            // online. The elo columns default to 0 until the elo feature lands.
+            // One row per finished 1v1 or FFA. Names are the colored display
+            // names at match time so /history can render them without the
+            // players being online. The elo columns default to 0 until the elo
+            // feature lands. FFA rows additionally carry every participant
+            // (uuids comma-joined, names newline-joined) and no loser columns.
             statement.executeUpdate(
                     "CREATE TABLE IF NOT EXISTS duel_matches ("
                             + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -343,8 +415,26 @@ final class PlayerDataManager {
                             + "winner_elo_before INTEGER NOT NULL DEFAULT 0,"
                             + "winner_elo_after INTEGER NOT NULL DEFAULT 0,"
                             + "loser_elo_before INTEGER NOT NULL DEFAULT 0,"
-                            + "loser_elo_after INTEGER NOT NULL DEFAULT 0"
+                            + "loser_elo_after INTEGER NOT NULL DEFAULT 0,"
+                            + "mode TEXT NOT NULL DEFAULT '1v1',"
+                            + "participant_uuids TEXT NOT NULL DEFAULT '',"
+                            + "participant_names TEXT NOT NULL DEFAULT ''"
                             + ")"
+            );
+
+            // Databases created before the FFA history feature miss the new
+            // columns; ALTER fails harmlessly where they already exist.
+            addColumnIfMissing(
+                    statement,
+                    "mode TEXT NOT NULL DEFAULT '1v1'"
+            );
+            addColumnIfMissing(
+                    statement,
+                    "participant_uuids TEXT NOT NULL DEFAULT ''"
+            );
+            addColumnIfMissing(
+                    statement,
+                    "participant_names TEXT NOT NULL DEFAULT ''"
             );
 
             statement.executeUpdate(
@@ -362,6 +452,24 @@ final class PlayerDataManager {
                 "[EvictMapGenerator] Player data storage ready: @",
                 DATABASE_FILE.getPath()
         );
+    }
+
+    /**
+     * Adds a column to duel_matches, ignoring the "duplicate column name"
+     * error on databases that already have it. SQLite has no
+     * ADD COLUMN IF NOT EXISTS.
+     */
+    private static void addColumnIfMissing(
+            Statement statement,
+            String columnDefinition
+    ) {
+        try {
+            statement.executeUpdate(
+                    "ALTER TABLE duel_matches ADD COLUMN " + columnDefinition
+            );
+        } catch (SQLException ignored) {
+            // Column already exists.
+        }
     }
 
     private void upsertPlayer(
@@ -491,20 +599,92 @@ final class PlayerDataManager {
         }
     }
 
+    private void insertFfaMatch(
+            long playedAtMillis,
+            String winnerUuid,
+            String winnerName,
+            String participantUuidsPacked,
+            String participantNamesPacked
+    ) throws SQLException {
+        try (
+                Connection connection = connect();
+                PreparedStatement statement = connection.prepareStatement(
+                        "INSERT INTO duel_matches "
+                                + "(played_at_ms, winner_uuid, winner_name, "
+                                + "loser_uuid, loser_name, mode, "
+                                + "participant_uuids, participant_names) "
+                                + "VALUES (?, ?, ?, '', '', 'ffa', ?, ?)"
+                )
+        ) {
+            statement.setLong(1, playedAtMillis);
+            statement.setString(2, winnerUuid);
+            statement.setString(3, winnerName);
+            statement.setString(4, participantUuidsPacked);
+            statement.setString(5, participantNamesPacked);
+            statement.executeUpdate();
+        }
+    }
+
+    /**
+     * Teams rows pack the whole winning/losing rosters into the winner/loser
+     * uuid columns (comma-joined) so /history can tell which side the picked
+     * player was on; the name columns hold the ready-made team labels.
+     */
+    private void insertTeamsMatch(
+            long playedAtMillis,
+            String winnerUuidsPacked,
+            String winnerTeamLabel,
+            String loserUuidsPacked,
+            String loserTeamLabel
+    ) throws SQLException {
+        try (
+                Connection connection = connect();
+                PreparedStatement statement = connection.prepareStatement(
+                        "INSERT INTO duel_matches "
+                                + "(played_at_ms, winner_uuid, winner_name, "
+                                + "loser_uuid, loser_name, mode, "
+                                + "participant_uuids, participant_names) "
+                                + "VALUES (?, ?, ?, ?, ?, 'teams', ?, ?)"
+                )
+        ) {
+            statement.setLong(1, playedAtMillis);
+            statement.setString(2, winnerUuidsPacked);
+            statement.setString(3, winnerTeamLabel);
+            statement.setString(4, loserUuidsPacked);
+            statement.setString(5, loserTeamLabel);
+            statement.setString(
+                    6,
+                    winnerUuidsPacked + "," + loserUuidsPacked
+            );
+            statement.setString(
+                    7,
+                    winnerTeamLabel + "\n" + loserTeamLabel
+            );
+            statement.executeUpdate();
+        }
+    }
+
     private List<DuelMatch> loadDuelHistory(String uuid) throws SQLException {
         List<DuelMatch> result = new ArrayList<>();
 
+        /*
+          UUIDs are fixed-length base64 without commas, so an instr() hit on
+          the comma-joined participant list is always an exact element match.
+         */
         try (
                 Connection connection = connect(historyDatabaseFile);
                 PreparedStatement statement = connection.prepareStatement(
                         "SELECT played_at_ms, winner_uuid, winner_name, "
-                                + "loser_uuid, loser_name FROM duel_matches "
+                                + "loser_uuid, loser_name, mode, "
+                                + "participant_names FROM duel_matches "
                                 + "WHERE winner_uuid = ? OR loser_uuid = ? "
+                                + "OR instr(participant_uuids, ?) > 0 "
                                 + "ORDER BY played_at_ms DESC"
                 )
         ) {
             statement.setString(1, uuid);
             statement.setString(2, uuid);
+            statement.setString(3, uuid);
 
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) {
@@ -513,7 +693,9 @@ final class PlayerDataManager {
                             rows.getString("winner_uuid"),
                             rows.getString("winner_name"),
                             rows.getString("loser_uuid"),
-                            rows.getString("loser_name")
+                            rows.getString("loser_name"),
+                            rows.getString("mode"),
+                            rows.getString("participant_names")
                     ));
                 }
             }
@@ -787,12 +969,18 @@ final class PlayerDataManager {
     ) {
     }
 
+    /**
+     * One /history entry. mode is "1v1" or "ffa"; FFA rows carry every
+     * participant's display name (newline-joined) and no loser columns.
+     */
     record DuelMatch(
             long playedAtMillis,
             String winnerUuid,
             String winnerName,
             String loserUuid,
-            String loserName
+            String loserName,
+            String mode,
+            String participantNamesPacked
     ) {
     }
 }

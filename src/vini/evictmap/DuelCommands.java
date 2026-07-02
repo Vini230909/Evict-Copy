@@ -9,48 +9,87 @@ import mindustry.ui.Menus;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * /play (alias /p) 1v1 duel challenges.
- * A challenger picks an online opponent from a menu. The opponent receives an
- * accept/decline menu. On accept both players are redirected to the configured
- * dedicated 1v1 server instance with {@link Call#connect}.
- * This hub server only sends the two players to the duel instance. Map/mode
- * selection and the match itself live on that separate instance, because a
- * single Mindustry server process can only host one game at a time.
- * The duel target (ip/port) is a persistent server setting, so nothing is
- * hard-coded and the worker instance can be pointed at whenever it is ready.
+ * /play (alias /p) match-making.
+ * The command first asks for a game mode:
+ * - 1v1: pick one opponent, they accept/decline, both go to a worker.
+ * - Teams: build two rosters (even or uneven) purely through pick menus, every
+ * picked player gets an accept/decline invite, then everyone is sent over.
+ * - FFA: pick any number of players (Done button), invites, everyone plays on
+ * their own team.
+ * - Training: the requester plays alone; /die ends the session, nothing is
+ * recorded.
+ * - Sandbox: like Training but with infinite resources, and spectators may
+ * /invite to ask to join.
+ * This hub server only sends the players to a match worker instance. Map/mode
+ * rules and the match itself live on that separate instance, because a single
+ * Mindustry server process can only host one game at a time.
  */
 final class DuelCommands {
 
     private static final int SELECTION_MENU_COLUMNS = 2;
     private static final int ACCEPT_OPTION = 0;
 
+    /**
+     * Safety cap for the Teams builder; the Next team button disappears once
+     * this many rosters exist.
+     */
+    private static final int MAX_TEAMS = 8;
+
+    /**
+     * Option indexes of the fixed mode menu (see openModeMenu's rows).
+     */
+    private static final MatchMode[] MODE_MENU_OPTIONS = {
+            MatchMode.ONE_VS_ONE,
+            MatchMode.TEAMS,
+            MatchMode.FFA,
+            MatchMode.TRAINING,
+            MatchMode.SANDBOX
+    };
+
     private final DuelServerManager duelManager;
     private final DuelWorker worker;
     private final RankManager rankManager;
     private final Runnable restartMatch;
 
+    private final int modeMenuId;
     private final int selectionMenuId;
     private final int challengeMenuId;
+    private final int pickMenuId;
+    private final int inviteMenuId;
     private final int viewMenuId;
 
     /**
-     * Challenger UUID -> ordered opponent UUIDs shown in their menu.
+     * Challenger UUID -> ordered opponent UUIDs shown in their 1v1 menu.
      */
     private final Map<String, List<String>> selectionTargetsByChallengerUuid =
             new HashMap<>();
 
     /**
-     * Opponent UUID -> challenger UUID for an outstanding challenge.
+     * Opponent UUID -> challenger UUID for an outstanding 1v1 challenge.
      */
     private final Map<String, String> challengerByOpponentUuid =
             new HashMap<>();
 
     /**
-     * Viewer UUID -> ordered duel ports shown in their /view menu.
+     * Challenger UUID -> their Teams/FFA draft being built or invited.
+     */
+    private final Map<String, MatchDraft> draftsByChallengerUuid =
+            new HashMap<>();
+
+    /**
+     * Invitee UUID -> challenger UUID of the draft inviting them.
+     */
+    private final Map<String, String> draftChallengerByInviteeUuid =
+            new HashMap<>();
+
+    /**
+     * Viewer UUID -> ordered match ports shown in their /view menu.
      */
     private final Map<String, List<Integer>> viewTargetsByViewerUuid =
             new HashMap<>();
@@ -65,27 +104,30 @@ final class DuelCommands {
         this.worker = worker;
         this.rankManager = rankManager;
         this.restartMatch = restartMatch;
+        this.modeMenuId = Menus.registerMenu(this::handleModeSelection);
         this.selectionMenuId = Menus.registerMenu(this::handleSelection);
         this.challengeMenuId = Menus.registerMenu(this::handleChallengeResponse);
+        this.pickMenuId = Menus.registerMenu(this::handlePickSelection);
+        this.inviteMenuId = Menus.registerMenu(this::handleInviteResponse);
         this.viewMenuId = Menus.registerMenu(this::handleViewSelection);
     }
 
     void registerClientCommands(CommandHandler handler) {
         handler.<Player>register(
                 "play",
-                "Challenge an online player to a 1v1 on the duel server.",
-                (args, player) -> openSelectionMenu(player)
+                "Start a match: 1v1, Teams, FFA, Training or Sandbox.",
+                (args, player) -> openModeMenu(player)
         );
 
         handler.<Player>register(
                 "p",
                 "Alias for /play.",
-                (args, player) -> openSelectionMenu(player)
+                (args, player) -> openModeMenu(player)
         );
 
         handler.<Player>register(
                 "view",
-                "Spectate an ongoing 1v1, or return to the lobby if spectating.",
+                "Spectate an ongoing match, or return to the lobby if spectating.",
                 (args, player) -> handleViewCommand(player)
         );
 
@@ -97,14 +139,15 @@ final class DuelCommands {
 
         handler.<Player>register(
                 "restart",
-                "Commentator/admin: restart the 1v1 you are spectating with a fresh map.",
+                "Commentator/admin: restart the match you are spectating with a fresh map.",
                 (args, player) -> handleRestartCommand(player)
         );
     }
 
     /**
-     * Drops any selection menu or outstanding challenge that involves a player
-     * who just left, so stale UUIDs never accumulate or resolve to a ghost.
+     * Drops any menu state, outstanding challenge or draft that involves a
+     * player who just left, so stale UUIDs never accumulate or resolve to a
+     * ghost. A draft is cancelled entirely because its rosters are broken.
      */
     void handlePlayerLeave(Player player) {
         if (player == null) {
@@ -117,20 +160,77 @@ final class DuelCommands {
         challengerByOpponentUuid.remove(uuid);
         challengerByOpponentUuid.values().removeIf(uuid::equals);
         viewTargetsByViewerUuid.remove(uuid);
+
+        for (MatchDraft draft :
+                new ArrayList<>(draftsByChallengerUuid.values())) {
+            if (draft.involves(uuid)) {
+                cancelDraft(
+                        draft,
+                        PlayerNameFormatter.displayName(player)
+                                + "[scarlet] left the server"
+                );
+            }
+        }
     }
 
-    private void openSelectionMenu(Player player) {
+    private void openModeMenu(Player player) {
         if (player == null) {
             return;
         }
 
         if (!duelManager.isConfigured()) {
             player.sendMessage(
-                    "[scarlet]The 1v1 server is not set up yet. Ask an admin.[]"
+                    "[scarlet]The match server is not set up yet. Ask an admin.[]"
             );
             return;
         }
 
+        Call.menu(
+                player.con,
+                modeMenuId,
+                "[accent]Play",
+                "Select a game mode.",
+                new String[][]{
+                        {"1v1", "Teams"},
+                        {"FFA", "Training"},
+                        {"Sandbox"},
+                        {"[red]Cancel"}
+                }
+        );
+    }
+
+    private void handleModeSelection(Player player, int option) {
+        if (player == null || option < 0 || option >= MODE_MENU_OPTIONS.length) {
+            return;
+        }
+
+        MatchMode mode = MODE_MENU_OPTIONS[option];
+
+        switch (mode) {
+            case ONE_VS_ONE -> openSelectionMenu(player);
+            case TEAMS, FFA -> beginDraft(player, mode);
+            case TRAINING, SANDBOX -> startSoloMatch(player, mode);
+        }
+    }
+
+    /**
+     * Starts a Training or Sandbox session immediately: the requester is the
+     * only rostered player, so there is nobody to pick or invite.
+     */
+    private void startSoloMatch(Player player, MatchMode mode) {
+        List<List<Player>> rosters = new ArrayList<>();
+        rosters.add(List.of(player));
+
+        if (!duelManager.requestMatch(mode, rosters)) {
+            player.sendMessage(
+                    "[scarlet]All match servers are busy right now. Try again shortly.[]"
+            );
+        }
+    }
+
+    // --- 1v1 (unchanged flow: pick one opponent, accept/decline) ---
+
+    private void openSelectionMenu(Player player) {
         List<Player> opponents = otherOnlinePlayers(player);
 
         if (opponents.isEmpty()) {
@@ -247,19 +347,431 @@ final class DuelCommands {
           hosting. Spawning happens off the main thread, so this returns right
           away; a false result means no free worker slot is available.
          */
-        if (!duelManager.requestDuel(challenger, opponent)) {
+        List<List<Player>> rosters = new ArrayList<>();
+        rosters.add(List.of(challenger));
+        rosters.add(List.of(opponent));
+
+        if (!duelManager.requestMatch(MatchMode.ONE_VS_ONE, rosters)) {
             challenger.sendMessage(
-                    "[scarlet]All 1v1 servers are busy right now. Try again shortly.[]"
+                    "[scarlet]All match servers are busy right now. Try again shortly.[]"
             );
             opponent.sendMessage(
-                    "[scarlet]All 1v1 servers are busy right now. Try again shortly.[]"
+                    "[scarlet]All match servers are busy right now. Try again shortly.[]"
             );
         }
     }
 
+    // --- Teams / FFA drafts (pick menus only, no typed input) ---
+
+    private void beginDraft(Player challenger, MatchMode mode) {
+        if (otherOnlinePlayers(challenger).isEmpty()) {
+            challenger.sendMessage("[scarlet]No other players are online.[]");
+            return;
+        }
+
+        // Starting a fresh draft supersedes any previous one by the same
+        // challenger, including invites still pending from it.
+        draftChallengerByInviteeUuid.values()
+                .removeIf(challenger.uuid()::equals);
+
+        MatchDraft draft = new MatchDraft(mode, challenger.uuid());
+        draftsByChallengerUuid.put(challenger.uuid(), draft);
+        openPickMenu(challenger, draft);
+    }
+
+    private void openPickMenu(Player challenger, MatchDraft draft) {
+        List<String> candidates = new ArrayList<>();
+
+        for (Player candidate : otherOnlinePlayers(challenger)) {
+            if (!draft.involves(candidate.uuid())) {
+                candidates.add(candidate.uuid());
+            }
+        }
+
+        draft.candidateUuids = candidates;
+
+        List<String[]> rows = new ArrayList<>();
+        List<String> currentRow = new ArrayList<>();
+
+        for (String uuid : candidates) {
+            Player candidate = onlinePlayerByUuid(uuid);
+            currentRow.add(
+                    candidate == null
+                            ? "?"
+                            : PlayerNameFormatter.displayName(candidate)
+            );
+
+            if (currentRow.size() == SELECTION_MENU_COLUMNS) {
+                rows.add(currentRow.toArray(new String[0]));
+                currentRow.clear();
+            }
+        }
+
+        if (!currentRow.isEmpty()) {
+            rows.add(currentRow.toArray(new String[0]));
+        }
+
+        // Footer buttons on their own full-width rows: Next team (Teams mode
+        // only, hidden once the safety cap is reached), Done, Cancel.
+        if (showsNextTeamButton(draft)) {
+            rows.add(new String[]{"[accent]Next team"});
+        }
+
+        rows.add(new String[]{"[green]Done - send invites"});
+        rows.add(new String[]{"[red]Cancel"});
+
+        String title = draft.mode == MatchMode.TEAMS
+                ? "[accent]Teams - Team " + draft.teams.size()
+                : "[accent]FFA";
+
+        String instruction = switch (draft.mode) {
+            case TEAMS -> {
+                String base = draft.teams.size() == 1
+                        ? "Pick extra players for Team 1 (your team)."
+                        : "Pick the players of Team " + draft.teams.size()
+                        + ". Uneven teams are allowed.";
+
+                yield showsNextTeamButton(draft)
+                        ? base + "\nNext team starts Team "
+                        + (draft.teams.size() + 1)
+                        + "; Done sends the invites."
+                        : base + "\nTeam limit reached - Done sends the invites.";
+            }
+            default ->
+                    "Pick as many players as you want, then press Done.";
+        };
+
+        Call.menu(
+                challenger.con,
+                pickMenuId,
+                title,
+                instruction + "\n\n" + rosterSummary(draft),
+                rows.toArray(new String[0][])
+        );
+    }
+
     /**
-     * On a duel worker /view returns a spectator to the lobby (and refuses the
-     * two duelists). On the hub it opens the menu of matches to spectate.
+     * True while the Teams pick menu offers the Next team button; hidden at
+     * the {@link #MAX_TEAMS} cap, which shifts the Done/Cancel indices up.
+     */
+    private static boolean showsNextTeamButton(MatchDraft draft) {
+        return draft.mode == MatchMode.TEAMS
+                && draft.teams.size() < MAX_TEAMS;
+    }
+
+    private void handlePickSelection(Player challenger, int option) {
+        if (challenger == null) {
+            return;
+        }
+
+        MatchDraft draft = draftsByChallengerUuid.get(challenger.uuid());
+
+        if (draft == null || draft.inviting) {
+            return;
+        }
+
+        int candidateCount = draft.candidateUuids.size();
+        boolean nextShown = showsNextTeamButton(draft);
+        int nextIndex = nextShown ? candidateCount : -1;
+        int doneIndex = candidateCount + (nextShown ? 1 : 0);
+        int cancelIndex = doneIndex + 1;
+
+        if (option < 0 || option > cancelIndex) {
+            return;
+        }
+
+        if (option < candidateCount) {
+            String pickedUuid = draft.candidateUuids.get(option);
+
+            if (onlinePlayerByUuid(pickedUuid) == null) {
+                challenger.sendMessage(
+                        "[scarlet]That player is no longer online.[]"
+                );
+            } else {
+                draft.currentRoster().add(pickedUuid);
+            }
+
+            openPickMenu(challenger, draft);
+            return;
+        }
+
+        if (option == cancelIndex) {
+            draftsByChallengerUuid.remove(challenger.uuid());
+            challenger.sendMessage("[lightgray]Match setup cancelled.[]");
+            return;
+        }
+
+        if (option == nextIndex) {
+            // A new team may only start once the current one has a player.
+            if (draft.currentRoster().isEmpty()) {
+                challenger.sendMessage(
+                        "[scarlet]Pick at least one player for Team "
+                                + draft.teams.size() + " first.[]"
+                );
+            } else {
+                draft.teams.add(new ArrayList<>());
+            }
+
+            openPickMenu(challenger, draft);
+            return;
+        }
+
+        // Done. An empty trailing team was never used - drop it quietly.
+        if (
+                draft.mode == MatchMode.TEAMS
+                        && draft.teams.size() > 1
+                        && draft.currentRoster().isEmpty()
+        ) {
+            draft.teams.remove(draft.teams.size() - 1);
+        }
+
+        if (draft.mode == MatchMode.TEAMS && draft.teams.size() < 2) {
+            challenger.sendMessage(
+                    "[scarlet]Pick at least one player for Team 2.[]"
+            );
+            openPickMenu(challenger, draft);
+            return;
+        }
+
+        if (
+                draft.mode == MatchMode.FFA
+                        && draft.teams.get(0).size() < 2
+        ) {
+            challenger.sendMessage(
+                    "[scarlet]Pick at least one other player for the FFA.[]"
+            );
+            openPickMenu(challenger, draft);
+            return;
+        }
+
+        sendDraftInvites(challenger, draft);
+    }
+
+    private void sendDraftInvites(Player challenger, MatchDraft draft) {
+        List<String> inviteeUuids = new ArrayList<>();
+
+        for (String uuid : draft.allPickedUuids()) {
+            if (!uuid.equals(draft.challengerUuid)) {
+                inviteeUuids.add(uuid);
+            }
+        }
+
+        for (String uuid : inviteeUuids) {
+            if (onlinePlayerByUuid(uuid) == null) {
+                cancelDraft(draft, "a picked player left the server");
+                return;
+            }
+        }
+
+        draft.inviting = true;
+        draft.pendingInviteeUuids.addAll(inviteeUuids);
+
+        String summary = rosterSummary(draft);
+
+        for (String uuid : inviteeUuids) {
+            Player invitee = onlinePlayerByUuid(uuid);
+            draftChallengerByInviteeUuid.put(uuid, draft.challengerUuid);
+
+            Call.menu(
+                    invitee.con,
+                    inviteMenuId,
+                    "[accent]" + draft.mode.label() + " invite",
+                    PlayerNameFormatter.displayName(challenger)
+                            + "[white] invited you to a "
+                            + draft.mode.label() + " match.\n\n" + summary,
+                    new String[][]{
+                            {"[green]Accept"},
+                            {"[red]Decline"}
+                    }
+            );
+        }
+
+        challenger.sendMessage(
+                "[accent]Invites sent. Waiting for "
+                        + inviteeUuids.size()
+                        + " player(s) to accept...[]"
+        );
+    }
+
+    private void handleInviteResponse(Player invitee, int option) {
+        if (invitee == null) {
+            return;
+        }
+
+        String challengerUuid =
+                draftChallengerByInviteeUuid.remove(invitee.uuid());
+
+        if (challengerUuid == null) {
+            return;
+        }
+
+        MatchDraft draft = draftsByChallengerUuid.get(challengerUuid);
+
+        if (draft == null || !draft.inviting) {
+            invitee.sendMessage(
+                    "[scarlet]That match was already cancelled.[]"
+            );
+            return;
+        }
+
+        if (option != ACCEPT_OPTION) {
+            cancelDraft(
+                    draft,
+                    PlayerNameFormatter.displayName(invitee)
+                            + "[scarlet] declined"
+            );
+            return;
+        }
+
+        draft.pendingInviteeUuids.remove(invitee.uuid());
+
+        Player challenger = onlinePlayerByUuid(challengerUuid);
+
+        if (challenger != null && !draft.pendingInviteeUuids.isEmpty()) {
+            challenger.sendMessage(
+                    "[accent]"
+                            + PlayerNameFormatter.displayName(invitee)
+                            + "[accent] accepted ("
+                            + draft.pendingInviteeUuids.size()
+                            + " left).[]"
+            );
+        }
+
+        if (draft.pendingInviteeUuids.isEmpty()) {
+            launchDraft(draft);
+        }
+    }
+
+    private void launchDraft(MatchDraft draft) {
+        List<List<Player>> rosters = new ArrayList<>();
+
+        if (draft.mode == MatchMode.TEAMS) {
+            for (List<String> team : draft.teams) {
+                List<Player> roster = resolveRoster(team);
+
+                if (roster == null) {
+                    cancelDraft(draft, "a player left the server");
+                    return;
+                }
+
+                rosters.add(roster);
+            }
+        } else {
+            for (String uuid : draft.teams.get(0)) {
+                Player player = onlinePlayerByUuid(uuid);
+
+                if (player == null) {
+                    cancelDraft(draft, "a player left the server");
+                    return;
+                }
+
+                rosters.add(List.of(player));
+            }
+        }
+
+        draftsByChallengerUuid.remove(draft.challengerUuid);
+
+        if (!duelManager.requestMatch(draft.mode, rosters)) {
+            for (List<Player> roster : rosters) {
+                for (Player player : roster) {
+                    player.sendMessage(
+                            "[scarlet]All match servers are busy right now. Try again shortly.[]"
+                    );
+                }
+            }
+        }
+    }
+
+    /**
+     * Resolves a roster of UUIDs to online players, or null if anyone left.
+     */
+    private List<Player> resolveRoster(List<String> uuids) {
+        List<Player> players = new ArrayList<>();
+
+        for (String uuid : uuids) {
+            Player player = onlinePlayerByUuid(uuid);
+
+            if (player == null) {
+                return null;
+            }
+
+            players.add(player);
+        }
+
+        return players;
+    }
+
+    /**
+     * Cancels a draft and tells everyone who was part of it why.
+     */
+    private void cancelDraft(MatchDraft draft, String reason) {
+        draftsByChallengerUuid.remove(draft.challengerUuid);
+
+        draftChallengerByInviteeUuid.values()
+                .removeIf(draft.challengerUuid::equals);
+
+        for (String uuid : draft.allPickedUuids()) {
+            Player member = onlinePlayerByUuid(uuid);
+
+            if (member != null) {
+                member.sendMessage(
+                        "[scarlet]The " + draft.mode.label()
+                                + " match was cancelled: " + reason + ".[]"
+                );
+            }
+        }
+    }
+
+    private String rosterSummary(MatchDraft draft) {
+        if (draft.mode == MatchMode.TEAMS) {
+            StringBuilder summary = new StringBuilder();
+
+            for (int index = 0; index < draft.teams.size(); index++) {
+                if (index > 0) {
+                    summary.append("\n");
+                }
+
+                summary.append("Team ")
+                        .append(index + 1)
+                        .append(": ")
+                        .append(namesOf(draft.teams.get(index)));
+            }
+
+            return summary.toString();
+        }
+
+        return "Players: " + namesOf(draft.teams.get(0));
+    }
+
+    private String namesOf(List<String> uuids) {
+        if (uuids.isEmpty()) {
+            return "[lightgray](nobody yet)[]";
+        }
+
+        StringBuilder names = new StringBuilder();
+
+        for (String uuid : uuids) {
+            Player player = onlinePlayerByUuid(uuid);
+
+            if (!names.isEmpty()) {
+                names.append("[white], ");
+            }
+
+            names.append(
+                    player == null
+                            ? "[lightgray](left)[]"
+                            : PlayerNameFormatter.displayName(player)
+            );
+        }
+
+        return names.toString();
+    }
+
+    // --- spectating ---
+
+    /**
+     * On a match worker /view returns a spectator to the lobby (and refuses
+     * the participants). On the hub it opens the menu of matches to spectate.
      */
     private void handleViewCommand(Player player) {
         if (player == null) {
@@ -269,7 +781,7 @@ final class DuelCommands {
         if (worker.isActive()) {
             if (worker.isParticipant(player.uuid())) {
                 player.sendMessage(
-                        "[scarlet]You are in this 1v1; you cannot leave it with /v.[]"
+                        "[scarlet]You are in this match; you cannot leave it with /v.[]"
                 );
                 return;
             }
@@ -284,7 +796,7 @@ final class DuelCommands {
     private void openViewMenu(Player player) {
         if (!duelManager.isConfigured()) {
             player.sendMessage(
-                    "[scarlet]The 1v1 server is not set up yet. Ask an admin.[]"
+                    "[scarlet]The match server is not set up yet. Ask an admin.[]"
             );
             return;
         }
@@ -292,7 +804,7 @@ final class DuelCommands {
         List<DuelServerManager.ActiveDuel> duels = duelManager.activeDuels();
 
         if (duels.isEmpty()) {
-            player.sendMessage("[scarlet]No 1v1 matches are in progress.[]");
+            player.sendMessage("[scarlet]No matches are in progress.[]");
             return;
         }
 
@@ -301,9 +813,7 @@ final class DuelCommands {
 
         for (DuelServerManager.ActiveDuel duel : duels) {
             targetPorts.add(duel.port());
-            rows.add(new String[]{
-                    duel.player1Display() + " [white]vs[] " + duel.player2Display()
-            });
+            rows.add(new String[]{duel.label()});
         }
 
         rows.add(new String[]{"[red]Cancel"});
@@ -312,7 +822,7 @@ final class DuelCommands {
         Call.menu(
                 player.con,
                 viewMenuId,
-                "[accent]Spectate a 1v1",
+                "[accent]Spectate a match",
                 "Select a match to watch. Use /v again to return to the lobby.",
                 rows.toArray(new String[0][])
         );
@@ -342,8 +852,8 @@ final class DuelCommands {
     }
 
     /**
-     * Restarts the current duel with a fresh map. Only on a worker, only for an
-     * admin or commentator, and only for a spectator (never one of the players).
+     * Restarts the current match with a fresh map. Only on a worker, only for
+     * an admin or commentator, and only for a spectator (never a participant).
      */
     private void handleRestartCommand(Player player) {
         if (player == null) {
@@ -352,21 +862,21 @@ final class DuelCommands {
 
         if (!worker.isActive()) {
             player.sendMessage(
-                    "[scarlet]/restart can only be used on a 1v1 server.[]"
+                    "[scarlet]/restart can only be used on a match server.[]"
             );
             return;
         }
 
         if (!rankManager.canRestartMatches(player)) {
             player.sendMessage(
-                    "[scarlet]Only commentators and admins can restart a 1v1.[]"
+                    "[scarlet]Only commentators and admins can restart a match.[]"
             );
             return;
         }
 
         if (worker.isParticipant(player.uuid())) {
             player.sendMessage(
-                    "[scarlet]You can't restart a 1v1 you are playing in.[]"
+                    "[scarlet]You can't restart a match you are playing in.[]"
             );
             return;
         }
@@ -397,5 +907,65 @@ final class DuelCommands {
         return Groups.player.find(
                 player -> player != null && player.uuid().equals(uuid)
         );
+    }
+
+    /**
+     * A Teams/FFA match being assembled by one challenger: first the pick
+     * phase (menus adding players to the rosters), then the invite phase
+     * (waiting for every picked player to accept).
+     */
+    private static final class MatchDraft {
+        final MatchMode mode;
+        final String challengerUuid;
+
+        /**
+         * The rosters being built. Teams mode grows this list one team at a
+         * time via the Next team button (the challenger starts on Team 1, up
+         * to {@link #MAX_TEAMS} teams); FFA keeps everyone in the single
+         * first list. Picks always go into the last team.
+         */
+        final List<List<String>> teams = new ArrayList<>();
+
+        boolean inviting = false;
+
+        /**
+         * Candidates of the most recently shown pick menu, so the selected
+         * option index resolves against exactly what the challenger saw.
+         */
+        List<String> candidateUuids = new ArrayList<>();
+        final Set<String> pendingInviteeUuids = new HashSet<>();
+
+        MatchDraft(MatchMode mode, String challengerUuid) {
+            this.mode = mode;
+            this.challengerUuid = challengerUuid;
+
+            List<String> firstTeam = new ArrayList<>();
+            firstTeam.add(challengerUuid);
+            teams.add(firstTeam);
+        }
+
+        List<String> currentRoster() {
+            return teams.get(teams.size() - 1);
+        }
+
+        List<String> allPickedUuids() {
+            List<String> all = new ArrayList<>();
+
+            for (List<String> team : teams) {
+                all.addAll(team);
+            }
+
+            return all;
+        }
+
+        boolean involves(String uuid) {
+            for (List<String> team : teams) {
+                if (team.contains(uuid)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 }

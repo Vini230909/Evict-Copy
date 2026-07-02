@@ -97,13 +97,14 @@ final class DuelServerManager {
     }
 
     /**
-     * Reserves a worker and, once it is hosting, redirects both players to it.
-     * Returns false immediately if the feature is unconfigured or all worker
-     * slots are in use; the caller is responsible for notifying the players in
-     * that case.
+     * Reserves a worker and, once it is hosting, redirects every rostered
+     * player to it. Each inner list is one match team (FFA passes N teams of
+     * one player, Training/Sandbox a single team). Returns false immediately
+     * if the feature is unconfigured or all worker slots are in use; the
+     * caller is responsible for notifying the players in that case.
      */
-    boolean requestDuel(Player challenger, Player opponent) {
-        if (!isConfigured()) {
+    boolean requestMatch(MatchMode mode, List<List<Player>> rosterTeams) {
+        if (!isConfigured() || rosterTeams == null || rosterTeams.isEmpty()) {
             return false;
         }
 
@@ -114,38 +115,74 @@ final class DuelServerManager {
         }
 
         WorkerHandle handle = new WorkerHandle(port);
-        handle.player1Name = challenger.plainName();
-        handle.player1Uuid = challenger.uuid();
-        handle.player1Display = PlayerNameFormatter.displayName(challenger);
-        handle.player2Name = opponent.plainName();
-        handle.player2Uuid = opponent.uuid();
-        handle.player2Display = PlayerNameFormatter.displayName(opponent);
+        handle.mode = mode;
+
+        List<List<String>> rosterUuids = new ArrayList<>();
+
+        for (int teamIndex = 0; teamIndex < rosterTeams.size(); teamIndex++) {
+            List<String> uuids = new ArrayList<>();
+
+            for (Player player : rosterTeams.get(teamIndex)) {
+                uuids.add(player.uuid());
+                handle.participants.add(new Participant(
+                        player.uuid(),
+                        player.plainName(),
+                        PlayerNameFormatter.displayName(player),
+                        teamIndex
+                ));
+            }
+
+            rosterUuids.add(uuids);
+        }
+
+        handle.label = matchLabel(mode, rosterTeams);
         handle.adminUuids = snapshotAdminUuids();
         handle.bannedBlocks = snapshotBannedBlockNames();
         workers.put(port, handle);
 
-        String challengerUuid = challenger.uuid();
-        String opponentUuid = opponent.uuid();
-
-        spawnExecutor.submit(() -> spawnAndRedirect(
-                handle,
-                challengerUuid,
-                opponentUuid
-        ));
+        spawnExecutor.submit(() -> spawnAndRedirect(handle, rosterUuids));
 
         scheduleLifetimeKill(handle);
         return true;
     }
 
+    /**
+     * Menu/log label for a match, e.g. "A vs B", "A, B vs C (Teams)",
+     * "A vs B vs C (FFA)" or "A (Training)".
+     */
+    private static String matchLabel(
+            MatchMode mode,
+            List<List<Player>> rosterTeams
+    ) {
+        List<String> teamNames = new ArrayList<>();
+
+        for (List<Player> roster : rosterTeams) {
+            List<String> names = new ArrayList<>();
+
+            for (Player player : roster) {
+                names.add(PlayerNameFormatter.displayName(player));
+            }
+
+            teamNames.add(String.join("[white], []", names));
+        }
+
+        String label = String.join(" [white]vs[] ", teamNames);
+
+        if (mode != MatchMode.ONE_VS_ONE) {
+            label += " [lightgray](" + mode.label() + ")[]";
+        }
+
+        return label;
+    }
+
     private void spawnAndRedirect(
             WorkerHandle handle,
-            String challengerUuid,
-            String opponentUuid
+            List<List<String>> rosterUuids
     ) {
         try {
             File workerDir = provisionWorkerDir(handle);
 
-            writeHandshake(workerDir, challengerUuid, opponentUuid);
+            writeHandshake(workerDir, handle.mode, rosterUuids);
 
             Process process = launchWorker(workerDir, handle.port);
             handle.process = process;
@@ -165,12 +202,12 @@ final class DuelServerManager {
                             "[EvictMapGenerator] 1v1: worker on port @ did not become ready; releasing slot.",
                             handle.port
                     );
-                    notifyFailure(challengerUuid, opponentUuid);
+                    notifyFailure(handle);
                     destroyWorker(handle);
                     return;
                 }
 
-                redirectPlayers(handle, challengerUuid, opponentUuid);
+                redirectPlayers(handle);
             });
         } catch (Exception exception) {
             Log.err(
@@ -180,49 +217,51 @@ final class DuelServerManager {
             );
 
             Core.app.post(() -> {
-                notifyFailure(challengerUuid, opponentUuid);
+                notifyFailure(handle);
                 destroyWorker(handle);
             });
         }
     }
 
-    private void redirectPlayers(
-            WorkerHandle handle,
-            String challengerUuid,
-            String opponentUuid
-    ) {
+    private void redirectPlayers(WorkerHandle handle) {
         if (workers.get(handle.port) != handle) {
             // Slot was already released (e.g. the worker died) meanwhile.
             return;
         }
 
-        Player challenger = onlinePlayer(challengerUuid);
-        Player opponent = onlinePlayer(opponentUuid);
+        List<Player> players = new ArrayList<>();
 
-        if (challenger == null || opponent == null) {
-            Log.info(
-                    "[EvictMapGenerator] 1v1: a player left before the worker on port @ was ready; releasing slot.",
-                    handle.port
-            );
-            destroyWorker(handle);
-            return;
+        for (Participant participant : handle.participants) {
+            Player player = onlinePlayer(participant.uuid());
+
+            if (player == null) {
+                Log.info(
+                        "[EvictMapGenerator] 1v1: a player left before the worker on port @ was ready; releasing slot.",
+                        handle.port
+                );
+                notifyFailure(handle);
+                destroyWorker(handle);
+                return;
+            }
+
+            players.add(player);
         }
 
         String ip = settings.duelServerIp();
 
-        challenger.sendMessage("[accent]Connecting you to your 1v1...[]");
-        opponent.sendMessage("[accent]Connecting you to your 1v1...[]");
-
-        activeDuelByUuid.put(challengerUuid, handle.port);
-        activeDuelByUuid.put(opponentUuid, handle.port);
-
-        Call.connect(challenger.con, ip, handle.port);
-        Call.connect(opponent.con, ip, handle.port);
+        for (Player player : players) {
+            player.sendMessage(
+                    "[accent]Connecting you to your "
+                            + handle.mode.label() + "...[]"
+            );
+            activeDuelByUuid.put(player.uuid(), handle.port);
+            Call.connect(player.con, ip, handle.port);
+        }
 
         Log.info(
-                "[EvictMapGenerator] 1v1: sent @ and @ to duel worker @:@.",
-                challenger.plainName(),
-                opponent.plainName(),
+                "[EvictMapGenerator] 1v1: sent @ player(s) to @ worker @:@.",
+                players.size(),
+                handle.mode.id(),
                 ip,
                 handle.port
         );
@@ -251,9 +290,38 @@ final class DuelServerManager {
             return false;
         }
 
-        player.sendMessage("[accent]Returning you to your 1v1...[]");
+        // A knocked-out FFA player is free: the worker lists them as "out"
+        // in its status file, so they join the normal hub round instead.
+        Properties status = readStatus(port);
+
+        if (
+                status != null
+                        && isListedUuid(
+                        status.getProperty("out", ""),
+                        player.uuid()
+                )
+        ) {
+            activeDuelByUuid.remove(player.uuid());
+            return false;
+        }
+
+        player.sendMessage("[accent]Returning you to your match...[]");
         Call.connect(player.con, settings.duelServerIp(), port);
         return true;
+    }
+
+    private static boolean isListedUuid(String packed, String uuid) {
+        if (packed == null || packed.isBlank()) {
+            return false;
+        }
+
+        for (String entry : packed.split(",")) {
+            if (entry.trim().equals(uuid)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -267,11 +335,7 @@ final class DuelServerManager {
 
         for (WorkerHandle handle : workers.values()) {
             if (isOngoing(handle)) {
-                duels.add(new ActiveDuel(
-                        handle.port,
-                        handle.player1Display,
-                        handle.player2Display
-                ));
+                duels.add(new ActiveDuel(handle.port, handle.label));
             }
         }
 
@@ -369,14 +433,12 @@ final class DuelServerManager {
                 );
             } else {
                 Log.info(
-                        "[EvictMapGenerator]   port @ [@] uptime=@ players: @ (@) vs @ (@)",
+                        "[EvictMapGenerator]   port @ [@] uptime=@ mode=@ players: @",
                         handle.port,
                         alive ? "starting" : "closing",
                         uptime,
-                        handle.player1Name,
-                        handle.player1Uuid,
-                        handle.player2Name,
-                        handle.player2Uuid
+                        handle.mode.id(),
+                        participantSummary(handle)
                 );
             }
         }
@@ -444,20 +506,15 @@ final class DuelServerManager {
         return String.format("%02d:%02d:%02d", hours, minutes, secs);
     }
 
-    private void notifyFailure(String challengerUuid, String opponentUuid) {
-        Player challenger = onlinePlayer(challengerUuid);
-        Player opponent = onlinePlayer(opponentUuid);
+    private void notifyFailure(WorkerHandle handle) {
+        for (Participant participant : handle.participants) {
+            Player player = onlinePlayer(participant.uuid());
 
-        if (challenger != null) {
-            challenger.sendMessage(
-                    "[scarlet]The 1v1 server could not be started. Try again.[]"
-            );
-        }
-
-        if (opponent != null) {
-            opponent.sendMessage(
-                    "[scarlet]The 1v1 server could not be started. Try again.[]"
-            );
+            if (player != null) {
+                player.sendMessage(
+                        "[scarlet]The match server could not be started. Try again.[]"
+                );
+            }
         }
     }
 
@@ -632,12 +689,23 @@ final class DuelServerManager {
 
     private void writeHandshake(
             File workerDir,
-            String player1Uuid,
-            String player2Uuid
+            MatchMode mode,
+            List<List<String>> rosterUuids
     ) throws IOException {
         Properties properties = new Properties();
-        properties.setProperty("player1.uuid", player1Uuid);
-        properties.setProperty("player2.uuid", player2Uuid);
+        properties.setProperty("mode", mode.id());
+        properties.setProperty(
+                "team.count",
+                Integer.toString(rosterUuids.size())
+        );
+
+        for (int index = 0; index < rosterUuids.size(); index++) {
+            properties.setProperty(
+                    "team." + (index + 1),
+                    String.join(",", rosterUuids.get(index))
+            );
+        }
+
         properties.setProperty("hub.ip", settings.duelServerIp());
         properties.setProperty("hub.port", Integer.toString(hubPort()));
 
@@ -645,6 +713,23 @@ final class DuelServerManager {
                      new FileOutputStream(new File(workerDir, "duel.properties"))) {
             properties.store(output, "Evict duel handshake");
         }
+    }
+
+    private static String participantSummary(WorkerHandle handle) {
+        StringBuilder summary = new StringBuilder();
+
+        for (Participant participant : handle.participants) {
+            if (!summary.isEmpty()) {
+                summary.append(", ");
+            }
+
+            summary.append(participant.plainName())
+                    .append(" (")
+                    .append(participant.uuid())
+                    .append(")");
+        }
+
+        return summary.isEmpty() ? "(none)" : summary.toString();
     }
 
     /**
@@ -675,9 +760,13 @@ final class DuelServerManager {
 
             String winnerUuid = properties.getProperty("winner.uuid", "").trim();
             String loserUuid = properties.getProperty("loser.uuid", "").trim();
+            MatchMode mode = MatchMode.fromId(
+                    properties.getProperty("mode", handle.mode.id()).trim()
+            );
 
             Log.info(
-                    "[EvictMapGenerator] 1v1 result on port @: winner=@ loser=@ reason=@.",
+                    "[EvictMapGenerator] @ result on port @: winner=@ loser=@ reason=@.",
+                    mode.id(),
                     port,
                     winnerUuid.isEmpty() ? "?" : winnerUuid,
                     loserUuid.isEmpty() ? "?" : loserUuid,
@@ -687,13 +776,46 @@ final class DuelServerManager {
             // Credit the ranked record and match history on the hub's database;
             // the worker runs in its own process and cannot reach this DB. The
             // colored display names captured at match start let /history render
-            // them later without the players being online.
-            playerDataManager.recordRankedResult(
-                    winnerUuid,
-                    displayNameFor(handle, winnerUuid),
-                    loserUuid,
-                    displayNameFor(handle, loserUuid)
-            );
+            // them later without the players being online. Only 1v1 is ranked;
+            // Teams and FFA are stored as unranked history entries listing
+            // everyone; Training and Sandbox leave no history at all.
+            if (mode.ranked()) {
+                playerDataManager.recordRankedResult(
+                        winnerUuid,
+                        displayNameFor(handle, winnerUuid),
+                        loserUuid,
+                        displayNameFor(handle, loserUuid)
+                );
+            } else if (mode == MatchMode.FFA && !winnerUuid.isEmpty()) {
+                List<String> participantUuids = new ArrayList<>();
+                List<String> participantNames = new ArrayList<>();
+
+                for (Participant participant : handle.participants) {
+                    participantUuids.add(participant.uuid());
+                    participantNames.add(participant.display());
+                }
+
+                playerDataManager.recordFfaMatch(
+                        winnerUuid,
+                        displayNameFor(handle, winnerUuid),
+                        participantUuids,
+                        participantNames
+                );
+            } else if (mode == MatchMode.TEAMS && !winnerUuid.isEmpty()) {
+                List<String> winnerUuids = splitUuidList(
+                        properties.getProperty("winner.uuids", winnerUuid)
+                );
+                List<String> loserUuids = splitUuidList(
+                        properties.getProperty("loser.uuids", loserUuid)
+                );
+
+                playerDataManager.recordTeamsMatch(
+                        winnerUuids,
+                        teamLabelFor(handle, winnerUuids),
+                        loserUuids,
+                        losingTeamsLabel(handle, winnerUuids)
+                );
+            }
         } catch (Exception exception) {
             Log.err(
                     "[EvictMapGenerator] Could not read the duel result on port "
@@ -708,15 +830,85 @@ final class DuelServerManager {
     }
 
     private static String displayNameFor(WorkerHandle handle, String uuid) {
-        if (uuid.equals(handle.player1Uuid)) {
-            return handle.player1Display;
-        }
-
-        if (uuid.equals(handle.player2Uuid)) {
-            return handle.player2Display;
+        for (Participant participant : handle.participants) {
+            if (participant.uuid().equals(uuid)) {
+                return participant.display();
+            }
         }
 
         return uuid;
+    }
+
+    private static List<String> splitUuidList(String packed) {
+        List<String> uuids = new ArrayList<>();
+
+        if (packed == null || packed.isBlank()) {
+            return uuids;
+        }
+
+        for (String entry : packed.split(",")) {
+            String trimmed = entry.trim();
+
+            if (!trimmed.isEmpty()) {
+                uuids.add(trimmed);
+            }
+        }
+
+        return uuids;
+    }
+
+    /**
+     * Display label of one Teams roster, e.g. "A[white], []B".
+     */
+    private static String teamLabelFor(
+            WorkerHandle handle,
+            List<String> uuids
+    ) {
+        StringBuilder label = new StringBuilder();
+
+        for (String uuid : uuids) {
+            if (!label.isEmpty()) {
+                label.append("[white], []");
+            }
+
+            label.append(displayNameFor(handle, uuid));
+        }
+
+        return label.isEmpty() ? "?" : label.toString();
+    }
+
+    /**
+     * Labels of every losing roster (kept as separate teams), joined with
+     * "vs" so a 3+ team match renders as e.g. "C vs D, E" in /history.
+     */
+    private static String losingTeamsLabel(
+            WorkerHandle handle,
+            List<String> winnerUuids
+    ) {
+        Map<Integer, List<String>> loserTeams = new LinkedHashMap<>();
+
+        for (Participant participant : handle.participants) {
+            if (!winnerUuids.contains(participant.uuid())) {
+                loserTeams
+                        .computeIfAbsent(
+                                participant.teamIndex(),
+                                ignored -> new ArrayList<>()
+                        )
+                        .add(participant.uuid());
+            }
+        }
+
+        StringBuilder label = new StringBuilder();
+
+        for (List<String> team : loserTeams.values()) {
+            if (!label.isEmpty()) {
+                label.append(" [white]vs[] ");
+            }
+
+            label.append(teamLabelFor(handle, team));
+        }
+
+        return label.isEmpty() ? "?" : label.toString();
     }
 
     private File workerDir(int port) {
@@ -870,12 +1062,24 @@ final class DuelServerManager {
     }
 
     /**
-     * One in-progress duel exposed to the /view menu.
+     * One in-progress match exposed to the /view menu.
      */
     record ActiveDuel(
             int port,
-            String player1Display,
-            String player2Display
+            String label
+    ) {
+    }
+
+    /**
+     * One rostered player of a match, snapshotted at spawn so names render
+     * even after the player disconnects. teamIndex groups Teams rosters for
+     * the /history labels.
+     */
+    private record Participant(
+            String uuid,
+            String plainName,
+            String display,
+            int teamIndex
     ) {
     }
 
@@ -883,12 +1087,9 @@ final class DuelServerManager {
         final int port;
         final long spawnedAtMillis = System.currentTimeMillis();
         volatile Process process;
-        String player1Name = "?";
-        String player1Uuid = "";
-        String player1Display = "?";
-        String player2Name = "?";
-        String player2Uuid = "";
-        String player2Display = "?";
+        MatchMode mode = MatchMode.ONE_VS_ONE;
+        String label = "?";
+        final List<Participant> participants = new ArrayList<>();
         List<String> adminUuids = new ArrayList<>();
         List<String> bannedBlocks = new ArrayList<>();
 

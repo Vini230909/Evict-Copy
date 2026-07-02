@@ -3,10 +3,15 @@ package vini.evictmap;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 
 import arc.Core;
 import arc.util.Align;
@@ -20,9 +25,10 @@ import mindustry.gen.Groups;
 import mindustry.gen.Player;
 
 /**
- * Worker-side 1v1 referee. Only active when launched as a duel worker
- * (-Devict.duelWorker=true); on the hub this class does nothing.
- * - reads the hub handshake (the two player UUIDs + hub address),
+ * Worker-side match referee (1v1, Teams, FFA, Training and Sandbox). Only
+ * active when launched as a duel worker (-Devict.duelWorker=true); on the hub
+ * this class does nothing.
+ * - reads the hub handshake (mode + roster team UUIDs + hub address),
  * - lets the world run for a brief settle window when a duelist joins so their
  * unit spawns at their core and their client camera snaps onto it, then
  * freezes the match (an instant freeze leaves the camera stuck at the map
@@ -73,8 +79,34 @@ final class DuelWorker {
 
     private String hubIp = "";
     private int hubPort = 6567;
-    private String player1Uuid = "";
-    private String player2Uuid = "";
+
+    /**
+     * The mode and rosters this worker referees, from the hub handshake. Each
+     * inner list is one match team; FFA rosters are N teams of one player,
+     * Training/Sandbox a single team.
+     */
+    private MatchMode mode = MatchMode.ONE_VS_ONE;
+    private final List<List<String>> rosterTeams = new ArrayList<>();
+    private final Set<String> participantUuids = new LinkedHashSet<>();
+
+    /**
+     * Eliminated FFA/Teams players. They stay in the rosters (so the final
+     * result still records them as losers) but stop being participants: the
+     * start gate and disconnect pause ignore them, /v lets them leave, and
+     * the hub reads this list from status.properties to stop bouncing them
+     * back.
+     */
+    private final Set<String> outUuids = new LinkedHashSet<>();
+
+    /**
+     * Whether a leaving participant is still in the running (their team still
+     * holds hexes). Eliminated players leaving must not pause the match.
+     */
+    private Predicate<Player> stillCompeting;
+
+    void setStillCompeting(Predicate<Player> predicate) {
+        this.stillCompeting = predicate;
+    }
 
     private boolean handshakeLoaded = false;
     private boolean startFreezeApplied = false;
@@ -111,12 +143,112 @@ final class DuelWorker {
     }
 
     /**
-     * True for the two duelists named in the handshake; everyone else spectates.
+     * True for the match players named in the handshake (plus spectators later
+     * promoted into a sandbox); everyone else spectates.
      */
     boolean isParticipant(String uuid) {
         return handshakeLoaded
                 && uuid != null
-                && (uuid.equals(player1Uuid) || uuid.equals(player2Uuid));
+                && participantUuids.contains(uuid);
+    }
+
+    MatchMode matchMode() {
+        return mode;
+    }
+
+    boolean isSandboxMode() {
+        return active && handshakeLoaded && mode == MatchMode.SANDBOX;
+    }
+
+    /**
+     * How many personal teams must exist before a victory may be decided.
+     * Solo modes return an unreachable minimum: Training and Sandbox never end
+     * through an Evict victory, only through /die or everyone leaving.
+     */
+    int victoryMinimumTeams() {
+        if (mode.solo()) {
+            return Integer.MAX_VALUE;
+        }
+
+        return Math.max(2, rosterTeams.size());
+    }
+
+    /**
+     * The handshake teammates of a participant (their roster team minus
+     * themselves). TeamManager uses this to keep a Teams roster on one
+     * Mindustry team.
+     */
+    List<String> rosterTeammates(String uuid) {
+        List<String> teammates = new ArrayList<>();
+
+        if (uuid == null) {
+            return teammates;
+        }
+
+        for (List<String> roster : rosterTeams) {
+            if (roster.contains(uuid)) {
+                for (String memberUuid : roster) {
+                    if (!memberUuid.equals(uuid)) {
+                        teammates.add(memberUuid);
+                    }
+                }
+
+                return teammates;
+            }
+        }
+
+        return teammates;
+    }
+
+    /**
+     * Marks an eliminated FFA/Teams player as out. They keep their roster
+     * spot (so the final result still lists them as a loser) but are no
+     * longer a participant: the match stops waiting for them, /v returns
+     * them to the lobby, and the hub stops bouncing them back into this
+     * worker.
+     */
+    void demoteToSpectator(String uuid) {
+        if (!active || uuid == null) {
+            return;
+        }
+
+        if (participantUuids.remove(uuid)) {
+            outUuids.add(uuid);
+        }
+    }
+
+    /**
+     * A commentator /restart begins a fresh match, so previously eliminated
+     * FFA players rejoin the roster as full participants. Must run before the
+     * map regenerates so the team assignment picks them up again.
+     */
+    void restoreOutParticipants() {
+        if (!active || outUuids.isEmpty()) {
+            return;
+        }
+
+        participantUuids.addAll(outUuids);
+        outUuids.clear();
+    }
+
+    /**
+     * Promotes a spectator into the sandbox: they become a full participant
+     * on the sandbox roster (chat, no /v exit, counted by the start gate).
+     */
+    void addSandboxParticipant(Player player) {
+        if (
+                !active
+                        || !handshakeLoaded
+                        || mode != MatchMode.SANDBOX
+                        || player == null
+                        || rosterTeams.isEmpty()
+        ) {
+            return;
+        }
+
+        if (participantUuids.add(player.uuid())) {
+            rosterTeams.get(0).add(player.uuid());
+        }
     }
 
     /**
@@ -247,16 +379,20 @@ final class DuelWorker {
             return;
         }
 
-        String uuid = player.uuid();
-
-        if (uuid.equals(player1Uuid) || uuid.equals(player2Uuid)) {
+        // Only pause for participants who are still competing: in FFA an
+        // already-eliminated player leaving must not freeze the match for
+        // everyone else.
+        if (
+                isParticipant(player.uuid())
+                        && (stillCompeting == null || stillCompeting.test(player))
+        ) {
             beginDisconnectPause(player);
         }
     }
 
     /**
      * Wired in place of the hub's normal round-victory handler when running as
-     * a worker. Records the result and returns both players to the hub.
+     * a worker. Records the result and returns every player to the hub.
      */
     void handleVictory(Team winner) {
         if (!active || resolved) {
@@ -275,30 +411,142 @@ final class DuelWorker {
         hideHud();
 
         Player winnerPlayer = Groups.player.find(
-                player -> player != null && player.team() == winner
+                player -> player != null
+                        && player.team() == winner
+                        && isParticipant(player.uuid())
         );
 
-        String winnerUuid = winnerPlayer != null ? winnerPlayer.uuid() : "";
-        String loserUuid = otherPlayerUuid(winnerUuid);
+        List<String> winnerUuids = winnerPlayer != null
+                ? rosterOf(winnerPlayer.uuid())
+                : new ArrayList<>();
 
-        writeResult(winnerUuid, loserUuid);
+        // Losers come from the full rosters, not the live participant set, so
+        // FFA players who were eliminated (and demoted) earlier still count.
+        List<String> loserUuids = new ArrayList<>();
 
-        String winnerName =
-                winnerPlayer != null
-                        ? PlayerNameFormatter.displayName(winnerPlayer)
-                        : "The winner";
+        for (List<String> roster : rosterTeams) {
+            for (String uuid : roster) {
+                if (!winnerUuids.contains(uuid)) {
+                    loserUuids.add(uuid);
+                }
+            }
+        }
+
+        writeResult(winnerUuids, loserUuids, "victory");
+
+        String winnerName = winnerPlayer != null
+                ? winningRosterNames(winnerUuids, winnerPlayer)
+                : "The winner";
 
         Call.sendMessage(
                 "[accent]" + winnerName
-                        + "[accent] won the 1v1. Returning to the lobby in 5 seconds...[]"
+                        + "[accent] won the " + mode.label()
+                        + ". Returning to the lobby in 5 seconds...[]"
         );
 
         Time.run(RETURN_DELAY_TICKS, this::returnPlayersToHub);
 
         Log.info(
-                "[EvictMapGenerator] Duel result: winner=@ loser=@.",
-                winnerUuid.isEmpty() ? "unknown" : winnerUuid,
-                loserUuid.isEmpty() ? "unknown" : loserUuid
+                "[EvictMapGenerator] Match result (@): winner=@ loser=@.",
+                mode.id(),
+                winnerUuids.isEmpty() ? "unknown" : String.join(",", winnerUuids),
+                loserUuids.isEmpty() ? "unknown" : String.join(",", loserUuids)
+        );
+    }
+
+    /**
+     * The whole roster team a participant belongs to (including themselves).
+     */
+    private List<String> rosterOf(String uuid) {
+        for (List<String> roster : rosterTeams) {
+            if (roster.contains(uuid)) {
+                return new ArrayList<>(roster);
+            }
+        }
+
+        List<String> single = new ArrayList<>();
+
+        if (uuid != null && !uuid.isEmpty()) {
+            single.add(uuid);
+        }
+
+        return single;
+    }
+
+    /**
+     * Display names of the winning roster, preferring live player names and
+     * falling back to the one member known to be online.
+     */
+    private String winningRosterNames(
+            List<String> winnerUuids,
+            Player fallback
+    ) {
+        StringBuilder names = new StringBuilder();
+
+        for (String uuid : winnerUuids) {
+            Player member = Groups.player.find(
+                    player -> player != null && player.uuid().equals(uuid)
+            );
+
+            if (member == null) {
+                continue;
+            }
+
+            if (!names.isEmpty()) {
+                names.append("[accent], ");
+            }
+
+            names.append(PlayerNameFormatter.displayName(member));
+        }
+
+        return names.isEmpty()
+                ? PlayerNameFormatter.displayName(fallback)
+                : names.toString();
+    }
+
+    /**
+     * Ends a Training or Sandbox session after its team surrendered with /die.
+     * There is no winner and nothing is recorded; everyone returns to the hub.
+     */
+    void handleParticipantSurrender(Player player) {
+        if (
+                !active
+                        || resolved
+                        || !mode.solo()
+                        || player == null
+                        || !isParticipant(player.uuid())
+        ) {
+            return;
+        }
+
+        resolved = true;
+
+        if (pausedForDisconnect) {
+            pausedForDisconnect = false;
+            disconnectSerial++;
+            resumeGame();
+        }
+
+        hideHud();
+
+        List<String> allRosterUuids = new ArrayList<>();
+
+        for (List<String> roster : rosterTeams) {
+            allRosterUuids.addAll(roster);
+        }
+
+        writeResult(new ArrayList<>(), allRosterUuids, "surrender");
+
+        Call.sendMessage(
+                "[accent]The " + mode.label()
+                        + " session is over. Returning to the lobby in 5 seconds...[]"
+        );
+
+        Time.run(RETURN_DELAY_TICKS, this::returnPlayersToHub);
+
+        Log.info(
+                "[EvictMapGenerator] @ session ended by /die.",
+                mode.label()
         );
     }
 
@@ -356,7 +604,10 @@ final class DuelWorker {
             return;
         }
 
-        showHud("[accent]1v1 starts in [scarlet]" + remaining + "[]");
+        showHud(
+                "[accent]" + mode.label()
+                        + " starts in [scarlet]" + remaining + "[]"
+        );
     }
 
     /**
@@ -415,7 +666,7 @@ final class DuelWorker {
         hideHud();
         pauseGame();
         startFreezeApplied = true;
-        Call.sendMessage("[accent]The 1v1 was restarted by a commentator.[]");
+        Call.sendMessage("[accent]The match was restarted by a commentator.[]");
 
         if (bothPlayersPresent()) {
             startCountdown();
@@ -503,7 +754,7 @@ final class DuelWorker {
         disconnectSerial++;
         resumeGame();
         hideHud();
-        Call.sendMessage("[accent]Both players are back. Resuming the 1v1![]");
+        Call.sendMessage("[accent]Everyone is back. Resuming the match![]");
     }
 
     private void scheduleShutdownIfEmpty(int seconds) {
@@ -551,6 +802,7 @@ final class DuelWorker {
         });
 
         properties.setProperty("players", players.toString());
+        properties.setProperty("out", String.join(",", outUuids));
 
         try (FileOutputStream output = new FileOutputStream(STATUS_FILE)) {
             properties.store(output, "Evict duel status");
@@ -584,11 +836,17 @@ final class DuelWorker {
     }
 
     private boolean bothPlayersPresent() {
-        if (!handshakeLoaded) {
+        if (!handshakeLoaded || participantUuids.isEmpty()) {
             return false;
         }
 
-        return isOnline(player1Uuid) && isOnline(player2Uuid);
+        for (String uuid : participantUuids) {
+            if (!isOnline(uuid)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private boolean isOnline(String uuid) {
@@ -599,18 +857,6 @@ final class DuelWorker {
         return Groups.player.find(
                 player -> player != null && player.uuid().equals(uuid)
         ) != null;
-    }
-
-    private String otherPlayerUuid(String uuid) {
-        if (uuid.equals(player1Uuid)) {
-            return player2Uuid;
-        }
-
-        if (uuid.equals(player2Uuid)) {
-            return player1Uuid;
-        }
-
-        return "";
     }
 
     private void loadHandshake() {
@@ -629,16 +875,56 @@ final class DuelWorker {
 
             hubIp = properties.getProperty("hub.ip", "").trim();
             hubPort = parsePort(properties.getProperty("hub.port"), 6567);
-            player1Uuid = properties.getProperty("player1.uuid", "").trim();
-            player2Uuid = properties.getProperty("player2.uuid", "").trim();
-            handshakeLoaded = true;
+            mode = MatchMode.fromId(
+                    properties.getProperty("mode", "1v1").trim()
+            );
+
+            rosterTeams.clear();
+            participantUuids.clear();
+
+            int teamCount = parsePort(properties.getProperty("team.count"), 0);
+
+            for (int index = 1; index <= teamCount; index++) {
+                List<String> roster = new ArrayList<>();
+
+                for (
+                        String uuid :
+                        properties.getProperty("team." + index, "").split(",")
+                ) {
+                    String trimmed = uuid.trim();
+
+                    if (!trimmed.isEmpty() && participantUuids.add(trimmed)) {
+                        roster.add(trimmed);
+                    }
+                }
+
+                if (!roster.isEmpty()) {
+                    rosterTeams.add(roster);
+                }
+            }
+
+            // Handshake written by an older hub: two 1v1 duelists.
+            if (rosterTeams.isEmpty()) {
+                for (String key : new String[]{"player1.uuid", "player2.uuid"}) {
+                    String uuid = properties.getProperty(key, "").trim();
+
+                    if (!uuid.isEmpty() && participantUuids.add(uuid)) {
+                        List<String> roster = new ArrayList<>();
+                        roster.add(uuid);
+                        rosterTeams.add(roster);
+                    }
+                }
+            }
+
+            handshakeLoaded = !participantUuids.isEmpty();
 
             Log.info(
-                    "[EvictMapGenerator] Duel worker loaded handshake: hub=@:@ players=@ vs @.",
+                    "[EvictMapGenerator] Duel worker loaded handshake: hub=@:@ mode=@ teams=@ players=@.",
                     hubIp,
                     hubPort,
-                    player1Uuid,
-                    player2Uuid
+                    mode.id(),
+                    rosterTeams.size(),
+                    String.join(",", participantUuids)
             );
         } catch (Exception exception) {
             Log.err(
@@ -648,11 +934,24 @@ final class DuelWorker {
         }
     }
 
-    private void writeResult(String winnerUuid, String loserUuid) {
+    private void writeResult(
+            List<String> winnerUuids,
+            List<String> loserUuids,
+            String reason
+    ) {
         Properties properties = new Properties();
-        properties.setProperty("winner.uuid", winnerUuid);
-        properties.setProperty("loser.uuid", loserUuid);
-        properties.setProperty("reason", "victory");
+        properties.setProperty("mode", mode.id());
+        properties.setProperty(
+                "winner.uuid",
+                winnerUuids.isEmpty() ? "" : winnerUuids.get(0)
+        );
+        properties.setProperty(
+                "loser.uuid",
+                loserUuids.isEmpty() ? "" : loserUuids.get(0)
+        );
+        properties.setProperty("winner.uuids", String.join(",", winnerUuids));
+        properties.setProperty("loser.uuids", String.join(",", loserUuids));
+        properties.setProperty("reason", reason);
 
         try (FileOutputStream output = new FileOutputStream(RESULT_FILE)) {
             properties.store(output, "Evict duel result");
