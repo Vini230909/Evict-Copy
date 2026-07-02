@@ -81,14 +81,6 @@ public final class TeamManager {
     private static final int EXTINCTION_HEX_RADIUS_SQUARED =
             EXTINCTION_HEX_RADIUS * EXTINCTION_HEX_RADIUS;
 
-    /**
-     * Floor changes are network-synchronized. Sending thousands of floor
-     * packets in one tick can disconnect clients, so collapsed terrain is
-     * streamed gradually.
-     */
-    private static final int DEFAULT_EXTINCTION_TERRAIN_CHANGES_PER_TICK = 120;
-    private static final int MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK = 4096;
-
     private static final int CENTER_ROW = ROWS / 2;
     private static final int CENTER_COL = SHORT_ROW_COLS / 2;
 
@@ -104,7 +96,6 @@ public final class TeamManager {
             new HashMap<>();
     private final Set<Integer> usedPersonalTeamIds = new HashSet<>();
     private final Set<Integer> eliminatedTeamIds = new HashSet<>();
-    private final ArrayDeque<Tile> extinctionTerrainQueue = new ArrayDeque<>();
 
     private final Cons<Team> victoryHandler;
     private InviteManager inviteManager;
@@ -148,8 +139,6 @@ public final class TeamManager {
      * uses it to demote knocked-out players to spectators.
      */
     private Cons<Team> duelEliminationHandler;
-    private int extinctionTerrainChangesPerTick =
-            DEFAULT_EXTINCTION_TERRAIN_CHANGES_PER_TICK;
     private long roundSerial = 0L;
     private long roundStartedAtMillis = 0L;
 
@@ -192,7 +181,6 @@ public final class TeamManager {
         maximumOwnedHexesByTeamId.clear();
         usedPersonalTeamIds.clear();
         eliminatedTeamIds.clear();
-        extinctionTerrainQueue.clear();
 
         for (HexSlot slot : slots) {
             slot.ownerTeamId = FALLEN_TEAM_ID;
@@ -1148,7 +1136,7 @@ public final class TeamManager {
         return true;
     }
 
-    void checkVictory() {
+    public void checkVictory() {
         if (
                 !roundActive
                         || resetting
@@ -1508,148 +1496,6 @@ public final class TeamManager {
         );
     }
 
-    public void collapseHexesForExtinction(List<HexSlot> collapsingSlots) {
-        if (
-                !roundActive
-                        || resetting
-                        || collapsingSlots == null
-                        || collapsingSlots.isEmpty()
-        ) {
-            return;
-        }
-
-        Set<HexSlot> collapsing = new HashSet<>(collapsingSlots);
-
-        /*
-         * Logical ownership is removed first. CoreChangeEvents emitted while
-         * deleting blocks therefore cannot start normal capture timers.
-         */
-        for (HexSlot slot : collapsing) {
-            slot.extinct = true;
-            slot.capturing = false;
-            slot.ownerTeamId = Team.derelict.id;
-            slot.pendingCaptureTeamId = Team.derelict.id;
-        }
-
-        List<Tile> buildingCenters = new ArrayList<>();
-        List<Unit> unitsToKill = new ArrayList<>();
-        List<Tile> terrainTiles = new ArrayList<>();
-
-        for (Tile tile : Vars.world.tiles) {
-            if (
-                    tile != null
-                            && belongsToCollapsedHex(tile.x, tile.y, collapsing)
-            ) {
-                terrainTiles.add(tile);
-
-                if (
-                        tile.build != null
-                                && tile.isCenter()
-                ) {
-                    buildingCenters.add(tile);
-                }
-            }
-        }
-
-        Groups.unit.each(unit -> {
-            if (
-                    unit != null
-                            && unit.isAdded()
-                            && belongsToCollapsedHex(
-                            unit.tileX(),
-                            unit.tileY(),
-                            collapsing
-                    )
-            ) {
-                unitsToKill.add(unit);
-            }
-        });
-
-        suppressCoreChangeEvents = true;
-
-        try {
-            for (Tile tile : buildingCenters) {
-                if (tile.build != null && tile.isCenter()) {
-                    tile.removeNet();
-                }
-            }
-
-            for (Unit unit : unitsToKill) {
-                if (unit.isAdded()) {
-                    unit.kill();
-                }
-            }
-
-            /*
-             * Queue floor removal instead of synchronizing every tile in one
-             * tick. Buildings and cores are already gone immediately, so the
-             * logical collapse still happens at once while visual terrain
-             * removal is streamed safely across later ticks.
-             */
-            extinctionTerrainQueue.addAll(terrainTiles);
-        } finally {
-            suppressCoreChangeEvents = false;
-        }
-
-        eliminateCorelessTeamsThroughExtinction();
-        checkVictory();
-
-        Log.info(
-                "[EvictMapGenerator] Extinction collapsed @ hexes, removed @ building centers, killed @ units and queued @ terrain tiles for throttled removal.",
-                collapsing.size(),
-                buildingCenters.size(),
-                unitsToKill.size(),
-                terrainTiles.size()
-        );
-    }
-
-    void updateExtinctionTerrainQueue() {
-        if (extinctionTerrainQueue.isEmpty()) {
-            return;
-        }
-
-        int changed = 0;
-
-        suppressCoreChangeEvents = true;
-
-        try {
-            while (
-                    changed < extinctionTerrainChangesPerTick
-                            && !extinctionTerrainQueue.isEmpty()
-            ) {
-                Tile tile = extinctionTerrainQueue.removeFirst();
-
-                if (tile.block() != Blocks.air) {
-                    tile.removeNet();
-                }
-
-                tile.setFloorNet(Blocks.space);
-                changed++;
-            }
-        } finally {
-            suppressCoreChangeEvents = false;
-        }
-    }
-
-    int extinctionTerrainChangesPerTick() {
-        return extinctionTerrainChangesPerTick;
-    }
-
-    void setExtinctionTerrainChangesPerTick(int amount) {
-        if (
-                amount < 1
-                        || amount > MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK
-        ) {
-            throw new IllegalArgumentException(
-                    "Extinction terrain changes per tick must be between 1 and "
-                            + MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK
-                            + "."
-            );
-        }
-
-        extinctionTerrainChangesPerTick = amount;
-    }
-
     public void finishExtinction(Team winner) {
         if (
                 !roundActive
@@ -1688,7 +1534,7 @@ public final class TeamManager {
         victoryHandler.get(winner);
     }
 
-    private void eliminateCorelessTeamsThroughExtinction() {
+    public void eliminateCorelessTeamsThroughExtinction() {
         List<Integer> teamIds = new ArrayList<>(personalTeamCreationOrder);
 
         for (int teamId : teamIds) {
@@ -1765,17 +1611,16 @@ public final class TeamManager {
         return false;
     }
 
-    private boolean belongsToCollapsedHex(
+    public boolean belongsToCollapsedHex(
             int tileX,
             int tileY,
-            Set<HexSlot> collapsing
+            HexSlot collapsing
     ) {
         HexSlot closest = closestHexSlotIncludingExtinct(tileX, tileY);
 
         return closest != null
-                && collapsing.contains(closest)
-                && squaredDistance(tileX, tileY, closest)
-                <= EXTINCTION_HEX_RADIUS_SQUARED;
+                && collapsing == closest
+                && squaredDistance(tileX, tileY, closest) <= EXTINCTION_HEX_RADIUS_SQUARED;
     }
 
     private HexSlot closestHexSlotIncludingExtinct(int tileX, int tileY) {
@@ -1847,11 +1692,11 @@ public final class TeamManager {
         return coreCapture;
     }
 
-    boolean isCaptureSuppressed() {
+    public boolean isCaptureSuppressed() {
         return suppressCoreChangeEvents;
     }
 
-    void setCaptureSuppressed(boolean suppressed) {
+    public void setCaptureSuppressed(boolean suppressed) {
         suppressCoreChangeEvents = suppressed;
     }
 
@@ -2101,9 +1946,9 @@ public final class TeamManager {
         final int y;
         final int protectedSides;
 
-        int ownerTeamId = FALLEN_TEAM_ID;
-        boolean capturing = false;
-        int pendingCaptureTeamId = FALLEN_TEAM_ID;
+        public int ownerTeamId = FALLEN_TEAM_ID;
+        public boolean capturing = false;
+        public int pendingCaptureTeamId = FALLEN_TEAM_ID;
         public boolean extinct = false;
 
         HexSlot(

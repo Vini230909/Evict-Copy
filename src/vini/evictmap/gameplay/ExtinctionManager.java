@@ -1,10 +1,18 @@
 package vini.evictmap.gameplay;
 
 import arc.util.Log;
+import mindustry.Vars;
+import mindustry.content.Blocks;
+import mindustry.game.Team;
 import mindustry.gen.Call;
+import mindustry.gen.Groups;
+import mindustry.gen.Unit;
+import mindustry.world.Tile;
 import vini.evictmap.TeamManager;
 
-import java.util.Collections;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Handles the Extinction event.
@@ -55,6 +63,8 @@ public final class ExtinctionManager implements GameplayManagerInterface {
 
     private final TeamManager teamManager;
 
+    private final ArrayDeque<TeamManager.HexSlot> queueOfHexesToCollapse = new ArrayDeque<>();
+
     /**
      * Current state
      */
@@ -78,6 +88,47 @@ public final class ExtinctionManager implements GameplayManagerInterface {
     @Override
     public void update() {
         if (!teamManager.isRoundActiveForSystems()) return;
+
+        if(!queueOfHexesToCollapse.isEmpty()) {
+            TeamManager.HexSlot slot = queueOfHexesToCollapse.pollFirst();
+
+            slot.extinct = true;
+            slot.capturing = false;
+            slot.ownerTeamId = Team.derelict.id;
+            slot.pendingCaptureTeamId = Team.derelict.id;
+
+            List<Tile> buildingCentersToRemove = new ArrayList<>();
+            List<Unit> unitsToKill = new ArrayList<>();
+            List<Tile> terrainTilesToAdd = new ArrayList<>();
+
+            for(Tile tile : Vars.world.tiles)
+                if(teamManager.belongsToCollapsedHex(tile.x, tile.y, slot)) {
+                    terrainTilesToAdd.addLast(tile);
+                    if(tile.build != null && tile.isCenter())
+                        buildingCentersToRemove.add(tile);
+                }
+
+            Groups.unit.each(unit -> {
+                if(unit.isAdded() && teamManager.belongsToCollapsedHex(unit.tileX(), unit.tileY(), slot))
+                    unitsToKill.add(unit);
+            });
+
+            boolean oldCaptureSuppressed = teamManager.isCaptureSuppressed();
+            teamManager.setCaptureSuppressed(true);
+
+            try {
+                for (Tile tile : buildingCentersToRemove) tile.removeNet();
+                for (Unit unit : unitsToKill) unit.kill();
+                for (Tile tile : terrainTilesToAdd) tile.setFloorNet(Blocks.space);
+            } finally {
+                teamManager.setCaptureSuppressed(oldCaptureSuppressed);
+            }
+
+            teamManager.eliminateCorelessTeamsThroughExtinction();
+            teamManager.checkVictory();
+
+            return;
+        }
 
         float elapsedSeconds = teamManager.roundRuntimeMillis() / 1000f;
 
@@ -138,6 +189,6 @@ public final class ExtinctionManager implements GameplayManagerInterface {
     private void collapseRing(int ringNumber) {
         for (TeamManager.HexSlot slot : teamManager.slots())
             if (!slot.extinct && teamManager.gridDistanceFromCenter(slot) >= ringNumber)
-                teamManager.collapseHexesForExtinction(Collections.singletonList(slot));
+                queueOfHexesToCollapse.addLast(slot);
     }
 }

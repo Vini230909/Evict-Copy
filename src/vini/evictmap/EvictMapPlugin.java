@@ -148,9 +148,6 @@ public class EvictMapPlugin extends Plugin {
             installDuelChatFilter();
         }
         RulesApplier.applyRules();
-        teamManager.setExtinctionTerrainChangesPerTick(
-                settings.extinctionTerrainChangesPerTick()
-        );
         teamManager.setInviteManager(inviteManager);
         teamManager.setDuelMode(duelWorker);
 
@@ -358,7 +355,6 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Events.run(Trigger.update, () -> {
-            teamManager.updateExtinctionTerrainQueue();
             attritionManager.update();
             attackManager.update();
             extinctionManager.update();

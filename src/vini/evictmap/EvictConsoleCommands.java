@@ -158,11 +158,6 @@ final class EvictConsoleCommands {
                     );
 
                     Log.info(
-                            "[EvictMapGenerator] extinction terrain changes per tick: @",
-                            teamManager.extinctionTerrainChangesPerTick()
-                    );
-
-                    Log.info(
                             "[EvictMapGenerator] unit build speed: @",
                             settings.compactUnitBuildSpeedSettings()
                     );
@@ -180,53 +175,6 @@ final class EvictConsoleCommands {
                 "evictteamstatus",
                 "Show Fallen-team spawn assignment status for the current round.",
                 args -> teamManager.logStatus()
-        );
-
-        handler.register(
-                "evictextinctiontiles",
-                "[amount]",
-                "Show or persist how many collapsed terrain tiles are converted to space per tick.",
-                args -> {
-                    if (args.length == 0) {
-                        Log.info(
-                                "[EvictMapGenerator] Extinction terrain changes per tick: @",
-                                teamManager.extinctionTerrainChangesPerTick()
-                        );
-
-                        return;
-                    }
-
-                    if (args.length != 1) {
-                        Log.err(
-                                "[EvictMapGenerator] Use: evictextinctiontiles <amount>"
-                        );
-
-                        return;
-                    }
-
-                    try {
-                        int amount = Integer.parseInt(args[0]);
-
-                        settings.setExtinctionTerrainChangesPerTick(amount);
-                        teamManager.setExtinctionTerrainChangesPerTick(
-                                settings.extinctionTerrainChangesPerTick()
-                        );
-
-                        Log.info(
-                                "[EvictMapGenerator] Extinction terrain changes per tick saved as @. This applies immediately and after restart.",
-                                teamManager.extinctionTerrainChangesPerTick()
-                        );
-                    } catch (NumberFormatException exception) {
-                        Log.err(
-                                "[EvictMapGenerator] Extinction terrain changes per tick must be a whole number."
-                        );
-                    } catch (IllegalArgumentException exception) {
-                        Log.err(
-                                "[EvictMapGenerator] @",
-                                exception.getMessage()
-                        );
-                    }
-                }
         );
 
         handler.register(
