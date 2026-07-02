@@ -1,5 +1,6 @@
 package vini.evictmap;
 
+import arc.Core;
 import arc.Events;
 import arc.util.CommandHandler;
 import arc.util.Log;
@@ -36,6 +37,7 @@ public class EvictMapPlugin extends Plugin {
     private static final float CONNECTED_PLAYER_SCAN_INITIAL_DELAY_TICKS = 1f;
     private static final float CONNECTED_PLAYER_SCAN_INTERVAL_TICKS = 15f;
     private static final int CONNECTED_PLAYER_SCAN_ATTEMPTS = 120;
+    private static final float ADVERTISED_COUNT_REFRESH_TICKS = 120f;
 
     private final EvictRuntimeState runtime = new EvictRuntimeState();
     private final EvictSettings settings = new EvictSettings();
@@ -115,6 +117,7 @@ public class EvictMapPlugin extends Plugin {
 
     private boolean refreshingWorldIndexes = false;
     private long connectedPlayerScanSerial = 0L;
+    private int advertisedPlayerCount = -1;
 
     /**
      * When launched with -Devict.duelWorker=true this process is a spawned 1v1
@@ -268,9 +271,35 @@ public class EvictMapPlugin extends Plugin {
             extinctionManager.update();
         });
 
+        // Only the hub is listed in the multiplayer browser; keep its advertised
+        // count folded with the players inside the duel workers.
+        if (!duelWorker) {
+            scheduleAdvertisedPlayerCountRefresh();
+        }
+
         Log.info(
                 "[EvictMapGenerator] Loaded. Code revision 1.2.32. Use 'evictstatus' for commands and current settings."
         );
+    }
+
+    /**
+     * Keeps the hub's advertised player count in sync with the FFA hub plus the
+     * players in every duel worker. Mindustry's server ping reports the
+     * "totalPlayers" setting, falling back to the live hub count, so folding the
+     * duel players in makes the multiplayer menu show everyone online.
+     */
+    private void scheduleAdvertisedPlayerCountRefresh() {
+        Time.run(ADVERTISED_COUNT_REFRESH_TICKS, () -> {
+            int total =
+                    Groups.player.size() + duelServerManager.connectedDuelPlayers();
+
+            if (total != advertisedPlayerCount) {
+                advertisedPlayerCount = total;
+                Core.settings.put("totalPlayers", total);
+            }
+
+            scheduleAdvertisedPlayerCountRefresh();
+        });
     }
 
     @Override

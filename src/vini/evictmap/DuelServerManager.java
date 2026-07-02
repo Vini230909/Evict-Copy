@@ -280,6 +280,29 @@ final class DuelServerManager {
     }
 
     /**
+     * Players currently connected across all duel workers (duelists plus /view
+     * spectators), read from each worker's status.properties. Lets the hub fold
+     * duel players into its advertised player count. Main-thread only.
+     */
+    int connectedDuelPlayers() {
+        int total = 0;
+
+        for (WorkerHandle handle : workers.values()) {
+            Properties status = readStatus(handle.port);
+
+            if (status != null) {
+                total += countPlayers(status.getProperty("players", ""));
+            }
+        }
+
+        return total;
+    }
+
+    private static int countPlayers(String packed) {
+        return packed == null || packed.isBlank() ? 0 : packed.split(",").length;
+    }
+
+    /**
      * Connects a viewer to an ongoing duel worker as a spectator. Returns false
      * if that match is no longer available so the caller can tell the player.
      */
