@@ -6,6 +6,7 @@ import mindustry.Vars;
 import mindustry.content.Blocks;
 import mindustry.content.UnitTypes;
 import mindustry.entities.bullet.BulletType;
+import mindustry.game.Team;
 import mindustry.type.UnitType;
 import mindustry.type.Weapon;
 import mindustry.world.Block;
@@ -42,7 +43,7 @@ public final class RulesApplier {
      */
     public static void applyRules() {
         // Set the parameter to true to enable god mode (hacks) for development.
-        applyVarsStateRulesChanges(false);
+        applyVarsStateRulesChanges();
         applyBannedBlocks();
         if (rulesAppliedAtLeastOnce) return;
         applyBuildingDamageModifiers();
@@ -54,10 +55,10 @@ public final class RulesApplier {
 
     /**
      * Apply changes to {@link Vars#state#rules}.
-     *
-     * @param isGodMode If god mode (hacks) should be enabled or disabled. For development.
      */
-    private static void applyVarsStateRulesChanges(boolean isGodMode) {
+    private static void applyVarsStateRulesChanges() {
+        boolean isGodMode = System.getProperty("god-mode", "false").equals("true");
+        if (isGodMode) Log.info("God Mode enabled");
         Vars.state.rules.allowEditRules = isGodMode;
         Vars.state.rules.infiniteResources = isGodMode;
         Vars.state.rules.waveTimer = false;
@@ -76,6 +77,13 @@ public final class RulesApplier {
         Vars.state.rules.blockDamageMultiplier = 0.5f;
         Vars.state.rules.buildSpeedMultiplier = 1.4f;
         Vars.state.rules.cleanupDeadTeams = false;
+
+        for (Team team : Team.all) {
+            Vars.state.rules.teams.get(team).cheat = isGodMode;
+            Vars.state.rules.teams.get(team).fillItems = isGodMode;
+            Vars.state.rules.teams.get(team).infiniteResources = isGodMode;
+        }
+
         Vars.state.rules.defaultTeam = TeamManager.FALLEN_TEAM;
         Vars.state.rules.loadout.clear();
     }
