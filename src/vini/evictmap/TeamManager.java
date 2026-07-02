@@ -1799,7 +1799,7 @@ public final class TeamManager {
      * builds this once per refresh so each unit reuses the same core positions
      * instead of re-reading the world tile for every slot on every unit.
      */
-    List<CoreBuild> snapshotSlotCores() {
+    public List<CoreBuild> snapshotSlotCores() {
         List<CoreBuild> cores = new ArrayList<>();
 
         for (HexSlot slot : slots) {
@@ -1819,7 +1819,7 @@ public final class TeamManager {
      * their delayed Core Shard actually exists, which is why the snapshot only
      * contains cores that already exist on a slot.
      */
-    CoreBuild closestEnemyCore(Unit unit, List<CoreBuild> coreSnapshot) {
+    public CoreBuild closestEnemyCore(Unit unit, List<CoreBuild> coreSnapshot) {
         if (unit == null) {
             return null;
         }

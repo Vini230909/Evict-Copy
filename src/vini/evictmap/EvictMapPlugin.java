@@ -20,6 +20,7 @@ import mindustry.mod.Plugin;
 import mindustry.world.blocks.storage.CoreBlock;
 import vini.evictmap.gameplay.AttritionManager;
 import vini.evictmap.gameplay.ExtinctionManager;
+import vini.evictmap.gameplay.AttackManager;
 
 import java.util.HashMap;
 
@@ -59,8 +60,8 @@ public class EvictMapPlugin extends Plugin {
     private final ExtinctionManager extinctionManager =
             new ExtinctionManager(teamManager);
 
-    private final FullassaultManager fullassaultManager =
-            new FullassaultManager(
+    private final AttackManager attackManager =
+            new AttackManager(
                     teamManager
             );
 
@@ -89,7 +90,7 @@ public class EvictMapPlugin extends Plugin {
 
     private final EvictClientCommands clientCommands =
             new EvictClientCommands(
-                    fullassaultManager,
+                    attackManager,
                     inviteManager,
                     roundEndCommands,
                     roundTimeCommands,
@@ -273,7 +274,7 @@ public class EvictMapPlugin extends Plugin {
         Events.run(Trigger.update, () -> {
             teamManager.updateExtinctionTerrainQueue();
             attritionManager.update();
-            fullassaultManager.update();
+            attackManager.update();
             extinctionManager.update();
         });
 
@@ -323,7 +324,7 @@ public class EvictMapPlugin extends Plugin {
         teamManager.beginRound(round.slots(), seed);
         playerDataManager.beginFfaRound();
         attritionManager.beginRound();
-        fullassaultManager.beginRound();
+        attackManager.beginRound();
         inviteManager.beginRound();
         roundEndCommands.beginRound();
         roundTimeCommands.beginRound();
