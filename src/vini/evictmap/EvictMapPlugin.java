@@ -144,7 +144,7 @@ public class EvictMapPlugin extends Plugin {
 
             installDuelChatFilter();
         }
-        RulesApplier.applyRules(false);
+        RulesApplier.applyRules();
         teamManager.setExtinctionTerrainChangesPerTick(
                 settings.extinctionTerrainChangesPerTick()
         );
@@ -188,7 +188,7 @@ public class EvictMapPlugin extends Plugin {
                 duelWorkerReferee.begin();
             }
 
-            RulesApplier.applyRules(false);
+            RulesApplier.applyRules();
         });
 
         Events.on(PlayerJoin.class, event -> {

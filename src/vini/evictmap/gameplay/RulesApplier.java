@@ -20,20 +20,31 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * Scales building-fired bullets against buildings only.
- * Unit damage is left untouched because Mindustry applies
- * buildingDamageMultiplier only when the bullet damages a building.
+ * Apply static rules to the map.
+ * <p>
+ * Included are all changes to Vars.state.rules, banned blocks, building damage modifiers,
+ * and core unit damage modifiers. The last two are only applied once per-process, but the first two
+ * must be reapplied every time the map is reloaded (at each PlayEvent).
+ * </p>
  */
 public final class RulesApplier {
-
+    /**
+     * BvB damage multiplier to be used.
+     */
     private static final float BVB_DAMAGE_MULTIPLIER = 0.1f;
-
+    /**
+     * If the rules have been applied at least once before (for building and core unit damage modifiers).
+     */
     private static boolean rulesAppliedAtLeastOnce = false;
 
-    public static void applyRules(boolean isGodMode) {
-        applyVarsStateRulesChanges(isGodMode);
+    /**
+     * Apply the rules to the current game state.
+     */
+    public static void applyRules() {
+        // Set the parameter to true to enable god mode (hacks) for development.
+        applyVarsStateRulesChanges(false);
         applyBannedBlocks();
-        if(rulesAppliedAtLeastOnce) return;
+        if (rulesAppliedAtLeastOnce) return;
         applyBuildingDamageModifiers();
         applyCoreUnitDamageModifiers();
         rulesAppliedAtLeastOnce = true;
@@ -41,6 +52,11 @@ public final class RulesApplier {
         Log.info("[EvictMapGenerator] Applied rules.");
     }
 
+    /**
+     * Apply changes to {@link Vars#state#rules}.
+     *
+     * @param isGodMode If god mode (hacks) should be enabled or disabled. For development.
+     */
     private static void applyVarsStateRulesChanges(boolean isGodMode) {
         Vars.state.rules.allowEditRules = isGodMode;
         Vars.state.rules.infiniteResources = isGodMode;
@@ -64,6 +80,9 @@ public final class RulesApplier {
         Vars.state.rules.loadout.clear();
     }
 
+    /**
+     * Apply banned blocks settings.
+     */
     private static void applyBannedBlocks() {
         Vars.state.rules.bannedBlocks.clear();
 
@@ -83,6 +102,9 @@ public final class RulesApplier {
         Vars.state.rules.bannedBlocks.add(Blocks.tileLogicDisplay);
     }
 
+    /**
+     * Apply building damage modifiers.
+     */
     private static void applyBuildingDamageModifiers() {
         Set<BulletType> visited = new HashSet<>();
         for (Block block : Vars.content.blocks()) {
@@ -99,6 +121,9 @@ public final class RulesApplier {
         }
     }
 
+    /**
+     * Apply core unit damage modifiers.
+     */
     private static void applyCoreUnitDamageModifiers() {
         Set<BulletType> visited = new HashSet<>();
         scaleUnitDamage(0.0f, UnitTypes.alpha, visited);
@@ -107,7 +132,7 @@ public final class RulesApplier {
     }
 
     private static void scaleUnitDamage(float multiplier, UnitType unit, Set<BulletType> visited) {
-        for(Weapon weapon : unit.weapons)
+        for (Weapon weapon : unit.weapons)
             scaleBulletDamage(multiplier, weapon.bullet, visited);
     }
 
@@ -115,8 +140,8 @@ public final class RulesApplier {
         for (BulletType bullet : ammoTypes.values()) scaleBulletDamage(multiplier, bullet, visited);
     }
 
-    private static void scaleBulletDamage(float multiplier, BulletType bullet , Set<BulletType> visited) {
-        if(bullet == null || !visited.add(bullet)) return;
+    private static void scaleBulletDamage(float multiplier, BulletType bullet, Set<BulletType> visited) {
+        if (bullet == null || !visited.add(bullet)) return;
         bullet.buildingDamageMultiplier *= multiplier;
 
         scaleBulletDamage(multiplier, bullet.fragBullet, visited);
