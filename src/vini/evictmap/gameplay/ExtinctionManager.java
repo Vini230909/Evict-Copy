@@ -63,10 +63,22 @@ public final class ExtinctionManager implements GameplayManagerInterface {
 
     private final TeamManager teamManager;
 
+    /**
+     * A queue holding a list of hexes to collapse.
+     * Will be drained at 1 hex per tick when no other work is going on.
+     */
     private final ArrayDeque<TeamManager.HexSlot> queueOfHexesToCollapse = new ArrayDeque<>();
 
+    /**
+     * A queue holding a list of tiles to fill with void (Blocks.space).
+     * Will be drained at {@link ExtinctionManager#EXTINCTION_TILE_FILL_RATE} tiles per tick
+     * when no other work is going on.
+     */
     private final ArrayDeque<Tile> queueOfTilesToFill = new ArrayDeque<>();
 
+    /**
+     * The tile fill rate (in tiles per tick).
+     */
     private static final int EXTINCTION_TILE_FILL_RATE = 128;
 
     /**
