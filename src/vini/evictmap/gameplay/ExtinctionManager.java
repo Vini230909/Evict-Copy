@@ -65,7 +65,7 @@ public final class ExtinctionManager implements GameplayManagerInterface {
 
     private final ArrayDeque<TeamManager.HexSlot> queueOfHexesToCollapse = new ArrayDeque<>();
 
-    private final ArrayDeque<Tile> queueOfTilesToFill = new ArrayDeque<Tile>();
+    private final ArrayDeque<Tile> queueOfTilesToFill = new ArrayDeque<>();
 
     private static final int EXTINCTION_TILE_FILL_RATE = 128;
 
@@ -102,6 +102,8 @@ public final class ExtinctionManager implements GameplayManagerInterface {
                 tile.removeNet();
                 tile.setFloorNet(Blocks.space);
             }
+
+            return;
         }
 
         if(!queueOfHexesToCollapse.isEmpty()) {
