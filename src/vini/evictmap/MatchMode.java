@@ -9,6 +9,15 @@ enum MatchMode {
 
     ONE_VS_ONE("1v1", "1v1"),
     TEAMS("teams", "Teams"),
+
+    /**
+     * Hub-only draft mode: one player pool that is shuffled into a chosen
+     * number of teams once everyone accepted. Never sent over the wire - the
+     * hub launches the shuffled rosters as a regular {@link #TEAMS} match, so
+     * workers and /history treat it exactly like Teams.
+     */
+    RANDOM_TEAMS("random-teams", "Random Teams"),
+
     FFA("ffa", "FFA"),
     TRAINING("training", "Training"),
     SANDBOX("sandbox", "Sandbox");

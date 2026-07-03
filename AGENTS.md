@@ -298,7 +298,8 @@ config/evict-players.db
 ```
 
 - Available to every player.
-- First opens a game-mode menu: `1v1`, `Teams`, `FFA`, `Training`, `Sandbox`.
+- First opens a game-mode menu: `1v1`, `Teams`, `Random Teams`, `FFA`,
+  `Training`, `Sandbox`.
 - **1v1**: a menu of other online players, two per row, with a bottom cancel
   button. Selecting a player sends that player an accept/decline challenge
   menu. The only ranked mode (recorded via `result.properties` on the hub).
@@ -314,6 +315,15 @@ config/evict-players.db
   out mid-match (3+ team games) is freed like an FFA loser. Finished Teams
   matches are stored in `/history` as an unranked entry (all rosters,
   win/lose, no ELO).
+- **Random Teams**: the challenger first picks the team count (`2`-`8`) from a
+  menu, then picks players as a single pool exactly like FFA (at least
+  `team count` players total, challenger included, so every team gets one).
+  Every picked player receives the usual accept/decline invite. Once everyone
+  accepted, the pool is shuffled into that many balanced teams (when the count
+  does not divide evenly, the first teams get one extra player, so sizes never
+  differ by more than one). The rosters are not announced; the match simply
+  starts. Hub-only mode: the shuffled rosters launch as a regular `teams`
+  match, so workers, results and `/history` treat it exactly like Teams.
 - **FFA**: pick any number of players (bottom Done button), same invite flow,
   every player fights on their own team. A knocked-out player is demoted to a
   spectator: the match no longer waits for them, `/v` returns them to the

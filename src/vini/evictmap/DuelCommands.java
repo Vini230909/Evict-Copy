@@ -7,6 +7,7 @@ import mindustry.gen.Player;
 import mindustry.ui.Menus;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -20,6 +21,9 @@ import java.util.Set;
  * - 1v1: pick one opponent, they accept/decline, both go to a worker.
  * - Teams: build two rosters (even or uneven) purely through pick menus, every
  * picked player gets an accept/decline invite, then everyone is sent over.
+ * - Random Teams: choose a team count (2-8), pick one pool of players like
+ * FFA; once everyone accepted the pool is shuffled into that many balanced
+ * teams and launched as a regular Teams match.
  * - FFA: pick any number of players (Done button), invites, everyone plays on
  * their own team.
  * - Training: the requester plays alone; /die ends the session, nothing is
@@ -37,9 +41,14 @@ final class DuelCommands {
 
     /**
      * Safety cap for the Teams builder; the Next team button disappears once
-     * this many rosters exist.
+     * this many rosters exist. Also the largest Random Teams team count.
      */
     private static final int MAX_TEAMS = 8;
+
+    /**
+     * Smallest Random Teams team count.
+     */
+    private static final int MIN_RANDOM_TEAMS = 2;
 
     /**
      * Option indexes of the fixed mode menu (see openModeMenu's rows).
@@ -47,6 +56,7 @@ final class DuelCommands {
     private static final MatchMode[] MODE_MENU_OPTIONS = {
             MatchMode.ONE_VS_ONE,
             MatchMode.TEAMS,
+            MatchMode.RANDOM_TEAMS,
             MatchMode.FFA,
             MatchMode.TRAINING,
             MatchMode.SANDBOX
@@ -60,6 +70,7 @@ final class DuelCommands {
     private final int modeMenuId;
     private final int selectionMenuId;
     private final int challengeMenuId;
+    private final int teamCountMenuId;
     private final int pickMenuId;
     private final int inviteMenuId;
     private final int viewMenuId;
@@ -107,6 +118,7 @@ final class DuelCommands {
         this.modeMenuId = Menus.registerMenu(this::handleModeSelection);
         this.selectionMenuId = Menus.registerMenu(this::handleSelection);
         this.challengeMenuId = Menus.registerMenu(this::handleChallengeResponse);
+        this.teamCountMenuId = Menus.registerMenu(this::handleTeamCountSelection);
         this.pickMenuId = Menus.registerMenu(this::handlePickSelection);
         this.inviteMenuId = Menus.registerMenu(this::handleInviteResponse);
         this.viewMenuId = Menus.registerMenu(this::handleViewSelection);
@@ -115,7 +127,7 @@ final class DuelCommands {
     void registerClientCommands(CommandHandler handler) {
         handler.<Player>register(
                 "play",
-                "Start a match: 1v1, Teams, FFA, Training or Sandbox.",
+                "Start a match: 1v1, Teams, Random Teams, FFA, Training or Sandbox.",
                 (args, player) -> openModeMenu(player)
         );
 
@@ -192,8 +204,8 @@ final class DuelCommands {
                 "Select a game mode.",
                 new String[][]{
                         {"1v1", "Teams"},
-                        {"FFA", "Training"},
-                        {"Sandbox"},
+                        {"Random Teams", "FFA"},
+                        {"Training", "Sandbox"},
                         {"[red]Cancel"}
                 }
         );
@@ -208,9 +220,52 @@ final class DuelCommands {
 
         switch (mode) {
             case ONE_VS_ONE -> openSelectionMenu(player);
-            case TEAMS, FFA -> beginDraft(player, mode);
+            case TEAMS, FFA -> beginDraft(player, mode, 0);
+            case RANDOM_TEAMS -> openTeamCountMenu(player);
             case TRAINING, SANDBOX -> startSoloMatch(player, mode);
         }
+    }
+
+    // --- Random Teams (team count first, then one FFA-style player pool) ---
+
+    private void openTeamCountMenu(Player player) {
+        if (otherOnlinePlayers(player).isEmpty()) {
+            player.sendMessage("[scarlet]No other players are online.[]");
+            return;
+        }
+
+        Call.menu(
+                player.con,
+                teamCountMenuId,
+                "[accent]Random Teams",
+                "How many teams should the players be shuffled into?\n"
+                        + "Teams are drawn randomly once everyone accepted.",
+                new String[][]{
+                        {"2", "3"},
+                        {"4", "5"},
+                        {"6", "7"},
+                        {"8"},
+                        {"[red]Cancel"}
+                }
+        );
+    }
+
+    private void handleTeamCountSelection(Player player, int option) {
+        if (player == null) {
+            return;
+        }
+
+        int teamCount = MIN_RANDOM_TEAMS + option;
+
+        if (option < 0 || teamCount > MAX_TEAMS) {
+            if (teamCount == MAX_TEAMS + 1) {
+                player.sendMessage("[lightgray]Match setup cancelled.[]");
+            }
+
+            return;
+        }
+
+        beginDraft(player, MatchMode.RANDOM_TEAMS, teamCount);
     }
 
     /**
@@ -363,7 +418,7 @@ final class DuelCommands {
 
     // --- Teams / FFA drafts (pick menus only, no typed input) ---
 
-    private void beginDraft(Player challenger, MatchMode mode) {
+    private void beginDraft(Player challenger, MatchMode mode, int teamCount) {
         if (otherOnlinePlayers(challenger).isEmpty()) {
             challenger.sendMessage("[scarlet]No other players are online.[]");
             return;
@@ -374,7 +429,7 @@ final class DuelCommands {
         draftChallengerByInviteeUuid.values()
                 .removeIf(challenger.uuid()::equals);
 
-        MatchDraft draft = new MatchDraft(mode, challenger.uuid());
+        MatchDraft draft = new MatchDraft(mode, challenger.uuid(), teamCount);
         draftsByChallengerUuid.put(challenger.uuid(), draft);
         openPickMenu(challenger, draft);
     }
@@ -420,9 +475,12 @@ final class DuelCommands {
         rows.add(new String[]{"[green]Done - send invites"});
         rows.add(new String[]{"[red]Cancel"});
 
-        String title = draft.mode == MatchMode.TEAMS
-                ? "[accent]Teams - Team " + draft.teams.size()
-                : "[accent]FFA";
+        String title = switch (draft.mode) {
+            case TEAMS -> "[accent]Teams - Team " + draft.teams.size();
+            case RANDOM_TEAMS ->
+                    "[accent]Random Teams - " + draft.teamCount + " teams";
+            default -> "[accent]FFA";
+        };
 
         String instruction = switch (draft.mode) {
             case TEAMS -> {
@@ -437,6 +495,11 @@ final class DuelCommands {
                         + "; Done sends the invites."
                         : base + "\nTeam limit reached - Done sends the invites.";
             }
+            case RANDOM_TEAMS ->
+                    "Pick at least " + (draft.teamCount - 1)
+                            + " other players, then press Done. Everyone is"
+                            + " shuffled into " + draft.teamCount
+                            + " random teams once all accepted.";
             default ->
                     "Pick as many players as you want, then press Done.";
         };
@@ -539,6 +602,21 @@ final class DuelCommands {
         ) {
             challenger.sendMessage(
                     "[scarlet]Pick at least one other player for the FFA.[]"
+            );
+            openPickMenu(challenger, draft);
+            return;
+        }
+
+        // Every random team needs at least one player.
+        if (
+                draft.mode == MatchMode.RANDOM_TEAMS
+                        && draft.teams.get(0).size() < draft.teamCount
+        ) {
+            challenger.sendMessage(
+                    "[scarlet]Pick at least "
+                            + (draft.teamCount - 1)
+                            + " other players for "
+                            + draft.teamCount + " random teams.[]"
             );
             openPickMenu(challenger, draft);
             return;
@@ -656,6 +734,15 @@ final class DuelCommands {
 
                 rosters.add(roster);
             }
+        } else if (draft.mode == MatchMode.RANDOM_TEAMS) {
+            List<Player> pool = resolveRoster(draft.teams.get(0));
+
+            if (pool == null) {
+                cancelDraft(draft, "a player left the server");
+                return;
+            }
+
+            rosters.addAll(shuffleIntoTeams(pool, draft.teamCount));
         } else {
             for (String uuid : draft.teams.get(0)) {
                 Player player = onlinePlayerByUuid(uuid);
@@ -671,7 +758,13 @@ final class DuelCommands {
 
         draftsByChallengerUuid.remove(draft.challengerUuid);
 
-        if (!duelManager.requestMatch(draft.mode, rosters)) {
+        // Random Teams is a hub-only draft flavor; once the rosters are drawn
+        // it runs (and is recorded) as a regular Teams match.
+        MatchMode wireMode = draft.mode == MatchMode.RANDOM_TEAMS
+                ? MatchMode.TEAMS
+                : draft.mode;
+
+        if (!duelManager.requestMatch(wireMode, rosters)) {
             for (List<Player> roster : rosters) {
                 for (Player player : roster) {
                     player.sendMessage(
@@ -680,6 +773,36 @@ final class DuelCommands {
                 }
             }
         }
+    }
+
+    /**
+     * Shuffles the accepted player pool into the requested number of teams.
+     * Sizes stay balanced: when the pool does not divide evenly, the first
+     * teams get one extra player, so sizes never differ by more than one.
+     */
+    private static List<List<Player>> shuffleIntoTeams(
+            List<Player> pool,
+            int teamCount
+    ) {
+        List<Player> shuffled = new ArrayList<>(pool);
+        Collections.shuffle(shuffled);
+
+        List<List<Player>> teams = new ArrayList<>();
+        int baseSize = shuffled.size() / teamCount;
+        int extras = shuffled.size() % teamCount;
+        int nextIndex = 0;
+
+        for (int team = 0; team < teamCount; team++) {
+            int size = baseSize + (team < extras ? 1 : 0);
+            teams.add(
+                    new ArrayList<>(
+                            shuffled.subList(nextIndex, nextIndex + size)
+                    )
+            );
+            nextIndex += size;
+        }
+
+        return teams;
     }
 
     /**
@@ -738,6 +861,12 @@ final class DuelCommands {
             }
 
             return summary.toString();
+        }
+
+        if (draft.mode == MatchMode.RANDOM_TEAMS) {
+            return "Players: " + namesOf(draft.teams.get(0))
+                    + "\n[lightgray]Shuffled into " + draft.teamCount
+                    + " random teams.[]";
         }
 
         return "Players: " + namesOf(draft.teams.get(0));
@@ -919,6 +1048,12 @@ final class DuelCommands {
         final String challengerUuid;
 
         /**
+         * Random Teams only: how many teams the accepted pool is shuffled
+         * into. 0 for every other mode.
+         */
+        final int teamCount;
+
+        /**
          * The rosters being built. Teams mode grows this list one team at a
          * time via the Next team button (the challenger starts on Team 1, up
          * to {@link #MAX_TEAMS} teams); FFA keeps everyone in the single
@@ -935,9 +1070,10 @@ final class DuelCommands {
         List<String> candidateUuids = new ArrayList<>();
         final Set<String> pendingInviteeUuids = new HashSet<>();
 
-        MatchDraft(MatchMode mode, String challengerUuid) {
+        MatchDraft(MatchMode mode, String challengerUuid, int teamCount) {
             this.mode = mode;
             this.challengerUuid = challengerUuid;
+            this.teamCount = teamCount;
 
             List<String> firstTeam = new ArrayList<>();
             firstTeam.add(challengerUuid);
