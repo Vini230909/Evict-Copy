@@ -75,6 +75,8 @@ public final class RulesApplier {
         Vars.state.rules.disableWorldProcessors = true;
         Vars.state.rules.blockDamageMultiplier = 0.5f;
         Vars.state.rules.buildSpeedMultiplier = 1.4f;
+        // Duel worker maps carry an embedded 2.0; force the vanilla rate everywhere.
+        Vars.state.rules.unitBuildSpeedMultiplier = 1.0f;
         Vars.state.rules.cleanupDeadTeams = false;
 
         for (Team team : Team.all) {

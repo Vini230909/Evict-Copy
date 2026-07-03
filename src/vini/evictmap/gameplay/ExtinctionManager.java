@@ -132,7 +132,7 @@ public final class ExtinctionManager implements GameplayManagerInterface {
 
             for(Tile tile : Vars.world.tiles)
                 if(teamManager.belongsToCollapsedHex(tile.x, tile.y, slot)) {
-                    terrainTilesToAdd.addLast(tile);
+                    terrainTilesToAdd.add(tile);
                     if(tile.build != null && tile.isCenter())
                         buildingCentersToRemove.add(tile);
                 }
