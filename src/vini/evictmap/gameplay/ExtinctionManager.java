@@ -65,6 +65,10 @@ public final class ExtinctionManager implements GameplayManagerInterface {
 
     private final ArrayDeque<TeamManager.HexSlot> queueOfHexesToCollapse = new ArrayDeque<>();
 
+    private final ArrayDeque<Tile> queueOfTilesToFill = new ArrayDeque<Tile>();
+
+    private static final int EXTINCTION_TILE_FILL_RATE = 128;
+
     /**
      * Current state
      */
@@ -84,11 +88,21 @@ public final class ExtinctionManager implements GameplayManagerInterface {
     public void beginRound() {
         state = State.NO_WARNING_SENT;
         queueOfHexesToCollapse.clear();
+        queueOfTilesToFill.clear();
     }
 
     @Override
     public void update() {
         if (!teamManager.isRoundActiveForSystems()) return;
+
+        if(!queueOfTilesToFill.isEmpty()) {
+            for(int i = 0; i < EXTINCTION_TILE_FILL_RATE; i++) {
+                Tile tile = queueOfTilesToFill.pollFirst();
+                if(tile == null) break;
+                tile.removeNet();
+                tile.setFloorNet(Blocks.space);
+            }
+        }
 
         if(!queueOfHexesToCollapse.isEmpty()) {
             TeamManager.HexSlot slot = queueOfHexesToCollapse.pollFirst();
@@ -120,7 +134,7 @@ public final class ExtinctionManager implements GameplayManagerInterface {
             try {
                 for (Tile tile : buildingCentersToRemove) tile.removeNet();
                 for (Unit unit : unitsToKill) unit.kill();
-                for (Tile tile : terrainTilesToAdd) tile.setFloorNet(Blocks.space);
+                for (Tile tile : terrainTilesToAdd) queueOfTilesToFill.addLast(tile);
             } finally {
                 teamManager.setCaptureSuppressed(oldCaptureSuppressed);
             }
