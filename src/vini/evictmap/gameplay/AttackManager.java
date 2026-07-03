@@ -69,6 +69,7 @@ public final class AttackManager implements GameplayManagerInterface {
     @Override
     public void beginRound() {
         fullAssaultTeamIds.clear();
+        lastFullassaultMillis = 0;
     }
 
     @Override

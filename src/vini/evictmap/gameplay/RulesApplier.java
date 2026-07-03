@@ -69,7 +69,7 @@ public final class RulesApplier {
         Vars.state.rules.pvpAutoPause = false; // (we implement our own)
         Vars.state.rules.canGameOver = false;
         Vars.state.rules.reactorExplosions = false;
-        Vars.state.rules.possessionAllowed = false;
+        Vars.state.rules.possessionAllowed = true; // TODO: find a way to disallow possession
         Vars.state.rules.unitDamageMultiplier = 0.5f;
         Vars.state.rules.unitCrashDamageMultiplier = 0.0f;
         Vars.state.rules.disableWorldProcessors = true;
