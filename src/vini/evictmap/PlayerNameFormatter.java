@@ -2,6 +2,7 @@ package vini.evictmap;
 
 import mindustry.gen.Player;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -39,6 +40,25 @@ final class PlayerNameFormatter {
         return color == null
                 ? "[white]" + name + "[]"
                 : "[#" + color + "]" + name + "[]";
+    }
+
+    /**
+     * Joins already-formatted display names with {@code separator}, capping
+     * how many are shown so a big FFA/Teams roster never blows up a /v or /h
+     * menu into an unreadable wall of text; the rest are folded into a
+     * trailing "+N more".
+     */
+    static String joinShortened(
+            List<String> names,
+            String separator,
+            int maxShown
+    ) {
+        if (names.size() <= maxShown) {
+            return String.join(separator, names);
+        }
+
+        return String.join(separator, names.subList(0, maxShown))
+                + "[lightgray] (+" + (names.size() - maxShown) + " more)[]";
     }
 
     private static String explicitNameColor(String rawName) {

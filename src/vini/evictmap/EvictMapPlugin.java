@@ -252,6 +252,13 @@ public class EvictMapPlugin extends Plugin {
                                 || workerMatchMode == MatchMode.TEAMS
                 );
 
+                // FFA has no participant cap; the normal start-hex distance
+                // could run every safe hex out before everyone got a start
+                // once enough players piled into one duel-worker FFA.
+                teamManager.setDuelFfaReducedStartDistance(
+                        workerMatchMode == MatchMode.FFA
+                );
+
                 if (duelWorkerReferee.isSandboxMode()) {
                     inviteManager.enableSandboxJoinMode(
                             duelWorkerReferee::addSandboxParticipant

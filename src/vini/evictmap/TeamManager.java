@@ -64,7 +64,15 @@ public final class TeamManager {
      * This means graph distance 3 is the minimum allowed distance between
      * two claimed start hexes.
      */
-    private static final int MINIMUM_START_DISTANCE = 3;
+    private static final int DEFAULT_MINIMUM_START_DISTANCE = 3;
+
+    /**
+     * Start A -> hex -> Start B. FFA has no cap on participants, so on a
+     * duel-worker FFA the normal distance of 3 could run every safe hex out
+     * before everyone got a start, leaving late joiners stuck on Fallen. One
+     * less hex between starts (still never adjacent) fits more players.
+     */
+    private static final int FFA_DUEL_MINIMUM_START_DISTANCE = 2;
 
     private static final int SHORT_ROW_COLS = 7;
     private static final int LONG_ROW_COLS = 8;
@@ -136,6 +144,14 @@ public final class TeamManager {
     private boolean duelSurrenderRestoresFallenCores = false;
 
     /**
+     * Minimum allowed graph distance between two claimed start hexes for the
+     * current round. {@link #DEFAULT_MINIMUM_START_DISTANCE} everywhere
+     * except a duel-worker FFA, which relaxes it to
+     * {@link #FFA_DUEL_MINIMUM_START_DISTANCE}.
+     */
+    private int minimumStartDistance = DEFAULT_MINIMUM_START_DISTANCE;
+
+    /**
      * On a worker hosting a Teams match this maps a joining player to the
      * teammates named in the hub handshake, so the whole roster shares one
      * Mindustry team instead of each member claiming their own hex.
@@ -184,6 +200,17 @@ public final class TeamManager {
     ) {
         this.duelSurrenderRestoresFallenCores =
                 duelSurrenderRestoresFallenCores;
+    }
+
+    /**
+     * Only for a duel-worker FFA: relaxes the minimum start-hex distance by
+     * one hex so more players can claim a safe start before the map runs out
+     * of hexes far enough from everyone else already playing.
+     */
+    void setDuelFfaReducedStartDistance(boolean reduced) {
+        this.minimumStartDistance = reduced
+                ? FFA_DUEL_MINIMUM_START_DISTANCE
+                : DEFAULT_MINIMUM_START_DISTANCE;
     }
 
     void setTeammateResolver(
@@ -522,7 +549,7 @@ public final class TeamManager {
             if (
                     effectiveOwnerTeamId(occupied) != FALLEN_TEAM_ID
                             && gridDistance(candidate, occupied)
-                            < MINIMUM_START_DISTANCE
+                            < minimumStartDistance
             ) {
                 return false;
             }

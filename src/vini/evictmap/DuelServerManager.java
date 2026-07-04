@@ -147,26 +147,59 @@ final class DuelServerManager {
     }
 
     /**
+     * Caps how many player names a /v or /h label spells out before folding
+     * the rest into "+N more" - FFA has no participant cap, and a match (or
+     * history entry) with a lot of players in it used to render as one huge,
+     * broken-looking line of text.
+     */
+    private static final int MAX_LABEL_NAMES = 4;
+
+    /**
      * Menu/log label for a match, e.g. "A vs B", "A, B vs C (Teams)",
-     * "A vs B vs C (FFA)" or "A (Training)".
+     * "A vs B vs C (FFA)" or "A (Training)". Once a roster runs past
+     * {@link #MAX_LABEL_NAMES} names it is shortened to "A, B, C, D (+N
+     * more)" instead of listing everyone.
      */
     private static String matchLabel(
             MatchMode mode,
             List<List<Player>> rosterTeams
     ) {
-        List<String> teamNames = new ArrayList<>();
+        String label;
 
-        for (List<Player> roster : rosterTeams) {
-            List<String> names = new ArrayList<>();
+        if (mode == MatchMode.FFA) {
+            // FFA passes one single-player "team" per participant, so the
+            // vs-chain length is the whole player count - shorten the flat
+            // list instead of the per-team names.
+            List<String> allNames = new ArrayList<>();
 
-            for (Player player : roster) {
-                names.add(PlayerNameFormatter.displayName(player));
+            for (List<Player> roster : rosterTeams) {
+                for (Player player : roster) {
+                    allNames.add(PlayerNameFormatter.displayName(player));
+                }
             }
 
-            teamNames.add(String.join("[white], []", names));
-        }
+            label = PlayerNameFormatter.joinShortened(
+                    allNames, "[white], []", MAX_LABEL_NAMES
+            );
+        } else {
+            List<String> teamNames = new ArrayList<>();
 
-        String label = String.join(" [white]vs[] ", teamNames);
+            for (List<Player> roster : rosterTeams) {
+                List<String> names = new ArrayList<>();
+
+                for (Player player : roster) {
+                    names.add(PlayerNameFormatter.displayName(player));
+                }
+
+                teamNames.add(
+                        PlayerNameFormatter.joinShortened(
+                                names, "[white], []", MAX_LABEL_NAMES
+                        )
+                );
+            }
+
+            label = String.join(" [white]vs[] ", teamNames);
+        }
 
         if (mode != MatchMode.ONE_VS_ONE) {
             label += " [lightgray](" + mode.label() + ")[]";
@@ -858,23 +891,25 @@ final class DuelServerManager {
     }
 
     /**
-     * Display label of one Teams roster, e.g. "A[white], []B".
+     * Display label of one Teams roster, e.g. "A[white], []B", shortened to
+     * "A, B, C, D (+N more)" past {@link #MAX_LABEL_NAMES} names so a big
+     * roster never blows up its /history entry.
      */
     private static String teamLabelFor(
             WorkerHandle handle,
             List<String> uuids
     ) {
-        StringBuilder label = new StringBuilder();
+        List<String> names = new ArrayList<>();
 
         for (String uuid : uuids) {
-            if (!label.isEmpty()) {
-                label.append("[white], []");
-            }
-
-            label.append(displayNameFor(handle, uuid));
+            names.add(displayNameFor(handle, uuid));
         }
 
-        return label.isEmpty() ? "?" : label.toString();
+        return names.isEmpty()
+                ? "?"
+                : PlayerNameFormatter.joinShortened(
+                        names, "[white], []", MAX_LABEL_NAMES
+                );
     }
 
     /**

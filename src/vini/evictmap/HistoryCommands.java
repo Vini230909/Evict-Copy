@@ -25,6 +25,13 @@ final class HistoryCommands {
     private static final int ENTRIES_PER_PAGE = 10;
     private static final int PICKER_MENU_COLUMNS = 2;
 
+    /**
+     * Caps how many FFA participants an entry spells out before folding the
+     * rest into "+N more" - FFA has no participant cap, and a match with a
+     * lot of players in it used to render as one huge, broken-looking line.
+     */
+    private static final int MAX_PARTICIPANT_NAMES = 4;
+
     // Pagination button option indices (row-major across the button grid).
     private static final int OPTION_FIRST = 0;
     private static final int OPTION_PREVIOUS = 1;
@@ -230,9 +237,10 @@ final class HistoryCommands {
         // An FFA entry lists every participant with just win/lose below it -
         // FFAs are unranked, so there is no elo line.
         if (MatchMode.FFA.id().equals(match.mode())) {
-            String participants = String.join(
+            String participants = PlayerNameFormatter.joinShortened(
+                    List.of(match.participantNamesPacked().split("\n")),
                     " [white]vs[] ",
-                    match.participantNamesPacked().split("\n")
+                    MAX_PARTICIPANT_NAMES
             );
 
             return "[lightgray]FFA[]\n" + participants + "\n"
