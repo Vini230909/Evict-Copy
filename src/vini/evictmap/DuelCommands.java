@@ -1,6 +1,7 @@
 package vini.evictmap;
 
 import arc.util.CommandHandler;
+import arc.util.Time;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
@@ -51,6 +52,14 @@ final class DuelCommands {
     private static final int MIN_RANDOM_TEAMS = 2;
 
     /**
+     * How long a 1v1 challenge or a draft invite may sit unanswered before it
+     * expires (with a message to both sides). Without this, an invite menu
+     * lost client-side left the pending entry behind forever, and that stale
+     * state blocked the players involved from any further match-making.
+     */
+    private static final float PENDING_RESPONSE_TIMEOUT_TICKS = 60f * 60f;
+
+    /**
      * Option indexes of the fixed mode menu (see openModeMenu's rows).
      */
     private static final MatchMode[] MODE_MENU_OPTIONS = {
@@ -82,10 +91,18 @@ final class DuelCommands {
             new HashMap<>();
 
     /**
-     * Opponent UUID -> challenger UUID for an outstanding 1v1 challenge.
+     * Opponent UUID -> outstanding 1v1 challenge against them. The serial
+     * lets the expiry task recognise whether the entry it armed for is still
+     * the current one.
      */
-    private final Map<String, String> challengerByOpponentUuid =
+    private final Map<String, PendingChallenge> challengeByOpponentUuid =
             new HashMap<>();
+
+    /**
+     * Serial for challenge/invite expiry tasks; bumped whenever a new pending
+     * challenge or invite round is created.
+     */
+    private int pendingSerial = 0;
 
     /**
      * Challenger UUID -> their Teams/FFA draft being built or invited.
@@ -169,8 +186,11 @@ final class DuelCommands {
         String uuid = player.uuid();
 
         selectionTargetsByChallengerUuid.remove(uuid);
-        challengerByOpponentUuid.remove(uuid);
-        challengerByOpponentUuid.values().removeIf(uuid::equals);
+        challengeByOpponentUuid.remove(uuid);
+        challengeByOpponentUuid.values().removeIf(
+                pending -> pending.challengerUuid().equals(uuid)
+        );
+        draftChallengerByInviteeUuid.remove(uuid);
         viewTargetsByViewerUuid.remove(uuid);
 
         for (MatchDraft draft :
@@ -346,7 +366,28 @@ final class DuelCommands {
             return;
         }
 
-        challengerByOpponentUuid.put(opponent.uuid(), player.uuid());
+        // Refuse instead of overwriting their pending entry: a clobbered
+        // invite left the other match setup waiting forever.
+        if (isBusyWithMatchmaking(opponent.uuid())) {
+            player.sendMessage(
+                    "[scarlet]"
+                            + PlayerNameFormatter.displayName(opponent)
+                            + "[scarlet] is already in another match setup. Try again shortly.[]"
+            );
+            return;
+        }
+
+        int serial = ++pendingSerial;
+        String opponentUuid = opponent.uuid();
+
+        challengeByOpponentUuid.put(
+                opponentUuid,
+                new PendingChallenge(player.uuid(), serial)
+        );
+        Time.run(
+                PENDING_RESPONSE_TIMEOUT_TICKS,
+                () -> expireChallenge(opponentUuid, serial)
+        );
 
         player.sendMessage(
                 "[accent]Challenge sent to "
@@ -372,12 +413,21 @@ final class DuelCommands {
             return;
         }
 
-        String challengerUuid =
-                challengerByOpponentUuid.remove(opponent.uuid());
+        PendingChallenge pending =
+                challengeByOpponentUuid.remove(opponent.uuid());
 
-        if (challengerUuid == null) {
+        if (pending == null) {
+            // Only answer an actual click; dismissing a stale menu is silent.
+            if (option == ACCEPT_OPTION) {
+                opponent.sendMessage(
+                        "[lightgray]That challenge is no longer active.[]"
+                );
+            }
+
             return;
         }
+
+        String challengerUuid = pending.challengerUuid();
 
         Player challenger = onlinePlayerByUuid(challengerUuid);
 
@@ -425,9 +475,21 @@ final class DuelCommands {
         }
 
         // Starting a fresh draft supersedes any previous one by the same
-        // challenger, including invites still pending from it.
-        draftChallengerByInviteeUuid.values()
-                .removeIf(challenger.uuid()::equals);
+        // challenger. A draft whose invites are already out is cancelled
+        // properly so its invitees learn their menus are dead instead of
+        // clicking into a void.
+        MatchDraft previous = draftsByChallengerUuid.get(challenger.uuid());
+
+        if (previous != null && previous.inviting) {
+            cancelDraft(
+                    previous,
+                    PlayerNameFormatter.displayName(challenger)
+                            + "[scarlet] started a new match setup"
+            );
+        } else {
+            draftChallengerByInviteeUuid.values()
+                    .removeIf(challenger.uuid()::equals);
+        }
 
         MatchDraft draft = new MatchDraft(mode, challenger.uuid(), teamCount);
         draftsByChallengerUuid.put(challenger.uuid(), draft);
@@ -635,14 +697,34 @@ final class DuelCommands {
         }
 
         for (String uuid : inviteeUuids) {
-            if (onlinePlayerByUuid(uuid) == null) {
+            Player invitee = onlinePlayerByUuid(uuid);
+
+            if (invitee == null) {
                 cancelDraft(draft, "a picked player left the server");
+                return;
+            }
+
+            // Refuse instead of overwriting their pending entry: a clobbered
+            // invite left the other match setup waiting forever.
+            if (isBusyWithMatchmaking(uuid)) {
+                cancelDraft(
+                        draft,
+                        PlayerNameFormatter.displayName(invitee)
+                                + "[scarlet] is already in another match setup"
+                );
                 return;
             }
         }
 
         draft.inviting = true;
+        draft.inviteSerial = ++pendingSerial;
         draft.pendingInviteeUuids.addAll(inviteeUuids);
+
+        int serial = draft.inviteSerial;
+        Time.run(
+                PENDING_RESPONSE_TIMEOUT_TICKS,
+                () -> expireDraftInvites(draft, serial)
+        );
 
         String summary = rosterSummary(draft);
 
@@ -680,6 +762,13 @@ final class DuelCommands {
                 draftChallengerByInviteeUuid.remove(invitee.uuid());
 
         if (challengerUuid == null) {
+            // Only answer an actual click; dismissing a stale menu is silent.
+            if (option == ACCEPT_OPTION) {
+                invitee.sendMessage(
+                        "[lightgray]That invite is no longer active.[]"
+                );
+            }
+
             return;
         }
 
@@ -1013,6 +1102,85 @@ final class DuelCommands {
         restartMatch.run();
     }
 
+    /**
+     * True while this player has a challenge or invite to answer, sent a
+     * challenge that awaits an answer, or is part of a draft whose invites
+     * are out. Such a player cannot be targeted by new challenges or invites;
+     * with the response timeout this resolves within a minute at worst.
+     */
+    private boolean isBusyWithMatchmaking(String uuid) {
+        if (
+                challengeByOpponentUuid.containsKey(uuid)
+                        || draftChallengerByInviteeUuid.containsKey(uuid)
+        ) {
+            return true;
+        }
+
+        for (PendingChallenge pending : challengeByOpponentUuid.values()) {
+            if (pending.challengerUuid().equals(uuid)) {
+                return true;
+            }
+        }
+
+        for (MatchDraft draft : draftsByChallengerUuid.values()) {
+            if (draft.inviting && draft.involves(uuid)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Expires an unanswered 1v1 challenge. The serial check makes sure a
+     * newer challenge against the same opponent is left alone.
+     */
+    private void expireChallenge(String opponentUuid, int serial) {
+        PendingChallenge pending = challengeByOpponentUuid.get(opponentUuid);
+
+        if (pending == null || pending.serial() != serial) {
+            return;
+        }
+
+        challengeByOpponentUuid.remove(opponentUuid);
+
+        Player opponent = onlinePlayerByUuid(opponentUuid);
+        Player challenger = onlinePlayerByUuid(pending.challengerUuid());
+
+        if (challenger != null) {
+            challenger.sendMessage(
+                    "[scarlet]"
+                            + (opponent == null
+                            ? "Your opponent"
+                            : PlayerNameFormatter.displayName(opponent))
+                            + "[scarlet] did not answer your 1v1 challenge in time.[]"
+            );
+        }
+
+        if (opponent != null) {
+            opponent.sendMessage(
+                    "[lightgray]The 1v1 challenge against you expired.[]"
+            );
+        }
+    }
+
+    /**
+     * Expires a draft whose invites were not all answered in time, so its
+     * members are never stuck waiting forever.
+     */
+    private void expireDraftInvites(MatchDraft draft, int serial) {
+        if (
+                draftsByChallengerUuid.get(draft.challengerUuid) != draft
+                        || !draft.inviting
+                        || draft.inviteSerial != serial
+                        || draft.pendingInviteeUuids.isEmpty()
+        ) {
+            return;
+        }
+
+        cancelDraft(draft, "not everyone accepted in time");
+    }
+
     private List<Player> otherOnlinePlayers(Player self) {
         List<Player> players = new ArrayList<>();
 
@@ -1064,6 +1232,12 @@ final class DuelCommands {
         boolean inviting = false;
 
         /**
+         * Serial of the invite round sent for this draft, so the expiry task
+         * only cancels the round it was armed for.
+         */
+        int inviteSerial = 0;
+
+        /**
          * Candidates of the most recently shown pick menu, so the selected
          * option index resolves against exactly what the challenger saw.
          */
@@ -1103,5 +1277,12 @@ final class DuelCommands {
 
             return false;
         }
+    }
+
+    /**
+     * An outstanding 1v1 challenge: who sent it, and the serial its expiry
+     * task was armed with.
+     */
+    private record PendingChallenge(String challengerUuid, int serial) {
     }
 }
