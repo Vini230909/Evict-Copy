@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Implements /rally, /attack and /fullassault.
+ * Implements /rally, /attack and /fullassault (alias /fa).
  */
 public final class AttackManager implements GameplayManagerInterface {
     /**
@@ -62,6 +62,12 @@ public final class AttackManager implements GameplayManagerInterface {
         handler.register(
                 "fullassault",
                 "Automatically apply /attack every 5 seconds.",
+                this::handleFullassaultCommand
+        );
+
+        handler.register(
+                "fa",
+                "Alias for /fullassault.",
                 this::handleFullassaultCommand
         );
     }
