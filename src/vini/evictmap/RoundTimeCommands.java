@@ -12,7 +12,15 @@ import java.util.Map;
  */
 final class RoundTimeCommands {
 
-    private final Map<String, Long> joinedAtMillisByPlayerUuid =
+    /**
+     * When the player first joined this round, plus the round's paused time
+     * already accumulated back then, so time the game spends paused never
+     * counts toward their personal timer.
+     */
+    private record FirstJoin(long joinedAtMillis, long pausedMillisAtJoin) {
+    }
+
+    private final Map<String, FirstJoin> firstJoinByPlayerUuid =
             new HashMap<>();
     private final TeamManager teamManager;
 
@@ -29,27 +37,31 @@ final class RoundTimeCommands {
     }
 
     void beginRound() {
-        joinedAtMillisByPlayerUuid.clear();
+        firstJoinByPlayerUuid.clear();
         rememberConnectedPlayers();
     }
 
     void handlePlayerJoin(Player player) {
         if (player != null) {
-            joinedAtMillisByPlayerUuid.putIfAbsent(
+            firstJoinByPlayerUuid.putIfAbsent(
                     player.uuid(),
-                    System.currentTimeMillis()
+                    new FirstJoin(
+                            System.currentTimeMillis(),
+                            teamManager.roundPausedMillis()
+                    )
             );
         }
     }
 
     void rememberConnectedPlayers() {
         long currentMillis = System.currentTimeMillis();
+        long pausedMillis = teamManager.roundPausedMillis();
 
         Groups.player.each(player -> {
             if (player != null) {
-                joinedAtMillisByPlayerUuid.putIfAbsent(
+                firstJoinByPlayerUuid.putIfAbsent(
                         player.uuid(),
-                        currentMillis
+                        new FirstJoin(currentMillis, pausedMillis)
                 );
             }
         });
@@ -62,38 +74,50 @@ final class RoundTimeCommands {
         }
 
         long currentMillis = System.currentTimeMillis();
-        Long joinedAtMillis =
-                joinedAtMillisByPlayerUuid.get(player.uuid());
+        long pausedMillis = teamManager.roundPausedMillis();
+        FirstJoin firstJoin = firstJoinByPlayerUuid.get(player.uuid());
 
-        if (joinedAtMillis == null) {
-            joinedAtMillis = fallbackJoinTimeMillis(currentMillis);
-            joinedAtMillisByPlayerUuid.put(player.uuid(), joinedAtMillis);
+        if (firstJoin == null) {
+            firstJoin = fallbackFirstJoin(currentMillis, pausedMillis);
+            firstJoinByPlayerUuid.put(player.uuid(), firstJoin);
         }
 
         String roundTime = !teamManager.isRoundActiveForSystems()
                 ? "not running"
                 : formatDuration(teamManager.roundRuntimeMillis());
 
+        long personalMillis = Math.max(
+                0L,
+                (currentMillis - firstJoin.joinedAtMillis())
+                        - (pausedMillis - firstJoin.pausedMillisAtJoin())
+        );
+
         player.sendMessage(
                 "[accent]Round time: [white]"
                         + roundTime
                         + "[]\n[accent]Your first-join time: [white]"
-                        + formatDuration(currentMillis - joinedAtMillis)
+                        + formatDuration(personalMillis)
                         + "[]"
         );
     }
 
-    private long fallbackJoinTimeMillis(long currentMillis) {
+    private FirstJoin fallbackFirstJoin(
+            long currentMillis,
+            long pausedMillis
+    ) {
         long roundStartedAtMillis = teamManager.roundStartedAtMillis();
 
         if (
                 teamManager.isRoundActiveForSystems()
                         && roundStartedAtMillis > 0L
         ) {
-            return roundStartedAtMillis;
+            // Unknown join time: treat the player as present since round
+            // start, matching the pause-corrected round time (the round's
+            // pause counter also started at zero back then).
+            return new FirstJoin(roundStartedAtMillis, 0L);
         }
 
-        return currentMillis;
+        return new FirstJoin(currentMillis, pausedMillis);
     }
 
     private String formatDuration(long durationMillis) {

@@ -151,6 +151,18 @@ public final class TeamManager {
     private long roundSerial = 0L;
     private long roundStartedAtMillis = 0L;
 
+    /**
+     * Wall-clock time this round has spent paused. Subtracted from
+     * {@link #roundRuntimeMillis()} so a paused game accumulates no round
+     * time (/time, the surrender gate, attack and extinction schedules).
+     */
+    private long roundPausedMillis = 0L;
+
+    /**
+     * When the currently running pause began, or 0 while unpaused.
+     */
+    private long pauseStartedAtMillis = 0L;
+
     TeamManager(Cons<Team> victoryHandler) {
         this.victoryHandler = victoryHandler;
     }
@@ -208,6 +220,8 @@ public final class TeamManager {
         random = new Random(seed ^ TEAM_RANDOM_XOR);
         roundSerial++;
         roundStartedAtMillis = System.currentTimeMillis();
+        roundPausedMillis = 0L;
+        pauseStartedAtMillis = 0L;
         roundActivated = false;
         resetting = false;
         roundActive = true;
@@ -1730,8 +1744,43 @@ public final class TeamManager {
 
         return Math.max(
                 0L,
-                System.currentTimeMillis() - roundStartedAtMillis
+                System.currentTimeMillis()
+                        - roundStartedAtMillis
+                        - roundPausedMillis()
         );
+    }
+
+    /**
+     * Track pause transitions. Called on every game update, which Mindustry
+     * fires even while the game is paused, so pause and unpause are both
+     * observed within a frame.
+     */
+    void updatePauseTracking() {
+        if (Vars.state.isPaused()) {
+            if (pauseStartedAtMillis == 0L) {
+                pauseStartedAtMillis = System.currentTimeMillis();
+            }
+        } else if (pauseStartedAtMillis != 0L) {
+            roundPausedMillis +=
+                    System.currentTimeMillis() - pauseStartedAtMillis;
+            pauseStartedAtMillis = 0L;
+        }
+    }
+
+    /**
+     * Wall-clock milliseconds this round has spent paused, including the
+     * currently running pause.
+     */
+    long roundPausedMillis() {
+        if (pauseStartedAtMillis == 0L) {
+            return roundPausedMillis;
+        }
+
+        return roundPausedMillis
+                + Math.max(
+                        0L,
+                        System.currentTimeMillis() - pauseStartedAtMillis
+                );
     }
 
     long roundStartedAtMillis() {
@@ -1739,7 +1788,15 @@ public final class TeamManager {
     }
 
     void setElapsedTimeMillis(long time) {
-        roundStartedAtMillis = System.currentTimeMillis() - time;
+        long now = System.currentTimeMillis();
+        roundStartedAtMillis = now - time;
+
+        // The requested elapsed time is taken literally: past pauses no
+        // longer count, and a currently running pause counts from now.
+        roundPausedMillis = 0L;
+        if (pauseStartedAtMillis != 0L) {
+            pauseStartedAtMillis = now;
+        }
     }
 
     /**

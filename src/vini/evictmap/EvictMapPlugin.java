@@ -364,6 +364,9 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Events.run(Trigger.update, () -> {
+            // First, so the managers below already see pause-corrected time.
+            teamManager.updatePauseTracking();
+
             attritionManager.update();
             attackManager.update();
             extinctionManager.update();
