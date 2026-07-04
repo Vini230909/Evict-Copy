@@ -4,8 +4,10 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Executors;
@@ -121,6 +123,22 @@ final class DuelWorker {
     private int settleSerial = 0;
     private boolean settlePending = false;
     private String disconnectedName = "A player";
+
+    /**
+     * Disconnect-pause time each participant has already consumed this match,
+     * in milliseconds. A player only freezes the match for whatever is left of
+     * their personal {@link #REJOIN_SECONDS} budget - leaving again does not
+     * refill it, so leave/rejoin cycling cannot pause the match forever.
+     * Cleared on /restart so a fresh match grants fresh budgets.
+     */
+    private final Map<String, Long> usedPauseMillisByUuid = new HashMap<>();
+
+    /**
+     * Whose budget the currently running disconnect pause is charged to, and
+     * since when. Null while no disconnect pause runs.
+     */
+    private String pauseChargedUuid = null;
+    private long pauseChargeStartMillis = 0L;
 
     /**
      * Shared id so each duel HUD update replaces the previous popup instead of stacking.
@@ -405,6 +423,7 @@ final class DuelWorker {
         if (pausedForDisconnect) {
             pausedForDisconnect = false;
             disconnectSerial++;
+            chargeDisconnectPause();
             resumeGame();
         }
 
@@ -524,6 +543,7 @@ final class DuelWorker {
         if (pausedForDisconnect) {
             pausedForDisconnect = false;
             disconnectSerial++;
+            chargeDisconnectPause();
             resumeGame();
         }
 
@@ -663,6 +683,11 @@ final class DuelWorker {
         resolved = false;
         matchStartMillis = 0L;
 
+        // A restart is a fresh match: everyone gets their full rejoin budget
+        // back, and a pause that was running is not charged to anyone.
+        usedPauseMillisByUuid.clear();
+        pauseChargedUuid = null;
+
         hideHud();
         pauseGame();
         startFreezeApplied = true;
@@ -676,27 +701,66 @@ final class DuelWorker {
     }
 
     private void beginDisconnectPause(Player player) {
+        int windowSeconds = remainingPauseSeconds(player.uuid());
+
+        if (windowSeconds <= 0) {
+            Call.sendMessage(
+                    "[scarlet]" + PlayerNameFormatter.displayName(player)
+                            + "[scarlet] left but has no rejoin time left this match. The match continues.[]"
+            );
+            return;
+        }
+
         pausedForDisconnect = true;
         disconnectedName = PlayerNameFormatter.displayName(player);
+        pauseChargedUuid = player.uuid();
+        pauseChargeStartMillis = System.currentTimeMillis();
         pauseGame();
 
         int serial = ++disconnectSerial;
 
-        for (int second = REJOIN_SECONDS; second >= 1; second--) {
+        for (int second = windowSeconds; second >= 1; second--) {
             int remaining = second;
 
             scheduler.schedule(
                     () -> Core.app.post(() -> showRejoinCountdown(serial, remaining)),
-                    REJOIN_SECONDS - second,
+                    windowSeconds - second,
                     TimeUnit.SECONDS
             );
         }
 
         scheduler.schedule(
                 () -> Core.app.post(() -> expireDisconnectPause(serial)),
-                REJOIN_SECONDS,
+                windowSeconds,
                 TimeUnit.SECONDS
         );
+    }
+
+    /**
+     * Seconds left of this participant's per-match disconnect-pause budget.
+     */
+    private int remainingPauseSeconds(String uuid) {
+        long usedMillis = usedPauseMillisByUuid.getOrDefault(uuid, 0L);
+
+        return (int) ((REJOIN_SECONDS * 1000L - usedMillis) / 1000L);
+    }
+
+    /**
+     * Charge the elapsed pause time to the leaver's per-match budget. Called
+     * whenever the disconnect pause ends, however it ends.
+     */
+    private void chargeDisconnectPause() {
+        if (pauseChargedUuid == null) {
+            return;
+        }
+
+        long elapsedMillis = Math.max(
+                0L,
+                System.currentTimeMillis() - pauseChargeStartMillis
+        );
+
+        usedPauseMillisByUuid.merge(pauseChargedUuid, elapsedMillis, Long::sum);
+        pauseChargedUuid = null;
     }
 
     private void showRejoinCountdown(int serial, int remaining) {
@@ -741,6 +805,7 @@ final class DuelWorker {
         }
 
         pausedForDisconnect = false;
+        chargeDisconnectPause();
         resumeGame();
         hideHud();
         Call.sendMessage(
@@ -752,6 +817,7 @@ final class DuelWorker {
     private void endDisconnectPause() {
         pausedForDisconnect = false;
         disconnectSerial++;
+        chargeDisconnectPause();
         resumeGame();
         hideHud();
         Call.sendMessage("[accent]Everyone is back. Resuming the match![]");
