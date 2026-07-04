@@ -112,10 +112,11 @@ public final class TeamManager {
     private boolean suppressCoreChangeEvents = false;
 
     /**
-     * 1v1 duel-worker mode. In a duel only the two players matter: Fallen cores
-     * neither block nor win (they are not a playable team), surrender/elimination
-     * never restores Fallen backup cores or moves the loser to Fallen, and the
-     * match ends the instant only one of the two players is left.
+     * Duel-worker mode. In a duel only the participants matter: Fallen cores
+     * neither block nor win (they are not a playable team), elimination never
+     * moves the loser to Fallen, and the match ends the instant only one
+     * roster is left. Whether a surrender restores Fallen backup cores depends
+     * on the match mode - see {@link #duelSurrenderRestoresFallenCores}.
      */
     private boolean duelMode = false;
 
@@ -125,6 +126,14 @@ public final class TeamManager {
      * infinite for Training/Sandbox so those matches only end through /die.
      */
     private int duelMinimumTeams = 2;
+
+    /**
+     * In duel mode: whether surrendered hexes get Fallen backup cores like on
+     * the hub. FFA and Teams workers need them because the match continues
+     * after a surrender; 1v1/Training/Sandbox end right away, so their
+     * surrendered hexes just go derelict.
+     */
+    private boolean duelSurrenderRestoresFallenCores = false;
 
     /**
      * On a worker hosting a Teams match this maps a joining player to the
@@ -156,6 +165,13 @@ public final class TeamManager {
 
     void setDuelMinimumTeams(int duelMinimumTeams) {
         this.duelMinimumTeams = Math.max(1, duelMinimumTeams);
+    }
+
+    void setDuelSurrenderRestoresFallenCores(
+            boolean duelSurrenderRestoresFallenCores
+    ) {
+        this.duelSurrenderRestoresFallenCores =
+                duelSurrenderRestoresFallenCores;
     }
 
     void setTeammateResolver(
@@ -904,9 +920,16 @@ public final class TeamManager {
          */
         List<HexSlot> surrenderedSlots = new ArrayList<>();
 
-        // In a duel the surrendered hexes become derelict, not Fallen, so no
-        // Fallen backup core is left behind.
-        int surrenderedOwnerId = duelMode ? Team.derelict.id : FALLEN_TEAM_ID;
+        /*
+         * A surrender in a match that keeps running (hub FFA, or an FFA/Teams
+         * worker) restores Fallen backup cores so the remaining teams can
+         * still capture the hexes. In 1v1/Training/Sandbox the session ends
+         * right after the surrender, so the hexes just go derelict.
+         */
+        boolean restoreFallenCores =
+                !duelMode || duelSurrenderRestoresFallenCores;
+        int surrenderedOwnerId =
+                restoreFallenCores ? FALLEN_TEAM_ID : Team.derelict.id;
 
         for (HexSlot slot : slots) {
             if (effectiveOwnerTeamId(slot) == team.id) {
@@ -922,7 +945,7 @@ public final class TeamManager {
         try {
             clearSurrenderedTeamAssets(team);
 
-            if (!duelMode) {
+            if (restoreFallenCores) {
                 placeFallenCoresAfterSurrender(surrenderedSlots);
             }
         } finally {

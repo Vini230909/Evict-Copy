@@ -243,6 +243,15 @@ public class EvictMapPlugin extends Plugin {
                         duelWorkerReferee.victoryMinimumTeams()
                 );
 
+                // FFA and Teams matches keep running after a surrender, so
+                // the surrendered hexes need their Fallen backup cores back;
+                // 1v1/Training/Sandbox end right away and leave them derelict.
+                MatchMode workerMatchMode = duelWorkerReferee.matchMode();
+                teamManager.setDuelSurrenderRestoresFallenCores(
+                        workerMatchMode == MatchMode.FFA
+                                || workerMatchMode == MatchMode.TEAMS
+                );
+
                 if (duelWorkerReferee.isSandboxMode()) {
                     inviteManager.enableSandboxJoinMode(
                             duelWorkerReferee::addSandboxParticipant
