@@ -20,7 +20,7 @@ import mindustry.gen.Player;
  * - /help dev
  * - /help dev 2
  */
-public final class EvictHelpCommands {
+public final class HelpCommands {
 
     private static final int COMMANDS_PER_PAGE = 6;
 

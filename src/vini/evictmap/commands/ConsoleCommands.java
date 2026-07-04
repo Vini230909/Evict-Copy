@@ -16,7 +16,7 @@ import java.util.function.LongConsumer;
 /**
  * All dedicated-server console commands in one place.
  */
-public final class EvictConsoleCommands {
+public final class ConsoleCommands {
 
     private final EvictRuntimeState runtime;
     private final EvictSettings settings;
@@ -31,7 +31,7 @@ public final class EvictConsoleCommands {
 
     private int extraCoreCapPerCore = 0;
 
-    public EvictConsoleCommands(
+    public ConsoleCommands(
             EvictRuntimeState runtime,
             EvictSettings settings,
             EvictTerrainGenerator terrain,

@@ -123,6 +123,6 @@ public final class RoundTimeCommands {
     }
 
     private String formatDuration(long durationMillis) {
-        return EvictConsoleCommands.formatDuration(durationMillis);
+        return ConsoleCommands.formatDuration(durationMillis);
     }
 }

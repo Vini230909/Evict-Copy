@@ -109,7 +109,9 @@ gradle jar
 
 ### Commands
 
-`EvictClientCommands.java`
+Command classes live under `commands/`.
+
+`ClientCommands.java`
 - Single registration point for player chat commands
 
 `EvictCommands.java`
@@ -139,14 +141,14 @@ gradle jar
 - Frees the slot when the worker process exits; max-lifetime + shutdown cleanup
 - Spawning/readiness run off the main thread; results post back to it
 
-`EvictHelpCommands.java`
+`HelpCommands.java`
 - Filtered `/help`
 - Separate `/help dev`
 
 `EvictCommandCatalog.java`
 - Dev-command list used by filtered help
 
-`EvictConsoleCommands.java`
+`ConsoleCommands.java`
 - Dedicated-server console commands
 - Stored player-data lookup
 

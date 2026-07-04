@@ -89,7 +89,7 @@ detail see `AGENTS.md` (project spec) and `DUEL_ROADMAP.md` (feature planning).
   self-terminates (`System.exit`) once empty (see `EvictMapPlugin`:
   `shutDownDuelWorkerIfEmpty`, startup/empty grace timers).
 
-### d) Console config — `EvictConsoleCommands.java`
+### d) Console config — `ConsoleCommands.java`
 - `evictduelserver [ip] [basePort] [maxWorkers] [map]` — set/show the pool.
   Defaults: ip unset, basePort `6568`, maxWorkers `4` (max 10), map `evict-map`,
   jar `server-release.jar`. Shown in `evictstatus`. Persists in
@@ -213,7 +213,7 @@ Originally proposed scope (now built), worker-mode only:
 - `DuelCommands.java` — `/play` `/p`, challenge menus.
 - `DuelServerManager.java` — on-demand worker spawn/track/redirect/cleanup.
 - `EvictSettings.java` — persistent settings incl. the `duel.*` keys.
-- `EvictConsoleCommands.java` — `evictduelserver`, `evictstatus`, etc.
+- `ConsoleCommands.java` — `evictduelserver`, `evictstatus`, etc.
 - `TeamManager.java` — teams, captures, **victory check** (reused for 1v1 win),
   attrition helpers.
 - `RoundEndCommands.java` — current FFA `/die` and `/over` (worker variants will

@@ -8,7 +8,7 @@ import vini.evictmap.gameplay.AttackManager;
 /**
  * Single entry point for every player-facing chat command.
  */
-public final class EvictClientCommands {
+public final class ClientCommands {
 
     private final AttackManager fullassault;
     private final InviteManager invites;
@@ -16,16 +16,16 @@ public final class EvictClientCommands {
     private final RoundTimeCommands roundTime;
     private final DuelCommands duels;
     private final HistoryCommands history;
-    private final EvictHelpCommands help;
+    private final HelpCommands help;
 
-    public EvictClientCommands(
+    public ClientCommands(
             AttackManager fullassault,
             InviteManager invites,
             RoundEndCommands roundEnd,
             RoundTimeCommands roundTime,
             DuelCommands duels,
             HistoryCommands history,
-            EvictHelpCommands help
+            HelpCommands help
     ) {
         this.fullassault = fullassault;
         this.invites = invites;

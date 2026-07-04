@@ -85,11 +85,11 @@ public class EvictMapPlugin extends Plugin {
     private final HistoryCommands historyCommands =
             new HistoryCommands(playerDataManager);
 
-    private final EvictHelpCommands helpCommands =
-            new EvictHelpCommands();
+    private final HelpCommands helpCommands =
+            new HelpCommands();
 
-    private final EvictClientCommands clientCommands =
-            new EvictClientCommands(
+    private final ClientCommands clientCommands =
+            new ClientCommands(
                     attackManager,
                     inviteManager,
                     roundEndCommands,
@@ -102,8 +102,8 @@ public class EvictMapPlugin extends Plugin {
     private final EvictTerrainGenerator terrainGenerator =
             new EvictTerrainGenerator(settings);
 
-    private final EvictConsoleCommands consoleCommands =
-            new EvictConsoleCommands(
+    private final ConsoleCommands consoleCommands =
+            new ConsoleCommands(
                     runtime,
                     settings,
                     terrainGenerator,

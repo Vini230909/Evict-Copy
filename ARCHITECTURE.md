@@ -32,10 +32,12 @@ The plugin is split by responsibility so gameplay changes do not require editing
 
 ## Commands
 
-`EvictClientCommands` is the single registration entry point for player-facing commands.
+Command classes live under `commands/`.
 
-`EvictConsoleCommands` contains dedicated-server console commands.
+`ClientCommands` is the single registration entry point for player-facing commands.
+
+`ConsoleCommands` contains dedicated-server console commands.
 
 `EvictCommandCatalog` defines command categories used by the filtered help menu.
 
-`EvictHelpCommands`, `EvictCommands` and `RoundEndCommands` contain focused player command implementations.
+`HelpCommands`, `EvictCommands` and `RoundEndCommands` contain focused player command implementations.
