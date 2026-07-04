@@ -1,5 +1,8 @@
 package vini.evictmap.gameplay;
 
+import java.util.HashSet;
+import java.util.Set;
+
 import arc.struct.ObjectMap;
 import arc.util.Log;
 import mindustry.Vars;
@@ -16,9 +19,6 @@ import mindustry.world.blocks.defense.turrets.ItemTurret;
 import mindustry.world.blocks.defense.turrets.LiquidTurret;
 import mindustry.world.blocks.defense.turrets.PowerTurret;
 import vini.evictmap.TeamManager;
-
-import java.util.HashSet;
-import java.util.Set;
 
 /**
  * Apply static rules to the map.
@@ -75,7 +75,6 @@ public final class RulesApplier {
         Vars.state.rules.disableWorldProcessors = true;
         Vars.state.rules.blockDamageMultiplier = 0.5f;
         Vars.state.rules.buildSpeedMultiplier = 1.4f;
-        // Duel worker maps carry an embedded 2.0; force the vanilla rate everywhere.
         Vars.state.rules.unitBuildSpeedMultiplier = 1.0f;
         Vars.state.rules.cleanupDeadTeams = false;
 
@@ -131,18 +130,31 @@ public final class RulesApplier {
     }
 
     /**
-     * Apply core unit damage modifiers.
+     * Disable combat damage for vanilla core units while keeping their building
+     * and mining behavior intact.
      */
     private static void applyCoreUnitDamageModifiers() {
         Set<BulletType> visited = new HashSet<>();
-        scaleUnitDamage(0.0f, UnitTypes.alpha, visited);
-        scaleUnitDamage(0.0f, UnitTypes.beta, visited);
-        scaleUnitDamage(0.0f, UnitTypes.gamma, visited);
+        disableUnitDamage(UnitTypes.alpha, visited);
+        disableUnitDamage(UnitTypes.beta, visited);
+        disableUnitDamage(UnitTypes.gamma, visited);
     }
 
-    private static void scaleUnitDamage(float multiplier, UnitType unit, Set<BulletType> visited) {
+    private static void disableUnitDamage(UnitType unit, Set<BulletType> visited) {
         for (Weapon weapon : unit.weapons)
-            scaleBulletDamage(multiplier, weapon.bullet, visited);
+            disableBulletDamage(weapon.bullet, visited);
+    }
+
+    private static void disableBulletDamage(BulletType bullet, Set<BulletType> visited) {
+        if (bullet == null || !visited.add(bullet)) return;
+        bullet.damage = 0f;
+        bullet.splashDamage = 0f;
+        bullet.lightningDamage = 0f;
+        bullet.buildingDamageMultiplier = 0f;
+
+        disableBulletDamage(bullet.fragBullet, visited);
+        disableBulletDamage(bullet.intervalBullet, visited);
+        disableBulletDamage(bullet.lightningType, visited);
     }
 
     private static void scaleAmmoTypes(float multiplier, ObjectMap<?, BulletType> ammoTypes, Set<BulletType> visited) {
