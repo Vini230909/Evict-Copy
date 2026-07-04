@@ -114,10 +114,12 @@ Command classes live under `commands/`.
 `ClientCommands.java`
 - Single registration point for player chat commands
 
-`EvictCommands.java`
-- `/fullassault`
-- `/info`
-- Admin dev commands
+`InfoCommands.java`
+- `/info` — public: view a player's stats and playtime (no UUID shown)
+- No argument opens an online-player picker; `/info <name>` searches stored players
+
+`gameplay/AttackManager.java`
+- `/fullassault` (alias `/fa`), `/rally`, `/attack`
 
 `RoundEndCommands.java`
 - `/die`

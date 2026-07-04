@@ -85,6 +85,9 @@ public class EvictMapPlugin extends Plugin {
     private final HistoryCommands historyCommands =
             new HistoryCommands(playerDataManager);
 
+    private final InfoCommands infoCommands =
+            new InfoCommands(playerDataManager);
+
     private final HelpCommands helpCommands =
             new HelpCommands();
 
@@ -96,6 +99,7 @@ public class EvictMapPlugin extends Plugin {
                     roundTimeCommands,
                     duelCommands,
                     historyCommands,
+                    infoCommands,
                     helpCommands
             );
 
@@ -348,6 +352,7 @@ public class EvictMapPlugin extends Plugin {
             inviteManager.handlePlayerLeave(event.player);
             duelCommands.handlePlayerLeave(event.player);
             historyCommands.handlePlayerLeave(event.player);
+            infoCommands.handlePlayerLeave(event.player);
             duelWorkerReferee.handlePlayerLeave(event.player);
         });
 

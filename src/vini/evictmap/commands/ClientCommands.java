@@ -16,6 +16,7 @@ public final class ClientCommands {
     private final RoundTimeCommands roundTime;
     private final DuelCommands duels;
     private final HistoryCommands history;
+    private final InfoCommands info;
     private final HelpCommands help;
 
     public ClientCommands(
@@ -25,6 +26,7 @@ public final class ClientCommands {
             RoundTimeCommands roundTime,
             DuelCommands duels,
             HistoryCommands history,
+            InfoCommands info,
             HelpCommands help
     ) {
         this.fullassault = fullassault;
@@ -33,6 +35,7 @@ public final class ClientCommands {
         this.roundTime = roundTime;
         this.duels = duels;
         this.history = history;
+        this.info = info;
         this.help = help;
     }
 
@@ -43,6 +46,7 @@ public final class ClientCommands {
         roundTime.registerClientCommands(handler);
         duels.registerClientCommands(handler);
         history.registerClientCommands(handler);
+        info.registerClientCommands(handler);
 
         // Register last so the filtered menu replaces vanilla /help.
         help.registerClientCommands(handler);

@@ -1,18 +1,19 @@
 package vini.evictmap.commands;
 
-import vini.evictmap.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import arc.util.CommandHandler;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
 import mindustry.ui.Menus;
-
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import vini.evictmap.MatchMode;
+import vini.evictmap.PlayerDataManager;
+import vini.evictmap.PlayerNameFormatter;
 
 /**
  * /history (alias /h): first pick a player, then page through that player's

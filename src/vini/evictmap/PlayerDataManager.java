@@ -262,6 +262,17 @@ public final class PlayerDataManager {
         enqueue(() -> deliver(callback, searchPlayerInfo(query)));
     }
 
+    /**
+     * The stored player with this exact UUID, or null if none is stored yet.
+     * Used by /info once a player has been picked from the online list.
+     */
+    public void findPlayerInfoByUuid(
+            String uuid,
+            Consumer<PlayerInfo> callback
+    ) {
+        enqueue(() -> deliver(callback, loadPlayerInfoByUuid(uuid)));
+    }
+
     private void recordFfaParticipation(Player player) {
         String uuid = player.uuid();
         String name = player.plainName();
@@ -786,6 +797,22 @@ public final class PlayerDataManager {
         }
 
         return result;
+    }
+
+    private PlayerInfo loadPlayerInfoByUuid(String uuid) throws SQLException {
+        if (uuid == null || uuid.isBlank()) {
+            return null;
+        }
+
+        try (Connection connection = connect()) {
+            List<PlayerInfo> rows = searchRows(
+                    connection,
+                    "SELECT * FROM players WHERE uuid = ?",
+                    uuid
+            );
+
+            return rows.isEmpty() ? null : rows.get(0);
+        }
     }
 
     private List<PlayerInfo> searchRows(
