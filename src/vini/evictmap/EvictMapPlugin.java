@@ -367,6 +367,10 @@ public class EvictMapPlugin extends Plugin {
             // First, so the managers below already see pause-corrected time.
             teamManager.updatePauseTracking();
 
+            // Scrubs blueprints queued during a disconnect pause; must run in
+            // this trigger because it fires even while the game is paused.
+            duelWorkerReferee.update();
+
             attritionManager.update();
             attackManager.update();
             extinctionManager.update();

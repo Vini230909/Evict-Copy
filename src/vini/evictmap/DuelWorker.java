@@ -5,6 +5,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -21,10 +22,12 @@ import arc.util.Log;
 import arc.util.Time;
 import mindustry.Vars;
 import mindustry.core.GameState;
+import mindustry.entities.units.BuildPlan;
 import mindustry.game.Team;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
+import mindustry.gen.Unit;
 
 /**
  * Worker-side match referee (1v1, Teams, FFA, Training and Sandbox). Only
@@ -139,6 +142,16 @@ final class DuelWorker {
      */
     private String pauseChargedUuid = null;
     private long pauseChargeStartMillis = 0L;
+
+    /**
+     * The build plans each player already had queued when the disconnect
+     * pause began. While the guard is active, every update tick removes any
+     * plan not in here from both the server-side queue and the placing
+     * client's own queue, so nobody can lay out blueprints during the frozen
+     * time. Plans queued before the pause survive untouched.
+     */
+    private final Map<String, Set<String>> pausePlanKeysByUuid = new HashMap<>();
+    private boolean planGuardActive = false;
 
     /**
      * Shared id so each duel HUD update replaces the previous popup instead of stacking.
@@ -424,6 +437,7 @@ final class DuelWorker {
             pausedForDisconnect = false;
             disconnectSerial++;
             chargeDisconnectPause();
+            endPlanGuard();
             resumeGame();
         }
 
@@ -544,6 +558,7 @@ final class DuelWorker {
             pausedForDisconnect = false;
             disconnectSerial++;
             chargeDisconnectPause();
+            endPlanGuard();
             resumeGame();
         }
 
@@ -684,9 +699,12 @@ final class DuelWorker {
         matchStartMillis = 0L;
 
         // A restart is a fresh match: everyone gets their full rejoin budget
-        // back, and a pause that was running is not charged to anyone.
+        // back, and a pause that was running is not charged to anyone. The
+        // world regenerates, so the plan guard is dropped without a scrub.
         usedPauseMillisByUuid.clear();
         pauseChargedUuid = null;
+        planGuardActive = false;
+        pausePlanKeysByUuid.clear();
 
         hideHud();
         pauseGame();
@@ -716,6 +734,7 @@ final class DuelWorker {
         pauseChargedUuid = player.uuid();
         pauseChargeStartMillis = System.currentTimeMillis();
         pauseGame();
+        beginPlanGuard();
 
         int serial = ++disconnectSerial;
 
@@ -763,6 +782,96 @@ final class DuelWorker {
         pauseChargedUuid = null;
     }
 
+    /**
+     * Snapshot everyone's queued build plans and start scrubbing anything
+     * added while the game is frozen.
+     */
+    private void beginPlanGuard() {
+        pausePlanKeysByUuid.clear();
+
+        Groups.player.each(player -> {
+            Unit unit = player == null || player.dead() ? null : player.unit();
+
+            if (unit == null) {
+                return;
+            }
+
+            Set<String> keys = new HashSet<>();
+
+            for (BuildPlan plan : unit.plans()) {
+                keys.add(planKey(plan));
+            }
+
+            pausePlanKeysByUuid.put(player.uuid(), keys);
+        });
+
+        planGuardActive = true;
+    }
+
+    private void endPlanGuard() {
+        if (!planGuardActive) {
+            return;
+        }
+
+        scrubPausePlans();
+        planGuardActive = false;
+        pausePlanKeysByUuid.clear();
+    }
+
+    /**
+     * Ticked from the plugin's update loop, which Mindustry fires even while
+     * the game is paused - that is what lets the guard see plans the moment
+     * the still-syncing clients queue them.
+     */
+    void update() {
+        if (!active || !planGuardActive) {
+            return;
+        }
+
+        scrubPausePlans();
+    }
+
+    private void scrubPausePlans() {
+        Groups.player.each(player -> {
+            Unit unit = player == null || player.dead() ? null : player.unit();
+
+            if (unit == null || unit.plans().isEmpty()) {
+                return;
+            }
+
+            Set<String> allowed = pausePlanKeysByUuid.get(player.uuid());
+            List<BuildPlan> added = new ArrayList<>();
+
+            for (BuildPlan plan : unit.plans()) {
+                if (allowed == null || !allowed.contains(planKey(plan))) {
+                    added.add(plan);
+                }
+            }
+
+            for (BuildPlan plan : added) {
+                // Server queue first, then the owning client's local queue -
+                // otherwise their next snapshot just re-sends the plan.
+                unit.removeBuild(plan.x, plan.y, plan.breaking);
+                Call.removeQueueBlock(
+                        player.con,
+                        plan.x,
+                        plan.y,
+                        plan.breaking
+                );
+            }
+        });
+    }
+
+    /**
+     * Identity of a plan across client re-syncs: the server rebuilds the
+     * queue from every snapshot, so object identity does not survive, but
+     * position, action and block do.
+     */
+    private String planKey(BuildPlan plan) {
+        return plan.x + "," + plan.y + "," + plan.breaking + ","
+                + (plan.block == null ? -1 : plan.block.id);
+    }
+
     private void showRejoinCountdown(int serial, int remaining) {
         if (serial != disconnectSerial || !pausedForDisconnect) {
             return;
@@ -806,6 +915,7 @@ final class DuelWorker {
 
         pausedForDisconnect = false;
         chargeDisconnectPause();
+        endPlanGuard();
         resumeGame();
         hideHud();
         Call.sendMessage(
@@ -818,6 +928,7 @@ final class DuelWorker {
         pausedForDisconnect = false;
         disconnectSerial++;
         chargeDisconnectPause();
+        endPlanGuard();
         resumeGame();
         hideHud();
         Call.sendMessage("[accent]Everyone is back. Resuming the match![]");
