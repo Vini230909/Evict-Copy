@@ -1,4 +1,6 @@
-package vini.evictmap;
+package vini.evictmap.commands;
+
+import vini.evictmap.*;
 
 import arc.util.CommandHandler;
 import arc.util.Time;
@@ -11,7 +13,7 @@ import mindustry.gen.Player;
  * Kept separate from EvictCommands because these commands affect the complete
  * match state.
  */
-final class RoundEndCommands {
+public final class RoundEndCommands {
 
     private static final long SURRENDER_UNLOCK_DELAY_MILLIS =
             10L * 60L * 1000L;
@@ -30,7 +32,7 @@ final class RoundEndCommands {
     private final boolean duelWorker =
             "true".equals(System.getProperty("evict.duelWorker"));
 
-    RoundEndCommands(
+    public RoundEndCommands(
             TeamManager teamManager,
             DuelWorker duelWorkerReferee
     ) {
@@ -52,7 +54,7 @@ final class RoundEndCommands {
         );
     }
 
-    void beginRound() {
+    public void beginRound() {
         long scheduledRoundSerial = teamManager.roundSerial();
 
         Time.run(

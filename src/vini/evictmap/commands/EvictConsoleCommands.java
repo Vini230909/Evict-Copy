@@ -1,4 +1,6 @@
-package vini.evictmap;
+package vini.evictmap.commands;
+
+import vini.evictmap.*;
 
 import arc.util.CommandHandler;
 import arc.util.Log;
@@ -14,7 +16,7 @@ import java.util.function.LongConsumer;
 /**
  * All dedicated-server console commands in one place.
  */
-final class EvictConsoleCommands {
+public final class EvictConsoleCommands {
 
     private final EvictRuntimeState runtime;
     private final EvictSettings settings;
@@ -29,7 +31,7 @@ final class EvictConsoleCommands {
 
     private int extraCoreCapPerCore = 0;
 
-    EvictConsoleCommands(
+    public EvictConsoleCommands(
             EvictRuntimeState runtime,
             EvictSettings settings,
             EvictTerrainGenerator terrain,
@@ -49,7 +51,7 @@ final class EvictConsoleCommands {
         this.generate = generate;
     }
 
-    void register(CommandHandler handler) {
+    public void register(CommandHandler handler) {
         handler.register(
                 "evictgen",
                 "[seed]",

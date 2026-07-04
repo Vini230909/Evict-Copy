@@ -24,7 +24,7 @@ import java.util.function.Consumer;
  * request to join the sandbox team; an accepted spectator is promoted to a
  * full match participant.
  */
-final class InviteManager {
+public final class InviteManager {
 
     private final TeamManager teamManager;
     private final List<JoinRequest> joinRequests = new ArrayList<>();
@@ -57,7 +57,7 @@ final class InviteManager {
                 || (sandboxJoinMode && teamManager.isSpectatorPlayer(player));
     }
 
-    void registerClientCommands(CommandHandler handler) {
+    public void registerClientCommands(CommandHandler handler) {
         handler.register(
                 "invite",
                 "[number]",

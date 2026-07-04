@@ -29,7 +29,7 @@ import java.util.function.Consumer;
  * Database writes run on a single background thread. Game-world state is only
  * read on the server thread before small immutable write jobs are queued.
  */
-final class PlayerDataManager {
+public final class PlayerDataManager {
 
     private static final File DATABASE_FILE =
             new File("config/evict-players.db");
@@ -248,14 +248,14 @@ final class PlayerDataManager {
     /**
      * A player's 1v1, Teams and FFA matches, most recent first.
      */
-    void findDuelHistory(
+    public void findDuelHistory(
             String uuid,
             Consumer<List<DuelMatch>> callback
     ) {
         enqueue(() -> deliver(callback, loadDuelHistory(uuid)));
     }
 
-    void searchPlayerInfo(
+    public void searchPlayerInfo(
             String query,
             Consumer<List<PlayerInfo>> callback
     ) {
@@ -950,7 +950,7 @@ final class PlayerDataManager {
         }
     }
 
-    record PlayerInfo(
+    public record PlayerInfo(
             String uuid,
             String lastName,
             List<String> knownNames,
@@ -973,7 +973,7 @@ final class PlayerDataManager {
      * One /history entry. mode is "1v1" or "ffa"; FFA rows carry every
      * participant's display name (newline-joined) and no loser columns.
      */
-    record DuelMatch(
+    public record DuelMatch(
             long playedAtMillis,
             String winnerUuid,
             String winnerName,

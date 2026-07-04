@@ -27,7 +27,7 @@ import java.util.Set;
  * This class owns geometry, wall templates, resources and neutral core
  * placement. It deliberately does not manage players, captures or round resets.
  */
-final class EvictTerrainGenerator {
+public final class EvictTerrainGenerator {
 
     private final EvictSettings settings;
 
@@ -219,7 +219,7 @@ final class EvictTerrainGenerator {
         );
     }
 
-    void logStatus() {
+    public void logStatus() {
         Log.info(
                 "[EvictMapGenerator] grid: @ staggered rows, alternating @ / @ hexes",
                 ROWS,

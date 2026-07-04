@@ -1,4 +1,6 @@
-package vini.evictmap;
+package vini.evictmap.commands;
+
+import vini.evictmap.*;
 
 import arc.math.Mathf;
 import arc.struct.Seq;
@@ -18,7 +20,7 @@ import mindustry.gen.Player;
  * - /help dev
  * - /help dev 2
  */
-final class EvictHelpCommands {
+public final class EvictHelpCommands {
 
     private static final int COMMANDS_PER_PAGE = 6;
 

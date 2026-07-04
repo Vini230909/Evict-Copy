@@ -5,7 +5,7 @@ package vini.evictmap;
  * between the hub and a worker (duel.properties / result.properties), so it
  * must stay stable across versions.
  */
-enum MatchMode {
+public enum MatchMode {
 
     ONE_VS_ONE("1v1", "1v1"),
     TEAMS("teams", "Teams"),
@@ -30,11 +30,11 @@ enum MatchMode {
         this.label = label;
     }
 
-    String id() {
+    public String id() {
         return id;
     }
 
-    String label() {
+    public String label() {
         return label;
     }
 

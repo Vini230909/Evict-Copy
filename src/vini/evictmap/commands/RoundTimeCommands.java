@@ -1,4 +1,6 @@
-package vini.evictmap;
+package vini.evictmap.commands;
+
+import vini.evictmap.*;
 
 import arc.util.CommandHandler;
 import mindustry.gen.Groups;
@@ -10,7 +12,7 @@ import java.util.Map;
 /**
  * Player-facing time command and lightweight first-join timer.
  */
-final class RoundTimeCommands {
+public final class RoundTimeCommands {
 
     /**
      * When the player first joined this round, plus the round's paused time
@@ -24,7 +26,7 @@ final class RoundTimeCommands {
             new HashMap<>();
     private final TeamManager teamManager;
 
-    RoundTimeCommands(TeamManager teamManager) {
+    public RoundTimeCommands(TeamManager teamManager) {
         this.teamManager = teamManager;
     }
 
@@ -36,12 +38,12 @@ final class RoundTimeCommands {
         );
     }
 
-    void beginRound() {
+    public void beginRound() {
         firstJoinByPlayerUuid.clear();
         rememberConnectedPlayers();
     }
 
-    void handlePlayerJoin(Player player) {
+    public void handlePlayerJoin(Player player) {
         if (player != null) {
             firstJoinByPlayerUuid.putIfAbsent(
                     player.uuid(),
@@ -53,7 +55,7 @@ final class RoundTimeCommands {
         }
     }
 
-    void rememberConnectedPlayers() {
+    public void rememberConnectedPlayers() {
         long currentMillis = System.currentTimeMillis();
         long pausedMillis = teamManager.roundPausedMillis();
 

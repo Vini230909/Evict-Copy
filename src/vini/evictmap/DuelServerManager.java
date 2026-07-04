@@ -42,7 +42,7 @@ import mindustry.world.Block;
  * The slot map is only ever touched on the main thread; background work posts
  * results back with {@link Core#app}.
  */
-final class DuelServerManager {
+public final class DuelServerManager {
 
     private static final String WORKER_DIR_PREFIX = "duel-";
     private static final String WORKER_BASE_DIR = "duel-workers";
@@ -92,7 +92,7 @@ final class DuelServerManager {
         );
     }
 
-    boolean isConfigured() {
+    public boolean isConfigured() {
         return settings.duelServerConfigured();
     }
 
@@ -103,7 +103,7 @@ final class DuelServerManager {
      * if the feature is unconfigured or all worker slots are in use; the
      * caller is responsible for notifying the players in that case.
      */
-    boolean requestMatch(MatchMode mode, List<List<Player>> rosterTeams) {
+    public boolean requestMatch(MatchMode mode, List<List<Player>> rosterTeams) {
         if (!isConfigured() || rosterTeams == null || rosterTeams.isEmpty()) {
             return false;
         }
@@ -363,7 +363,7 @@ final class DuelServerManager {
      * to a match that is wrapping up or not ready, ordered by port for a stable
      * menu.
      */
-    List<ActiveDuel> activeDuels() {
+    public List<ActiveDuel> activeDuels() {
         List<ActiveDuel> duels = new ArrayList<>();
 
         for (WorkerHandle handle : workers.values()) {
@@ -403,7 +403,7 @@ final class DuelServerManager {
      * Connects a viewer to an ongoing duel worker as a spectator. Returns false
      * if that match is no longer available so the caller can tell the player.
      */
-    boolean viewDuel(Player viewer, int port) {
+    public boolean viewDuel(Player viewer, int port) {
         if (viewer == null || !isOngoing(workers.get(port))) {
             return false;
         }
@@ -430,7 +430,7 @@ final class DuelServerManager {
      * spawn and the state is hub-inferred; live in-match state (freeze, game
      * time, who is actually connected) needs a worker status channel later.
      */
-    void logStatus() {
+    public void logStatus() {
         int basePort = settings.duelServerPort();
         int maxWorkers = settings.duelMaxWorkers();
 
@@ -1099,7 +1099,7 @@ final class DuelServerManager {
     /**
      * One in-progress match exposed to the /view menu.
      */
-    record ActiveDuel(
+    public record ActiveDuel(
             int port,
             String label
     ) {

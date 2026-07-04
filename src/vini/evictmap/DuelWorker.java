@@ -48,7 +48,7 @@ import mindustry.gen.Unit;
  * Countdowns, status writes and the empty-shutdown run on a real-time executor,
  * because the game is paused during them and logic-timed tasks would stall.
  */
-final class DuelWorker {
+public final class DuelWorker {
 
     private static final File HANDSHAKE_FILE = new File("duel.properties");
     private static final File RESULT_FILE = new File("result.properties");
@@ -169,7 +169,7 @@ final class DuelWorker {
         this.active = "true".equals(System.getProperty("evict.duelWorker"));
     }
 
-    boolean isActive() {
+    public boolean isActive() {
         return active;
     }
 
@@ -177,7 +177,7 @@ final class DuelWorker {
      * True for the match players named in the handshake (plus spectators later
      * promoted into a sandbox); everyone else spectates.
      */
-    boolean isParticipant(String uuid) {
+    public boolean isParticipant(String uuid) {
         return handshakeLoaded
                 && uuid != null
                 && participantUuids.contains(uuid);
@@ -285,7 +285,7 @@ final class DuelWorker {
     /**
      * Sends a spectator back to the hub this worker was launched from.
      */
-    void returnSpectatorToHub(Player player) {
+    public void returnSpectatorToHub(Player player) {
         if (!active || player == null) {
             return;
         }
@@ -541,7 +541,7 @@ final class DuelWorker {
      * Ends a Training or Sandbox session after its team surrendered with /die.
      * There is no winner and nothing is recorded; everyone returns to the hub.
      */
-    void handleParticipantSurrender(Player player) {
+    public void handleParticipantSurrender(Player player) {
         if (
                 !active
                         || resolved

@@ -21,7 +21,7 @@ import java.util.Set;
  * A ranked player gets a name tag (e.g. [C] for a commentator) and, for
  * commentator and above, permission to /restart a duel they are spectating.
  */
-final class RankManager {
+public final class RankManager {
 
     private static final File RANKS_FILE =
             new File("config/evict-ranks.properties");
@@ -41,10 +41,10 @@ final class RankManager {
     /**
      * A grantable role. Ordered low-to-high so "commentator and above" works.
      */
-    enum Rank {
+    public enum Rank {
         COMMENTATOR("Commentator", "[sky][[C][] ");
 
-        final String title;
+        public final String title;
         final String namePrefix;
 
         Rank(String title, String namePrefix) {
@@ -52,7 +52,7 @@ final class RankManager {
             this.namePrefix = namePrefix;
         }
 
-        static Rank parse(String value) {
+        public static Rank parse(String value) {
             if (value == null) {
                 return null;
             }
@@ -127,11 +127,11 @@ final class RankManager {
     /**
      * Snapshot of the granted ranks for listing.
      */
-    Map<String, Rank> snapshot() {
+    public Map<String, Rank> snapshot() {
         return new HashMap<>(ranksByUuid);
     }
 
-    boolean grant(String uuid, Rank rank) {
+    public boolean grant(String uuid, Rank rank) {
         if (uuid == null || uuid.isBlank() || rank == null) {
             return false;
         }
@@ -141,7 +141,7 @@ final class RankManager {
         return true;
     }
 
-    boolean revoke(String uuid) {
+    public boolean revoke(String uuid) {
         if (uuid == null || ranksByUuid.remove(uuid.trim()) == null) {
             return false;
         }
@@ -153,7 +153,7 @@ final class RankManager {
     /**
      * Commentator and above, with server admins always allowed.
      */
-    boolean canRestartMatches(Player player) {
+    public boolean canRestartMatches(Player player) {
         return player != null
                 && (player.admin || rankOf(player.uuid()) != null);
     }
@@ -178,7 +178,7 @@ final class RankManager {
      * they have none). Names reset to the client's choice on reconnect, so this
      * is re-applied on every join.
      */
-    void applyNameTag(Player player) {
+    public void applyNameTag(Player player) {
         if (player == null) {
             return;
         }

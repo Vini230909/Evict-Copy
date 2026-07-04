@@ -5,16 +5,16 @@ import java.util.Random;
 /**
  * Small mutable runtime state shared by lifecycle and server-console commands.
  */
-final class EvictRuntimeState {
+public final class EvictRuntimeState {
 
     /**
      * Auto-generation defaults to on so a plain "host evict-map pvp" produces
      * an Evict round with a random seed. Use "evictauto off" to host a map
      * without runtime terrain generation.
      */
-    boolean autoGenerate = true;
-    Long nextSeed = null;
-    Long lastSeed = null;
+    public boolean autoGenerate = true;
+    public Long nextSeed = null;
+    public Long lastSeed = null;
 
     long consumeNextSeed() {
         long seed = nextSeed == null ? randomSeed() : nextSeed;
@@ -22,11 +22,11 @@ final class EvictRuntimeState {
         return seed;
     }
 
-    long randomSeed() {
+    public long randomSeed() {
         return new Random().nextLong();
     }
 
-    Long parseSeedOrRandom(String[] args) {
+    public Long parseSeedOrRandom(String[] args) {
         if (args.length == 0 || args[0].equalsIgnoreCase("random")) {
             return randomSeed();
         }

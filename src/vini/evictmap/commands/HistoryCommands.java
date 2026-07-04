@@ -1,4 +1,6 @@
-package vini.evictmap;
+package vini.evictmap.commands;
+
+import vini.evictmap.*;
 
 import arc.util.CommandHandler;
 import mindustry.gen.Call;
@@ -20,7 +22,7 @@ import java.util.Map;
  * Teams and FFA entries list everyone with just win/lose below - they are
  * unranked. Training and Sandbox sessions leave no history.
  */
-final class HistoryCommands {
+public final class HistoryCommands {
 
     private static final int ENTRIES_PER_PAGE = 10;
     private static final int PICKER_MENU_COLUMNS = 2;
@@ -55,7 +57,7 @@ final class HistoryCommands {
      */
     private final Map<String, HistoryView> viewsByViewerUuid = new HashMap<>();
 
-    HistoryCommands(PlayerDataManager playerDataManager) {
+    public HistoryCommands(PlayerDataManager playerDataManager) {
         this.playerDataManager = playerDataManager;
         this.pickerMenuId = Menus.registerMenu(this::handlePicker);
         this.historyMenuId = Menus.registerMenu(this::handleMenu);
@@ -75,7 +77,7 @@ final class HistoryCommands {
         );
     }
 
-    void handlePlayerLeave(Player player) {
+    public void handlePlayerLeave(Player player) {
         if (player != null) {
             pickerTargetsByViewerUuid.remove(player.uuid());
             viewsByViewerUuid.remove(player.uuid());

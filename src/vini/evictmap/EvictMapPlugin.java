@@ -23,6 +23,7 @@ import vini.evictmap.gameplay.AttritionManager;
 import vini.evictmap.gameplay.RulesApplier;
 import vini.evictmap.gameplay.ExtinctionManager;
 import vini.evictmap.gameplay.AttackManager;
+import vini.evictmap.commands.*;
 
 import java.util.HashMap;
 

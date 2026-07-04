@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
 /**
  * Formats live player names for chat/menu output.
  */
-final class PlayerNameFormatter {
+public final class PlayerNameFormatter {
 
     private static final Pattern HEX_COLOR_TAG =
             Pattern.compile("\\[#([0-9a-fA-F]{6})(?:[0-9a-fA-F]{2})?]");
@@ -18,7 +18,7 @@ final class PlayerNameFormatter {
     private PlayerNameFormatter() {
     }
 
-    static String displayName(Player player) {
+    public static String displayName(Player player) {
         if (player == null) {
             return "unknown";
         }
@@ -48,7 +48,7 @@ final class PlayerNameFormatter {
      * menu into an unreadable wall of text; the rest are folded into a
      * trailing "+N more".
      */
-    static String joinShortened(
+    public static String joinShortened(
             List<String> names,
             String separator,
             int maxShown

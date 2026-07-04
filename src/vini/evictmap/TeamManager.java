@@ -465,7 +465,7 @@ public final class TeamManager {
         return null;
     }
 
-    void logStatus() {
+    public void logStatus() {
         Log.info("[EvictMapGenerator] Team assignment status: @", compactStatus());
 
         for (HexSlot slot : slots) {
@@ -938,7 +938,7 @@ public final class TeamManager {
         );
     }
 
-    boolean surrenderTeam(Team team) {
+    public boolean surrenderTeam(Team team) {
         if (
                 !roundActive
                         || resetting
@@ -1119,7 +1119,7 @@ public final class TeamManager {
         }
     }
 
-    EarlyEndStatus earlyEndStatus(Team candidate) {
+    public EarlyEndStatus earlyEndStatus(Team candidate) {
         if (
                 candidate == null
                         || candidate == FALLEN_TEAM
@@ -1171,7 +1171,7 @@ public final class TeamManager {
         );
     }
 
-    boolean endRoundEarly(Team winner) {
+    public boolean endRoundEarly(Team winner) {
         EarlyEndStatus status = earlyEndStatus(winner);
 
         if (!roundActive || resetting || !status.eligible()) {
@@ -1332,7 +1332,7 @@ public final class TeamManager {
     }
 
     @SuppressWarnings("BooleanMethodIsAlwaysInverted")
-    boolean isLeader(Player player) {
+    public boolean isLeader(Player player) {
         if (player == null || player.team() == FALLEN_TEAM) {
             return false;
         }
@@ -1342,7 +1342,7 @@ public final class TeamManager {
         );
     }
 
-    boolean isActivePersonalTeam(int teamId) {
+    public boolean isActivePersonalTeam(int teamId) {
         return teamId != FALLEN_TEAM_ID
                 && !eliminatedTeamIds.contains(teamId)
                 && ownsAnyHex(teamId);
@@ -1375,7 +1375,7 @@ public final class TeamManager {
         return result;
     }
 
-    String activeMatchPlayerNamesSummary() {
+    public String activeMatchPlayerNamesSummary() {
         List<String> playerNames = new ArrayList<>();
 
         for (int teamId : personalTeamCreationOrder) {
@@ -1477,7 +1477,7 @@ public final class TeamManager {
         return null;
     }
 
-    String displayTeam(Team team) {
+    public String displayTeam(Team team) {
         if (team == FALLEN_TEAM) {
             return "Fallen";
         }
@@ -1742,7 +1742,7 @@ public final class TeamManager {
         return null;
     }
 
-    long roundSerial() {
+    public long roundSerial() {
         return roundSerial;
     }
 
@@ -1798,7 +1798,7 @@ public final class TeamManager {
      * Wall-clock milliseconds this round has spent paused, including the
      * currently running pause.
      */
-    long roundPausedMillis() {
+    public long roundPausedMillis() {
         if (pauseStartedAtMillis == 0L) {
             return roundPausedMillis;
         }
@@ -1810,11 +1810,11 @@ public final class TeamManager {
                 );
     }
 
-    long roundStartedAtMillis() {
+    public long roundStartedAtMillis() {
         return roundStartedAtMillis;
     }
 
-    void setElapsedTimeMillis(long time) {
+    public void setElapsedTimeMillis(long time) {
         long now = System.currentTimeMillis();
         roundStartedAtMillis = now - time;
 
@@ -2032,7 +2032,7 @@ public final class TeamManager {
         return row % 2 == 0 ? SHORT_ROW_COLS : LONG_ROW_COLS;
     }
 
-    record EarlyEndStatus(
+    public record EarlyEndStatus(
             boolean eligible,
             int ownedCores,
             int additionalCoresNeededForHalf,
@@ -2040,7 +2040,7 @@ public final class TeamManager {
     ) {
     }
 
-    record EarlyEndBlocker(
+    public record EarlyEndBlocker(
             Team team,
             int remainingCores
     ) {

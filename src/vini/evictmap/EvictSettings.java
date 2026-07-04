@@ -19,7 +19,7 @@ import java.util.Set;
  */
 public final class EvictSettings {
 
-    enum OreKind {
+    public enum OreKind {
         COPPER("copper", 29.94d, 0.82d, 3.10d, 0.13d),
         LEAD("lead", 27.44d, 0.83d, 3.10d, 0.16d),
         COAL("coal", 24.95d, 0.83d, 1.71d, 0.20d),
@@ -349,7 +349,7 @@ public final class EvictSettings {
         save();
     }
 
-    void setWallPercentages(
+    public void setWallPercentages(
             double fullWall,
             double smallWall,
             double open,
@@ -369,12 +369,12 @@ public final class EvictSettings {
         save();
     }
 
-    void setUnitBuildSpeedMultiplier(double multiplier) {
+    public void setUnitBuildSpeedMultiplier(double multiplier) {
         setUnitBuildSpeedMultiplierWithoutSaving(multiplier);
         save();
     }
 
-    void setDuelServer(
+    public void setDuelServer(
             String ip,
             int basePort,
             int maxWorkers,
@@ -388,11 +388,11 @@ public final class EvictSettings {
         return duelServerIp;
     }
 
-    int duelServerPort() {
+    public int duelServerPort() {
         return duelServerPort;
     }
 
-    int duelMaxWorkers() {
+    public int duelMaxWorkers() {
         return duelMaxWorkers;
     }
 
@@ -400,7 +400,7 @@ public final class EvictSettings {
         return duelWorkerJarName;
     }
 
-    String duelWorkerMap() {
+    public String duelWorkerMap() {
         return duelWorkerMap;
     }
 
@@ -424,7 +424,7 @@ public final class EvictSettings {
         return duelServerIp != null && !duelServerIp.isBlank();
     }
 
-    String compactDuelServerSettings() {
+    public String compactDuelServerSettings() {
         if (!duelServerConfigured()) {
             return "not set";
         }
@@ -460,7 +460,7 @@ public final class EvictSettings {
                 : map.trim();
     }
 
-    void setWaterSettings(
+    public void setWaterSettings(
             double patchAttemptsPerHex,
             int normalPatchTiles,
             double largePatchChancePercent,
@@ -475,7 +475,7 @@ public final class EvictSettings {
         save();
     }
 
-    void setOreSettings(
+    public void setOreSettings(
             OreKind kind,
             double scale,
             double threshold,
@@ -554,7 +554,7 @@ public final class EvictSettings {
         return formatPercent(rangeAttritionPercent) + "%";
     }
 
-    String compactWallSettings() {
+    public String compactWallSettings() {
         return "full-wall=" + formatPercent(fullWallPercent)
                 + "%, small-wall=" + formatPercent(smallWallPercent)
                 + "%, open=" + formatPercent(openPercent)
@@ -565,11 +565,11 @@ public final class EvictSettings {
         return Integer.toString(extinctionTerrainChangesPerTick);
     }
 
-    String compactUnitBuildSpeedSettings() {
+    public String compactUnitBuildSpeedSettings() {
         return formatNumber(unitBuildSpeedMultiplier) + "x";
     }
 
-    String compactWaterSettings() {
+    public String compactWaterSettings() {
         return "tries-per-hex="
                 + formatNumber(waterSettings.patchAttemptsPerHex())
                 + ", normal="
@@ -581,7 +581,7 @@ public final class EvictSettings {
                 + " tiles";
     }
 
-    String compactOreSettings() {
+    public String compactOreSettings() {
         StringBuilder result = new StringBuilder();
 
         for (OreKind kind : OreKind.values()) {
@@ -595,7 +595,7 @@ public final class EvictSettings {
         return result.toString();
     }
 
-    String compactOreSettings(OreKind kind) {
+    public String compactOreSettings(OreKind kind) {
         OreSettings ore = ore(kind);
 
         return kind.key

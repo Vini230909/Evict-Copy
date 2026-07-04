@@ -1,4 +1,6 @@
-package vini.evictmap;
+package vini.evictmap.commands;
+
+import vini.evictmap.*;
 
 import arc.util.CommandHandler;
 import arc.util.Time;
@@ -35,7 +37,7 @@ import java.util.Set;
  * rules and the match itself live on that separate instance, because a single
  * Mindustry server process can only host one game at a time.
  */
-final class DuelCommands {
+public final class DuelCommands {
 
     private static final int SELECTION_MENU_COLUMNS = 2;
     private static final int ACCEPT_OPTION = 0;
@@ -122,7 +124,7 @@ final class DuelCommands {
     private final Map<String, List<Integer>> viewTargetsByViewerUuid =
             new HashMap<>();
 
-    DuelCommands(
+    public DuelCommands(
             DuelServerManager duelManager,
             DuelWorker worker,
             RankManager rankManager,
@@ -178,7 +180,7 @@ final class DuelCommands {
      * player who just left, so stale UUIDs never accumulate or resolve to a
      * ghost. A draft is cancelled entirely because its rosters are broken.
      */
-    void handlePlayerLeave(Player player) {
+    public void handlePlayerLeave(Player player) {
         if (player == null) {
             return;
         }

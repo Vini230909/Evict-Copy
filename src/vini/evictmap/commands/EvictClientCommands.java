@@ -1,4 +1,6 @@
-package vini.evictmap;
+package vini.evictmap.commands;
+
+import vini.evictmap.*;
 
 import arc.util.CommandHandler;
 import vini.evictmap.gameplay.AttackManager;
@@ -6,7 +8,7 @@ import vini.evictmap.gameplay.AttackManager;
 /**
  * Single entry point for every player-facing chat command.
  */
-final class EvictClientCommands {
+public final class EvictClientCommands {
 
     private final AttackManager fullassault;
     private final InviteManager invites;
@@ -16,7 +18,7 @@ final class EvictClientCommands {
     private final HistoryCommands history;
     private final EvictHelpCommands help;
 
-    EvictClientCommands(
+    public EvictClientCommands(
             AttackManager fullassault,
             InviteManager invites,
             RoundEndCommands roundEnd,
@@ -34,7 +36,7 @@ final class EvictClientCommands {
         this.help = help;
     }
 
-    void register(CommandHandler handler) {
+    public void register(CommandHandler handler) {
         fullassault.registerClientCommands(handler);
         invites.registerClientCommands(handler);
         roundEnd.registerClientCommands(handler);
