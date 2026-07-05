@@ -108,6 +108,14 @@ public final class DuelWorker {
     private final Set<String> participantUuids = new LinkedHashSet<>();
 
     /**
+     * The player who started a Sandbox (the sole launch participant). Everyone
+     * else is a guest promoted in later via /invite. The owner is the only one
+     * who can end the room with /die; guests leave with /v. Empty for the
+     * competitive modes, which have no owner.
+     */
+    private String ownerUuid = "";
+
+    /**
      * Eliminated FFA/Teams players. They stay in the rosters (so the final
      * result still records them as losers) but stop being participants: the
      * start gate and disconnect pause ignore them, /v lets them leave, and
@@ -281,8 +289,25 @@ public final class DuelWorker {
     }
 
     /**
-     * Promotes a spectator into the sandbox: they become a full participant
-     * on the sandbox roster (chat, no /v exit, counted by the start gate).
+     * True on a Sandbox worker (a persistent build room rather than a gated
+     * match).
+     */
+    public boolean isSandbox() {
+        return active && handshakeLoaded && mode == MatchMode.SANDBOX;
+    }
+
+    /**
+     * True for the Sandbox owner - the sole launch participant. The owner ends
+     * the room with /die; guests only leave with /v.
+     */
+    public boolean isOwner(String uuid) {
+        return uuid != null && !uuid.isEmpty() && uuid.equals(ownerUuid);
+    }
+
+    /**
+     * Promotes a spectator into the sandbox: they become a full participant on
+     * the sandbox roster. Re-clears any earlier /v "out" mark, so a guest who
+     * left and got re-invited is a proper participant again.
      */
     public void addSandboxParticipant(Player player) {
         if (
@@ -295,9 +320,76 @@ public final class DuelWorker {
             return;
         }
 
+        outUuids.remove(player.uuid());
+
         if (participantUuids.add(player.uuid())) {
             rosterTeams.get(0).add(player.uuid());
         }
+    }
+
+    /**
+     * A guest leaving the sandbox with /v: drop them from the roster and mark
+     * them "out" so the hub stops bouncing them back, then send them to the
+     * lobby. They must /view and /invite again to return. The owner cannot
+     * leave this way - they end the room with /die instead.
+     */
+    private void leaveSandbox(Player player) {
+        String uuid = player.uuid();
+
+        participantUuids.remove(uuid);
+        outUuids.add(uuid);
+
+        for (List<String> roster : rosterTeams) {
+            roster.remove(uuid);
+        }
+
+        returnSpectatorToHub(player);
+    }
+
+    /**
+     * Handles /v pressed by a sandbox participant. Returns true when it dealt
+     * with the player (so the caller stops), false when this is not a sandbox
+     * and the caller should apply the normal "you're in this match" refusal.
+     */
+    public boolean handleSandboxLeave(Player player) {
+        if (!isSandbox() || player == null) {
+            return false;
+        }
+
+        if (isOwner(player.uuid())) {
+            player.sendMessage(
+                    "[accent]You own this sandbox - end it with [white]/die[accent], or just leave the server.[]"
+            );
+            return true;
+        }
+
+        leaveSandbox(player);
+        return true;
+    }
+
+    /**
+     * Handles /die pressed on a sandbox worker. Returns true when it dealt with
+     * the player (so the caller stops), false when this is not a sandbox and
+     * the caller should run the normal surrender path (e.g. Training).
+     */
+    public boolean handleSandboxDie(Player player) {
+        if (!isSandbox() || player == null) {
+            return false;
+        }
+
+        if (resolved || !isParticipant(player.uuid())) {
+            return true;
+        }
+
+        if (isOwner(player.uuid())) {
+            endSoloSession("sandbox-ended");
+        } else {
+            player.sendMessage(
+                    "[accent]Only the sandbox owner can end it. Use [white]/v[accent] to leave.[]"
+            );
+        }
+
+        return true;
     }
 
     /**
@@ -564,8 +656,9 @@ public final class DuelWorker {
     }
 
     /**
-     * Ends a Training or Sandbox session after its team surrendered with /die.
-     * There is no winner and nothing is recorded; everyone returns to the hub.
+     * Ends a Training session after its team surrendered with /die. There is no
+     * winner and nothing is recorded; everyone returns to the hub. (Sandbox /die
+     * is owner-gated and routed through {@link #handleSandboxDie} instead.)
      */
     public void handleParticipantSurrender(Player player) {
         if (
@@ -578,6 +671,15 @@ public final class DuelWorker {
             return;
         }
 
+        endSoloSession("surrender");
+    }
+
+    /**
+     * Ends a solo session (Training surrender or a Sandbox owner /die): records
+     * no result winner, tells everyone, and returns them to the hub after the
+     * usual delay.
+     */
+    private void endSoloSession(String reason) {
         resolved = true;
 
         if (pausedForDisconnect) {
@@ -596,7 +698,7 @@ public final class DuelWorker {
             allRosterUuids.addAll(roster);
         }
 
-        writeResult(new ArrayList<>(), allRosterUuids, "surrender");
+        writeResult(new ArrayList<>(), allRosterUuids, reason);
 
         Call.sendMessage(
                 "[accent]The " + mode.label()
@@ -606,8 +708,9 @@ public final class DuelWorker {
         Time.run(RETURN_DELAY_TICKS, this::returnPlayersToHub);
 
         Log.info(
-                "[EvictMapGenerator] @ session ended by /die.",
-                mode.label()
+                "[EvictMapGenerator] @ session ended (@).",
+                mode.label(),
+                reason
         );
     }
 
@@ -978,9 +1081,9 @@ public final class DuelWorker {
     private void scheduleShutdownIfEmpty(int seconds) {
         scheduler.schedule(
                 () -> Core.app.post(() -> {
-                    if (Groups.player.isEmpty()) {
+                    if (isEmptyOfParticipants()) {
                         Log.info(
-                                "[EvictMapGenerator] Duel worker is empty; shutting down to free the slot."
+                                "[EvictMapGenerator] Duel worker has no participants left; shutting down to free the slot."
                         );
                         System.exit(0);
                     }
@@ -988,6 +1091,26 @@ public final class DuelWorker {
                 seconds,
                 TimeUnit.SECONDS
         );
+    }
+
+    /**
+     * True when no participant is connected. Pure /view spectators never keep a
+     * worker alive - a match (or sandbox) with only watchers left should free
+     * its slot. Before the handshake loads we fall back to the raw player count
+     * so a misconfigured worker still shuts down once truly empty.
+     */
+    private boolean isEmptyOfParticipants() {
+        if (!handshakeLoaded) {
+            return Groups.player.isEmpty();
+        }
+
+        for (String uuid : participantUuids) {
+            if (isOnline(uuid)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void pauseGame() {
@@ -1021,6 +1144,12 @@ public final class DuelWorker {
 
         properties.setProperty("players", players.toString());
         properties.setProperty("out", String.join(",", outUuids));
+        // The live roster (including offline members) and the owner let the hub
+        // bounce a disconnected participant back to this worker - even a sandbox
+        // guest who was never in the launch handshake - while sending viewers
+        // and /v'd-out players to the lobby.
+        properties.setProperty("participants", String.join(",", participantUuids));
+        properties.setProperty("owner", ownerUuid);
 
         try (FileOutputStream output = new FileOutputStream(STATUS_FILE)) {
             properties.store(output, "Evict duel status");
@@ -1136,6 +1265,12 @@ public final class DuelWorker {
             }
 
             handshakeLoaded = !participantUuids.isEmpty();
+
+            // The Sandbox owner is its sole launch participant; guests are
+            // added later via addSandboxParticipant and are never the owner.
+            if (duelMode.allowsSpectatorInvites() && handshakeLoaded) {
+                ownerUuid = participantUuids.iterator().next();
+            }
 
             Log.info(
                     "[EvictMapGenerator] Duel worker loaded handshake: hub=@:@ mode=@ teams=@ players=@.",

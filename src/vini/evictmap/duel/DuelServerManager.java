@@ -316,8 +316,17 @@ public final class DuelServerManager {
 
         Integer port = activeDuelByUuid.get(player.uuid());
 
+        // Sandbox guests join a worker after launch, so they are never in the
+        // launch-time map. Find their worker from its live participant roster
+        // (status.properties) and cache it so later reconnects are cheap.
         if (port == null) {
-            return false;
+            port = findWorkerHostingParticipant(player.uuid());
+
+            if (port == null) {
+                return false;
+            }
+
+            activeDuelByUuid.put(player.uuid(), port);
         }
 
         WorkerHandle handle = workers.get(port);
@@ -345,6 +354,35 @@ public final class DuelServerManager {
         player.sendMessage("[accent]Returning you to your match...[]");
         Call.connect(player.con, settings.duelServerIp(), port);
         return true;
+    }
+
+    /**
+     * The port of an ongoing worker that still lists this uuid as a live
+     * participant (and has not marked it "out"), or null if none. Lets the hub
+     * bounce a disconnected sandbox guest back even though they were promoted
+     * on the worker and never registered at launch.
+     */
+    private Integer findWorkerHostingParticipant(String uuid) {
+        for (WorkerHandle handle : workers.values()) {
+            if (!isOngoing(handle)) {
+                continue;
+            }
+
+            Properties status = readStatus(handle.port);
+
+            if (
+                    status != null
+                            && isListedUuid(
+                            status.getProperty("participants", ""),
+                            uuid
+                    )
+                            && !isListedUuid(status.getProperty("out", ""), uuid)
+            ) {
+                return handle.port;
+            }
+        }
+
+        return null;
     }
 
     private static boolean isListedUuid(String packed, String uuid) {

@@ -1003,6 +1003,12 @@ public final class DuelCommands {
 
         if (worker.isActive()) {
             if (worker.isParticipant(player.uuid())) {
+                // On a sandbox, a guest may leave with /v (the owner is told to
+                // use /die); in a real match, participants cannot leave this way.
+                if (worker.handleSandboxLeave(player)) {
+                    return;
+                }
+
                 player.sendMessage(
                         "[scarlet]You are in this match; you cannot leave it with /v.[]"
                 );

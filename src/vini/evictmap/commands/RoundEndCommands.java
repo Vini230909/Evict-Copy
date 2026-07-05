@@ -75,6 +75,13 @@ public final class RoundEndCommands {
             return;
         }
 
+        // Sandbox /die is owner-only (it ends the room); guests are told to use
+        // /v. It must not surrender the shared sandbox team, so intercept before
+        // the normal surrender path.
+        if (duelWorker && duelWorkerReferee.handleSandboxDie(player)) {
+            return;
+        }
+
         if (!duelWorker) {
             if (!teamManager.isLeader(player)) {
                 player.sendMessage(
@@ -101,9 +108,9 @@ public final class RoundEndCommands {
             return;
         }
 
-        // In Training/Sandbox there is no opponent left to win, so the
-        // referee ends the session and returns everyone to the hub. No ELO
-        // or match result is recorded for these modes.
+        // In Training there is no opponent left to win, so the referee ends the
+        // session and returns everyone to the hub. No ELO or match result is
+        // recorded. (Sandbox /die was already handled above.)
         if (duelWorker) {
             duelWorkerReferee.handleParticipantSurrender(player);
         }
