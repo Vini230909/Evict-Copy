@@ -11,7 +11,7 @@ import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
 import mindustry.ui.Menus;
-import vini.evictmap.MatchMode;
+import vini.evictmap.duel.MatchMode;
 import vini.evictmap.PlayerDataManager;
 import vini.evictmap.PlayerNameFormatter;
 

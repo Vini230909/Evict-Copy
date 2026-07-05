@@ -1,9 +1,15 @@
-package vini.evictmap;
+package vini.evictmap.duel;
+
+import vini.evictmap.duel.modes.DuelMode;
+import vini.evictmap.duel.modes.DuelModes;
 
 /**
  * The game modes a /play match can run in. The id is the wire format shared
  * between the hub and a worker (duel.properties / result.properties), so it
  * must stay stable across versions.
+ * This enum is only the mode's stable identity (id + label). Each mode's
+ * actual rules live in a {@link DuelMode} strategy under
+ * {@code vini.evictmap.duel.modes}; call {@link #duel()} to get it.
  */
 public enum MatchMode {
 
@@ -39,21 +45,14 @@ public enum MatchMode {
     }
 
     /**
-     * Solo modes start with a single participant and cannot be won: they end
-     * through /die (or everyone leaving), never through an Evict victory.
+     * The rules strategy for this mode (whether it freezes, is solo, is
+     * ranked, restores cores, and so on). See {@code vini.evictmap.duel.modes}.
      */
-    boolean solo() {
-        return this == TRAINING || this == SANDBOX;
+    public DuelMode duel() {
+        return DuelModes.of(this);
     }
 
-    /**
-     * Only 1v1 results count toward the ranked record and /history.
-     */
-    boolean ranked() {
-        return this == ONE_VS_ONE;
-    }
-
-    static MatchMode fromId(String id) {
+    public static MatchMode fromId(String id) {
         for (MatchMode mode : values()) {
             if (mode.id.equals(id)) {
                 return mode;

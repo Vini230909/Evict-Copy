@@ -384,7 +384,7 @@ public final class EvictSettings {
         save();
     }
 
-    String duelServerIp() {
+    public String duelServerIp() {
         return duelServerIp;
     }
 
@@ -396,7 +396,7 @@ public final class EvictSettings {
         return duelMaxWorkers;
     }
 
-    String duelWorkerJarName() {
+    public String duelWorkerJarName() {
         return duelWorkerJarName;
     }
 
@@ -420,7 +420,7 @@ public final class EvictSettings {
                 : String.join(", ", bannedBlockNames);
     }
 
-    boolean duelServerConfigured() {
+    public boolean duelServerConfigured() {
         return duelServerIp != null && !duelServerIp.isBlank();
     }
 

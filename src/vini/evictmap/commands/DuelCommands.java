@@ -1,6 +1,9 @@
 package vini.evictmap.commands;
 
 import vini.evictmap.*;
+import vini.evictmap.duel.DuelServerManager;
+import vini.evictmap.duel.DuelWorker;
+import vini.evictmap.duel.MatchMode;
 
 import arc.util.CommandHandler;
 import arc.util.Time;

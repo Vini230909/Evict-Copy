@@ -1,4 +1,7 @@
-package vini.evictmap;
+package vini.evictmap.duel;
+
+import vini.evictmap.PlayerNameFormatter;
+import vini.evictmap.duel.modes.DuelMode;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -40,7 +43,9 @@ import mindustry.gen.Unit;
  * origin until the first unpause, because the spawn resolves on a world tick).
  * - once both are present, runs a 5-second countdown (HUD text), then unfreezes,
  * - if a player disconnects mid-match, pauses and shows a "Xs to rejoin"
- * countdown; resumes when they return, or after the window if they do not,
+ * countdown; resumes when they return, or after the window if they do not
+ * (Sandbox is exempt: it never freezes for a join, a countdown or a
+ * disconnect - players drop in and out of the running world freely),
  * - on an Evict victory writes a result file, returns both players to the hub,
  * - shuts down once it has sat empty for a grace period,
  * - writes status.properties periodically so the hub's evictduelstatus can show
@@ -91,6 +96,14 @@ public final class DuelWorker {
      * Training/Sandbox a single team.
      */
     private MatchMode mode = MatchMode.ONE_VS_ONE;
+
+    /**
+     * The rules for {@link #mode}, resolved on handshake load. The referee asks
+     * this - gated(), solo(), and so on - instead of comparing against specific
+     * {@link MatchMode} constants, so each mode's behaviour stays in its own
+     * class under {@code vini.evictmap.duel.modes}.
+     */
+    private DuelMode duelMode = mode.duel();
     private final List<List<String>> rosterTeams = new ArrayList<>();
     private final Set<String> participantUuids = new LinkedHashSet<>();
 
@@ -109,7 +122,7 @@ public final class DuelWorker {
      */
     private Predicate<Player> stillCompeting;
 
-    void setStillCompeting(Predicate<Player> predicate) {
+    public void setStillCompeting(Predicate<Player> predicate) {
         this.stillCompeting = predicate;
     }
 
@@ -165,7 +178,7 @@ public final class DuelWorker {
      */
     private static final int HUD_RAISE = 220;
 
-    DuelWorker() {
+    public DuelWorker() {
         this.active = "true".equals(System.getProperty("evict.duelWorker"));
     }
 
@@ -183,12 +196,17 @@ public final class DuelWorker {
                 && participantUuids.contains(uuid);
     }
 
-    MatchMode matchMode() {
+    public MatchMode matchMode() {
         return mode;
     }
 
-    boolean isSandboxMode() {
-        return active && handshakeLoaded && mode == MatchMode.SANDBOX;
+    /**
+     * The rules strategy for the mode this worker referees. Callers ask it for
+     * behaviour flags (gated, solo, ranked, ...) rather than comparing the raw
+     * {@link MatchMode}.
+     */
+    public DuelMode duelMode() {
+        return duelMode;
     }
 
     /**
@@ -196,8 +214,8 @@ public final class DuelWorker {
      * Solo modes return an unreachable minimum: Training and Sandbox never end
      * through an Evict victory, only through /die or everyone leaving.
      */
-    int victoryMinimumTeams() {
-        if (mode.solo()) {
+    public int victoryMinimumTeams() {
+        if (duelMode.solo()) {
             return Integer.MAX_VALUE;
         }
 
@@ -209,7 +227,7 @@ public final class DuelWorker {
      * themselves). TeamManager uses this to keep a Teams roster on one
      * Mindustry team.
      */
-    List<String> rosterTeammates(String uuid) {
+    public List<String> rosterTeammates(String uuid) {
         List<String> teammates = new ArrayList<>();
 
         if (uuid == null) {
@@ -238,7 +256,7 @@ public final class DuelWorker {
      * them to the lobby, and the hub stops bouncing them back into this
      * worker.
      */
-    void demoteToSpectator(String uuid) {
+    public void demoteToSpectator(String uuid) {
         if (!active || uuid == null) {
             return;
         }
@@ -253,7 +271,7 @@ public final class DuelWorker {
      * FFA players rejoin the roster as full participants. Must run before the
      * map regenerates so the team assignment picks them up again.
      */
-    void restoreOutParticipants() {
+    public void restoreOutParticipants() {
         if (!active || outUuids.isEmpty()) {
             return;
         }
@@ -266,11 +284,11 @@ public final class DuelWorker {
      * Promotes a spectator into the sandbox: they become a full participant
      * on the sandbox roster (chat, no /v exit, counted by the start gate).
      */
-    void addSandboxParticipant(Player player) {
+    public void addSandboxParticipant(Player player) {
         if (
                 !active
                         || !handshakeLoaded
-                        || mode != MatchMode.SANDBOX
+                        || !duelMode.allowsSpectatorInvites()
                         || player == null
                         || rosterTeams.isEmpty()
         ) {
@@ -304,13 +322,20 @@ public final class DuelWorker {
     /**
      * Called once the worker has hosted its round.
      */
-    void begin() {
+    public void begin() {
         if (!active) {
             return;
         }
 
         loadHandshake();
         scheduleShutdownIfEmpty(STARTUP_GRACE_SECONDS);
+
+        // Ungated modes (Sandbox) are a persistent room, not a gated match:
+        // skip the join freeze/countdown entirely and run from the start.
+        if (!duelMode.gated()) {
+            matchStarted = true;
+            matchStartMillis = System.currentTimeMillis();
+        }
 
         scheduler.scheduleAtFixedRate(
                 () -> Core.app.post(this::writeStatus),
@@ -320,7 +345,7 @@ public final class DuelWorker {
         );
     }
 
-    void handlePlayerJoin(Player player) {
+    public void handlePlayerJoin(Player player) {
         if (!active) {
             return;
         }
@@ -392,7 +417,7 @@ public final class DuelWorker {
         });
     }
 
-    void handlePlayerLeave(Player player) {
+    public void handlePlayerLeave(Player player) {
         if (!active) {
             return;
         }
@@ -405,6 +430,7 @@ public final class DuelWorker {
                 !matchStarted
                         || resolved
                         || pausedForDisconnect
+                        || !duelMode.gated()
                         || player == null
         ) {
             return;
@@ -425,7 +451,7 @@ public final class DuelWorker {
      * Wired in place of the hub's normal round-victory handler when running as
      * a worker. Records the result and returns every player to the hub.
      */
-    void handleVictory(Team winner) {
+    public void handleVictory(Team winner) {
         if (!active || resolved) {
             return;
         }
@@ -545,7 +571,7 @@ public final class DuelWorker {
         if (
                 !active
                         || resolved
-                        || !mode.solo()
+                        || !duelMode.solo()
                         || player == null
                         || !isParticipant(player.uuid())
         ) {
@@ -683,9 +709,10 @@ public final class DuelWorker {
      * Resets the match back to the pre-countdown state after the world has been
      * regenerated, so a commentator's /restart re-freezes both duelists and runs
      * a fresh countdown. Bumping the serial invalidates any countdown still in
-     * flight from the previous match.
+     * flight from the previous match. Sandbox skips all of that and just keeps
+     * running in the regenerated world.
      */
-    void restartMatch() {
+    public void restartMatch() {
         if (!active) {
             return;
         }
@@ -707,9 +734,23 @@ public final class DuelWorker {
         pausePlanKeysByUuid.clear();
 
         hideHud();
+        Call.sendMessage("[accent]The match was restarted by a commentator.[]");
+
+        // Ungated modes (Sandbox) never freeze: resume straight into the
+        // regenerated world instead of gating on a countdown that never fires.
+        if (!duelMode.gated()) {
+            matchStarted = true;
+            matchStartMillis = System.currentTimeMillis();
+
+            if (Vars.state.isPaused()) {
+                resumeGame();
+            }
+
+            return;
+        }
+
         pauseGame();
         startFreezeApplied = true;
-        Call.sendMessage("[accent]The match was restarted by a commentator.[]");
 
         if (bothPlayersPresent()) {
             startCountdown();
@@ -823,7 +864,7 @@ public final class DuelWorker {
      * the game is paused - that is what lets the guard see plans the moment
      * the still-syncing clients queue them.
      */
-    void update() {
+    public void update() {
         if (!active || !planGuardActive) {
             return;
         }
@@ -1055,6 +1096,7 @@ public final class DuelWorker {
             mode = MatchMode.fromId(
                     properties.getProperty("mode", "1v1").trim()
             );
+            duelMode = mode.duel();
 
             rosterTeams.clear();
             participantUuids.clear();

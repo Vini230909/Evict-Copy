@@ -23,6 +23,9 @@ import vini.evictmap.gameplay.AttritionManager;
 import vini.evictmap.gameplay.RulesApplier;
 import vini.evictmap.gameplay.ExtinctionManager;
 import vini.evictmap.gameplay.AttackManager;
+import vini.evictmap.duel.DuelServerManager;
+import vini.evictmap.duel.DuelWorker;
+import vini.evictmap.duel.modes.DuelMode;
 import vini.evictmap.commands.*;
 
 import java.util.HashMap;
@@ -177,12 +180,9 @@ public class EvictMapPlugin extends Plugin {
             // deciding elimination fires this too, harmlessly: the victory
             // resolves right after from the unchanged rosters.
             teamManager.setDuelEliminationHandler(team -> {
-                MatchMode workerMode = duelWorkerReferee.matchMode();
+                DuelMode workerMode = duelWorkerReferee.duelMode();
 
-                if (
-                        workerMode != MatchMode.FFA
-                                && workerMode != MatchMode.TEAMS
-                ) {
+                if (!workerMode.eliminatesWipedTeams()) {
                     return;
                 }
 
@@ -197,7 +197,7 @@ public class EvictMapPlugin extends Plugin {
                         teamManager.assignSpectator(member);
                         member.sendMessage(
                                 "[scarlet]You are out of the "
-                                        + workerMode.label()
+                                        + workerMode.mode().label()
                                         + " match.[] [accent]You are now spectating - use [white]/v[accent] to return to the lobby.[]"
                         );
                     }
@@ -251,20 +251,19 @@ public class EvictMapPlugin extends Plugin {
                 // FFA and Teams matches keep running after a surrender, so
                 // the surrendered hexes need their Fallen backup cores back;
                 // 1v1/Training/Sandbox end right away and leave them derelict.
-                MatchMode workerMatchMode = duelWorkerReferee.matchMode();
+                DuelMode workerMatchMode = duelWorkerReferee.duelMode();
                 teamManager.setDuelSurrenderRestoresFallenCores(
-                        workerMatchMode == MatchMode.FFA
-                                || workerMatchMode == MatchMode.TEAMS
+                        workerMatchMode.restoresFallenCoresOnSurrender()
                 );
 
                 // FFA has no participant cap; the normal start-hex distance
                 // could run every safe hex out before everyone got a start
                 // once enough players piled into one duel-worker FFA.
                 teamManager.setDuelFfaReducedStartDistance(
-                        workerMatchMode == MatchMode.FFA
+                        workerMatchMode.reducedStartDistance()
                 );
 
-                if (duelWorkerReferee.isSandboxMode()) {
+                if (workerMatchMode.allowsSpectatorInvites()) {
                     inviteManager.enableSandboxJoinMode(
                             duelWorkerReferee::addSandboxParticipant
                     );
@@ -275,7 +274,7 @@ public class EvictMapPlugin extends Plugin {
 
             // A sandbox session plays with infinite resources; applyRules
             // resets the flag, so re-apply it after every rules pass.
-            if (duelWorker && duelWorkerReferee.isSandboxMode()) {
+            if (duelWorker && duelWorkerReferee.duelMode().infiniteResources()) {
                 Vars.state.rules.infiniteResources = true;
             }
         });
@@ -313,7 +312,7 @@ public class EvictMapPlugin extends Plugin {
                         "[accent]Spectating this match. Use [white]/v[accent] to return to the lobby.[]"
                 );
 
-                if (duelWorkerReferee.isSandboxMode()) {
+                if (duelWorkerReferee.duelMode().allowsSpectatorInvites()) {
                     event.player.sendMessage(
                             "[accent]This is a sandbox - use [white]/invite[accent] to ask to join it.[]"
                     );
@@ -561,7 +560,7 @@ public class EvictMapPlugin extends Plugin {
             // Training and Sandbox are casual sessions: the players and the
             // viewers share one global chat instead of viewers being routed
             // to their own team chat.
-            if (duelWorkerReferee.matchMode().solo()) {
+            if (duelWorkerReferee.duelMode().solo()) {
                 return message;
             }
 

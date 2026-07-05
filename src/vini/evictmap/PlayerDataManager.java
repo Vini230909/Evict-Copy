@@ -149,7 +149,7 @@ public final class PlayerDataManager {
      * its result; no-op if either UUID is missing (e.g. the worker could not
      * identify a winner).
      */
-    void recordRankedResult(
+    public void recordRankedResult(
             String winnerUuid,
             String winnerName,
             String loserUuid,
@@ -181,7 +181,7 @@ public final class PlayerDataManager {
      * ranked counters or ELO are touched. Called on the hub once a worker
      * reports an FFA result.
      */
-    void recordFfaMatch(
+    public void recordFfaMatch(
             String winnerUuid,
             String winnerName,
             List<String> participantUuids,
@@ -215,7 +215,7 @@ public final class PlayerDataManager {
      * rosters and who won. No ranked counters or ELO are touched. Called on
      * the hub once a worker reports a Teams result.
      */
-    void recordTeamsMatch(
+    public void recordTeamsMatch(
             List<String> winnerUuids,
             String winnerTeamLabel,
             List<String> loserUuids,

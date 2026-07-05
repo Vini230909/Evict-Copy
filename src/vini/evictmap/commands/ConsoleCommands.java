@@ -1,6 +1,7 @@
 package vini.evictmap.commands;
 
 import vini.evictmap.*;
+import vini.evictmap.duel.DuelServerManager;
 
 import arc.util.CommandHandler;
 import arc.util.Log;

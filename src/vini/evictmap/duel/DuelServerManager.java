@@ -1,4 +1,8 @@
-package vini.evictmap;
+package vini.evictmap.duel;
+
+import vini.evictmap.EvictSettings;
+import vini.evictmap.PlayerDataManager;
+import vini.evictmap.PlayerNameFormatter;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -80,7 +84,7 @@ public final class DuelServerManager {
      */
     private final Map<String, Integer> activeDuelByUuid = new HashMap<>();
 
-    DuelServerManager(
+    public DuelServerManager(
             EvictSettings settings,
             PlayerDataManager playerDataManager
     ) {
@@ -305,7 +309,7 @@ public final class DuelServerManager {
      * back to their worker. Returns true when the player was bounced. Skips (and
      * forgets) finished or dead matches so a returning winner stays on the hub.
      */
-    boolean tryReturnToActiveDuel(Player player) {
+    public boolean tryReturnToActiveDuel(Player player) {
         if (player == null) {
             return false;
         }
@@ -381,7 +385,7 @@ public final class DuelServerManager {
      * spectators), read from each worker's status.properties. Lets the hub fold
      * duel players into its advertised player count. Main-thread only.
      */
-    int connectedDuelPlayers() {
+    public int connectedDuelPlayers() {
         int total = 0;
 
         for (WorkerHandle handle : workers.values()) {
@@ -812,7 +816,7 @@ public final class DuelServerManager {
             // them later without the players being online. Only 1v1 is ranked;
             // Teams and FFA are stored as unranked history entries listing
             // everyone; Training and Sandbox leave no history at all.
-            if (mode.ranked()) {
+            if (mode.duel().ranked()) {
                 playerDataManager.recordRankedResult(
                         winnerUuid,
                         displayNameFor(handle, winnerUuid),
