@@ -205,6 +205,15 @@ public class EvictMapPlugin extends Plugin {
             });
         }
 
+        // Hub only: a server update means a new jar + a restart, so on startup
+        // bring every existing duel-worker folder onto the current jar. This
+        // keeps idle workers from redirecting clients to a version-mismatched
+        // server (seen as a Network I/O error) without deleting the folders and
+        // losing their logs.
+        if (!duelWorker) {
+            duelServerManager.refreshWorkerJars();
+        }
+
         Events.on(WorldLoadEvent.class, event -> {
             if (!runtime.autoGenerate || refreshingWorldIndexes) {
                 return;

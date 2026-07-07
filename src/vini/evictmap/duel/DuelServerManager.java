@@ -608,6 +608,64 @@ public final class DuelServerManager {
         return -1;
     }
 
+    /**
+     * Refreshes the Mindustry jar in every existing worker folder to the hub's
+     * current copy. Run once at hub startup: updating a Mindustry server means
+     * replacing its jar and restarting, so a restart is exactly when the jar may
+     * have changed. Sweeping the folders here gets every idle worker onto the new
+     * version before its next spawn, so a stale worker can never redirect a client
+     * to a version-mismatched server (which the client shows as a Network I/O
+     * error). The per-spawn refresh in {@link #provisionWorkerDir} still backstops
+     * a jar swapped in while the hub stays up. A folder whose jar is already
+     * current is left untouched, so the per-worker logs survive.
+     */
+    public void refreshWorkerJars() {
+        File[] workerDirs = new File(WORKER_BASE_DIR).listFiles(
+                file -> file.isDirectory()
+                        && file.getName().startsWith(WORKER_DIR_PREFIX)
+        );
+
+        if (workerDirs == null) {
+            return;
+        }
+
+        File sourceJar = new File(settings.duelWorkerJarName());
+
+        if (!sourceJar.exists()) {
+            return;
+        }
+
+        int refreshed = 0;
+
+        for (File workerDir : workerDirs) {
+            File jar = new File(workerDir, settings.duelWorkerJarName());
+
+            if (!jar.exists() || !jarOutOfDate(sourceJar, jar)) {
+                continue;
+            }
+
+            try {
+                copyFile(sourceJar, jar);
+                refreshed++;
+            } catch (IOException exception) {
+                // Non-fatal: a locked/orphaned worker jar just gets its refresh
+                // on the next spawn instead. Keep sweeping the rest.
+                Log.err(
+                        "[EvictMapGenerator] 1v1: could not refresh the jar in "
+                                + workerDir.getPath() + ".",
+                        exception
+                );
+            }
+        }
+
+        if (refreshed > 0) {
+            Log.info(
+                    "[EvictMapGenerator] 1v1: refreshed the server jar in @ worker folder(s) to the hub's current version.",
+                    refreshed
+            );
+        }
+    }
+
     private File provisionWorkerDir(WorkerHandle handle) throws IOException {
         File workerDir = workerDir(handle.port);
         File workerConfig = new File(workerDir, "config");
@@ -615,7 +673,8 @@ public final class DuelServerManager {
 
         // The big static files are copied once; the plugin mods are refreshed on
         // every spawn so a rebuilt plugin is picked up without deleting the
-        // duel-workers folder.
+        // duel-workers folder. The server jar itself is brought up to date by the
+        // startup sweep (refreshWorkerJars), not here.
         File jar = new File(workerDir, settings.duelWorkerJarName());
         if (!jar.exists()) {
             Log.info(
@@ -1119,9 +1178,28 @@ public final class DuelServerManager {
         }
     }
 
+    /**
+     * True when the hub's jar differs from the worker's copy, so the worker
+     * needs a re-copy. Length plus last-modified catches a replaced jar (an
+     * auto-update writes a new file) without hashing every spawn; if the source
+     * is missing there is nothing to refresh from, so we leave the copy alone.
+     */
+    private static boolean jarOutOfDate(File source, File target) {
+        if (!source.exists()) {
+            return false;
+        }
+
+        return source.length() != target.length()
+                || source.lastModified() > target.lastModified();
+    }
+
     private static void copyFile(File source, File target) throws IOException {
         Files.createDirectories(target.toPath().getParent());
-        Files.copy(source.toPath(), target.toPath());
+        Files.copy(
+                source.toPath(),
+                target.toPath(),
+                StandardCopyOption.REPLACE_EXISTING
+        );
     }
 
     private static void sleepQuietly() {
