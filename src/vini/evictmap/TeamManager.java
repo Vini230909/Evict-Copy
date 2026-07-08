@@ -1,6 +1,7 @@
 package vini.evictmap;
 
 import arc.func.Cons;
+import arc.graphics.Color;
 import arc.util.Log;
 import mindustry.Vars;
 import mindustry.content.Blocks;
@@ -574,11 +575,20 @@ public final class TeamManager {
             }
         }
 
-        if (available.isEmpty()) {
-            return null;
+        // Colours already on the map that the new team must be distinguishable
+        // from: every personal team still in play, plus Fallen. Eliminated teams
+        // are excluded - their cores are gone, so reusing a near colour is fine.
+        // TeamColors owns the actual "far enough?" decision.
+        List<Color> coloursInPlay = new ArrayList<>();
+        coloursInPlay.add(FALLEN_TEAM.color);
+
+        for (int usedId : usedPersonalTeamIds) {
+            if (!eliminatedTeamIds.contains(usedId)) {
+                coloursInPlay.add(Team.get(usedId).color);
+            }
         }
 
-        return available.get(random.nextInt(available.size()));
+        return TeamColors.chooseDistinctTeamId(available, coloursInPlay, random);
     }
 
     private void claimCore(HexSlot slot, Team personalTeam) {
