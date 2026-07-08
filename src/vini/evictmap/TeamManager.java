@@ -1076,7 +1076,10 @@ public final class TeamManager {
     }
 
     private void clearSurrenderedTeamAssets(Team team) {
-        List<Tile> buildingTiles = new ArrayList<>();
+        // Find the team's cores by scanning the world (like the old wipe did for
+        // all buildings), not the team core registry: the registry can come back
+        // empty here, which left the cores and their buildings untouched.
+        List<Tile> coreTiles = new ArrayList<>();
         List<Unit> unitsToKill = new ArrayList<>();
 
         for (Tile tile : Vars.world.tiles) {
@@ -1085,8 +1088,9 @@ public final class TeamManager {
                             && tile.build != null
                             && tile.isCenter()
                             && tile.build.team == team
+                            && tile.build instanceof CoreBuild
             ) {
-                buildingTiles.add(tile);
+                coreTiles.add(tile);
             }
         }
 
@@ -1096,17 +1100,38 @@ public final class TeamManager {
             }
         });
 
+        // Resolve each hex center now, while the cores still exist: removing a
+        // core below clears core.build, which slotForCore needs.
+        List<int[]> explosionCenters = new ArrayList<>();
+        for (Tile coreTile : coreTiles) {
+            HexSlot slot = slotForCore(coreTile.build);
+            int centerX = slot != null ? slot.x : coreTile.x;
+            int centerY = slot != null ? slot.y : coreTile.y;
+            explosionCenters.add(new int[]{centerX, centerY});
+        }
+
         suppressCoreChangeEvents = true;
 
         try {
-            for (Tile tile : buildingTiles) {
+            // Core dies first: remove each core silently and under suppression so
+            // it is not read as a capture. Cores are not rebuilt from blueprints,
+            // so nothing is saved and no explosion is needed - a big core boom
+            // would just damage the buildings we are about to ripple out in order.
+            for (Tile coreTile : coreTiles) {
                 if (
-                        tile.build != null
-                                && tile.isCenter()
-                                && tile.build.team == team
+                        coreTile.build instanceof CoreBuild
+                                && coreTile.build.team == team
                 ) {
-                    tile.build.kill();
+                    coreTile.removeNet();
                 }
+            }
+
+            // Then the buildings ripple outward from each former core (~0.33s),
+            // each destroyed for real (kill) so it leaves a rebuild blueprint.
+            // Restricted to this team so a neighbour's overlapping buildings are
+            // left untouched; all cores fade in parallel (one call each).
+            for (int[] center : explosionCenters) {
+                coreCapture.explodeCore(center[0], center[1], true, team);
             }
 
             for (Unit unit : unitsToKill) {

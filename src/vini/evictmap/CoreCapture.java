@@ -12,7 +12,9 @@ import vini.evictmap.TeamManager.HexSlot;
 import vini.evictmap.gameplay.AttritionManager;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * EVERYTHING about taking over a core lives here: the capture pipeline AND the
@@ -34,8 +36,9 @@ import java.util.List;
  * shared "is this still the live capture?" guard.
  * This class only asks TeamManager for shared round/team state (slots, victory,
  * elimination) through a handful of clearly named calls. TeamManager calls back
- * for exactly two things it reuses elsewhere: placeCore() (surrender restores
- * Fallen cores) and clearBuildingsInHex() (a new start hex is wiped first).
+ * for a few things it reuses elsewhere: placeCore() (surrender restores Fallen
+ * cores), clearBuildingsInHex() (a new start hex is wiped first) and
+ * explodeCore() (a surrendered team's hexes ripple out on /die).
  */
 final class CoreCapture {
 
@@ -54,6 +57,14 @@ final class CoreCapture {
     private static final int CAPTURE_CLEAR_RADIUS = 40;
     private static final int CAPTURE_CLEAR_RADIUS_SQUARED =
             CAPTURE_CLEAR_RADIUS * CAPTURE_CLEAR_RADIUS;
+
+    /**
+     * Total duration of the outward core-explosion fade, in ticks (~0.33s at
+     * 60tps). Buildings nearest the core are destroyed first, the outermost ring
+     * last, so a server-driven destruction ripples out instead of killing a whole
+     * team's base in one tick (which desynced clients).
+     */
+    private static final float EXPLOSION_FADE_TICKS = 20f;
 
     /**
      * Replacement-core placement can transiently fail (a unit/building reappears
@@ -163,7 +174,7 @@ final class CoreCapture {
             team.recordCoreDestruction(c.defender, c.attacker);
         }
 
-        int removed = clearBuildingsInHex(c.hex);
+        int removed = explodeCore(c.hex.x, c.hex.y, true, null);
         c.attrition.handleCoreExplosionAttrition(c.hex.x, c.hex.y);
 
         Log.info(
@@ -208,8 +219,9 @@ final class CoreCapture {
             }
 
             // Second wipe: remove anything built during the 5-second empty-core
-            // window so the delay cannot be abused.
-            int wiped = clearBuildingsInHex(c.hex);
+            // window so the delay cannot be abused. Instant (no fade), but still
+            // leaves rebuild blueprints like the first wipe.
+            int wiped = explodeCore(c.hex.x, c.hex.y, false, null);
             Log.info(
                     "[EvictMapGenerator] Removed @ synthetic buildings built or remaining during the 5-second capture window at hex (@,@).",
                     wiped, c.hex.col, c.hex.row
@@ -310,6 +322,125 @@ final class CoreCapture {
         return centersToRemove.size();
     }
 
+    // ----- outward core "explosion" (server-driven destruction) -----
+
+    /**
+     * The ~0.33s outward core explosion. Destroys every synthetic, non-core
+     * building whose center is within {@link #CAPTURE_CLEAR_RADIUS} of
+     * ({@code centerX}, {@code centerY}) with a genuine {@code kill()} - exactly
+     * like a turret or unit killing it - so each client creates the rebuild
+     * blueprint the owner can rebuild from on recapture. (A silent {@code
+     * removeNet} skips the client-side destruction the ghost is built from, so it
+     * cannot leave a working blueprint.) Buildings therefore carry their normal
+     * destroy effect and sound, spread out by the fade.
+     * <p>
+     * {@code fade} spreads the removals outward from the center over
+     * {@link #EXPLOSION_FADE_TICKS} ticks - used by a capture's first wipe and by
+     * every core on a {@code /die}, so a whole team dying no longer wipes
+     * everything in one tick (which desynced clients). {@code false} removes them
+     * all this tick (the capture anti-abuse second wipe).
+     * <p>
+     * {@code onlyTeam} restricts the clear to one team's buildings so a surrender
+     * cannot wipe a neighbour's overlapping structures; pass {@code null} to clear
+     * every team's buildings in range (capture cleanup, which intentionally clears
+     * the neighbour overlap).
+     * <p>
+     * Cores are never removed here: on a capture the center core is already dead,
+     * and a surrender removes its own cores separately under event suppression.
+     * Because this method only ever touches non-core buildings, its fade can run
+     * unsuppressed without a removal being misread as a capture.
+     *
+     * @return how many buildings were scheduled for removal.
+     */
+    int explodeCore(int centerX, int centerY, boolean fade, Team onlyTeam) {
+        List<Tile> targets = new ArrayList<>();
+
+        for (int dx = -CAPTURE_CLEAR_RADIUS; dx <= CAPTURE_CLEAR_RADIUS; dx++) {
+            for (int dy = -CAPTURE_CLEAR_RADIUS; dy <= CAPTURE_CLEAR_RADIUS; dy++) {
+                if (dx * dx + dy * dy > CAPTURE_CLEAR_RADIUS_SQUARED) {
+                    continue;
+                }
+
+                Tile tile = Vars.world.tile(centerX + dx, centerY + dy);
+
+                if (isExplodableBuilding(tile, onlyTeam)) {
+                    targets.add(tile);
+                }
+            }
+        }
+
+        if (targets.isEmpty()) {
+            return 0;
+        }
+
+        if (!fade) {
+            for (Tile tile : targets) {
+                killBuilding(tile);
+            }
+            return targets.size();
+        }
+
+        // Bucket the buildings by distance-from-center so each ring is removed a
+        // little later, rippling outward. Guarded by the round serial so a fade
+        // left in flight cannot touch a regenerated map.
+        long serial = team.roundSerial();
+        Map<Integer, List<Tile>> tilesByStep = new HashMap<>();
+
+        for (Tile tile : targets) {
+            int step = fadeStep(tile.x - centerX, tile.y - centerY);
+            tilesByStep.computeIfAbsent(step, ignored -> new ArrayList<>()).add(tile);
+        }
+
+        for (Map.Entry<Integer, List<Tile>> entry : tilesByStep.entrySet()) {
+            List<Tile> ring = entry.getValue();
+
+            Time.run(entry.getKey(), () -> {
+                if (!team.isRoundActiveForSystems() || serial != team.roundSerial()) {
+                    return;
+                }
+
+                for (Tile tile : ring) {
+                    if (isExplodableBuilding(tile, onlyTeam)) {
+                        killBuilding(tile);
+                    }
+                }
+            });
+        }
+
+        return targets.size();
+    }
+
+    private boolean isExplodableBuilding(Tile tile, Team onlyTeam) {
+        return tile != null
+                && tile.build != null
+                && tile.isCenter()
+                && tile.synthetic()
+                && !(tile.build instanceof CoreBuild)
+                && (onlyTeam == null || tile.build.team == onlyTeam);
+    }
+
+    /**
+     * The fade bucket (a tick offset) for a building at offset ({@code dx},
+     * {@code dy}) from the explosion center: 0 at the core, up to
+     * {@link #EXPLOSION_FADE_TICKS} at the edge of {@link #CAPTURE_CLEAR_RADIUS}.
+     */
+    private int fadeStep(int dx, int dy) {
+        double distance = Math.sqrt((double) dx * dx + (double) dy * dy);
+        int step = (int) Math.round(distance / CAPTURE_CLEAR_RADIUS * EXPLOSION_FADE_TICKS);
+        return Math.max(0, Math.min((int) EXPLOSION_FADE_TICKS, step));
+    }
+
+    /**
+     * Destroys one building for real ({@link mindustry.gen.Building#kill()}),
+     * exactly like a turret or unit killing it - which is what makes each client
+     * create the rebuild-blueprint ghost so the owner can rebuild it on recapture.
+     * A silent removal ({@code removeNet}) skips the client-side destruction the
+     * ghost is built from, so it cannot be used here.
+     */
+    private void killBuilding(Tile tile) {
+        tile.build.kill();
+    }
+
     private boolean belongsToCaptureHex(int tileX, int tileY, HexSlot candidate) {
         long dx = tileX - candidate.x;
         long dy = tileY - candidate.y;
@@ -324,7 +455,7 @@ final class CoreCapture {
      * and suppresses capture events while doing so (this placement is not itself
      * a capture). Returns false if the core could not be verified.
      * Assumes the center tile is already clear - the callers wipe the hex first
-     * (capture: clearBuildingsInHex; surrender: clearSurrenderedTeamAssets), and
+     * (capture: explodeCore; surrender: clearSurrenderedTeamAssets), and
      * the engine removes any unit standing under a freshly placed core.
      */
     boolean placeCore(HexSlot slot, Block coreBlock, Team coreTeam, String reason) {
