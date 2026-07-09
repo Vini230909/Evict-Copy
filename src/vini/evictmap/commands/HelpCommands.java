@@ -1,7 +1,5 @@
 package vini.evictmap.commands;
 
-import vini.evictmap.*;
-
 import arc.math.Mathf;
 import arc.struct.Seq;
 import arc.util.CommandHandler;
@@ -9,20 +7,31 @@ import arc.util.CommandHandler.Command;
 import arc.util.Strings;
 import mindustry.gen.Player;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 
 /**
- * Replaces vanilla /help with a filtered Evict help menu.
- * Normal /help never exposes development commands. Development commands remain
- * discoverable for every player through /help dev and are paginated separately.
+ * Replaces vanilla /help with the Evict help menu.
+ * /help never lists itself, and an alias registration (description
+ * "Alias for /x.") gets no row of its own - it is folded into its target's
+ * row, e.g. "/history (/h)". Permission-gated commands such as /restart stay
+ * gated at execution; the menu only lists them.
  * Supported forms:
  * - /help
  * - /help 2
- * - /help dev
- * - /help dev 2
  */
 public final class HelpCommands {
 
     private static final int COMMANDS_PER_PAGE = 6;
+
+    /**
+     * Description prefix that marks a registered command as a pure alias of
+     * another command.
+     */
+    private static final String ALIAS_DESCRIPTION_PREFIX = "Alias for /";
 
     void registerClientCommands(CommandHandler handler) {
         /*
@@ -33,7 +42,7 @@ public final class HelpCommands {
          */
         handler.<Player>register(
                 "help",
-                "[category] [page]",
+                "[page]",
                 "Lists commands.",
                 (args, player) -> showHelp(handler, args, player)
         );
@@ -44,20 +53,20 @@ public final class HelpCommands {
             String[] args,
             Player player
     ) {
-        HelpRequest request = parseRequest(args, player);
+        Integer page = parsePage(args, player);
 
-        if (request == null) {
+        if (page == null) {
             return;
         }
 
-        Seq<Command> commands = handler.getCommandList();
+        List<HelpEntry> entries = entriesFor(handler);
 
         int pages = Math.max(
                 1,
-                Mathf.ceil((float) commands.size / COMMANDS_PER_PAGE)
+                Mathf.ceil((float) entries.size() / COMMANDS_PER_PAGE)
         );
 
-        if (request.page < 1 || request.page > pages) {
+        if (page < 1 || page > pages) {
             player.sendMessage(
                     "[scarlet]'page' must be a number between[orange] 1[] and[orange] "
                             + pages
@@ -66,70 +75,140 @@ public final class HelpCommands {
             return;
         }
 
-        int pageIndex = request.page - 1;
+        int pageIndex = page - 1;
 
         StringBuilder result = new StringBuilder();
 
         result.append(
                 Strings.format(
                         "[orange]-- Page[lightgray] @[gray]/[lightgray]@[orange] --\n\n",
-                        request.page,
+                        page,
                         pages
                 )
         );
 
         int start = COMMANDS_PER_PAGE * pageIndex;
-        int end = Math.min(start + COMMANDS_PER_PAGE, commands.size);
+        int end = Math.min(start + COMMANDS_PER_PAGE, entries.size());
 
         for (int index = start; index < end; index++) {
-            Command command = commands.get(index);
-
-            result.append("[orange] /")
-                    .append(command.text)
-                    .append("[white] ")
-                    .append(command.paramText)
-                    .append("[lightgray] - ")
-                    .append(command.description)
-                    .append("\n");
+            appendEntry(result, entries.get(index));
         }
 
-        if (request.devCommands && pages > 1 && request.page < pages) {
-            result.append("\n[lightgray]Next page: [orange]/help dev ").append(request.page + 1).append("[]");
+        if (pages > 1 && page < pages) {
+            result.append("\n[lightgray]Next page: [orange]/help ")
+                    .append(page + 1)
+                    .append("[]");
         }
 
         player.sendMessage(result.toString());
     }
 
-    private HelpRequest parseRequest(String[] args, Player player) {
-        if (args.length == 0) {
-            return new HelpRequest(false, 1);
+    /**
+     * The rows /help shows, in registration order: /help itself and alias
+     * registrations are dropped, and every remaining command becomes one row
+     * that carries its aliases.
+     */
+    private List<HelpEntry> entriesFor(CommandHandler handler) {
+        Seq<Command> commands = handler.getCommandList();
+
+        Map<String, List<String>> aliasesByTarget = new LinkedHashMap<>();
+
+        for (Command command : commands) {
+            String target = aliasTarget(command);
+
+            if (target != null) {
+                aliasesByTarget
+                        .computeIfAbsent(target, ignored -> new ArrayList<>())
+                        .add(command.text);
+            }
         }
 
-        if (args.length == 1) {
-            Integer page = parsePositivePage(args[0], player);
+        List<HelpEntry> entries = new ArrayList<>();
 
-            return page == null ? null : new HelpRequest(false, page);
+        for (Command command : commands) {
+            if (
+                    "help".equals(command.text)
+                            || aliasTarget(command) != null
+            ) {
+                continue;
+            }
+
+            entries.add(new HelpEntry(
+                    command,
+                    aliasesByTarget.getOrDefault(command.text, List.of())
+            ));
         }
 
-        player.sendMessage(
-                "[scarlet]Use: /help [page] or /help dev [page][]"
-        );
-
-        return null;
+        return entries;
     }
 
-    private Integer parsePositivePage(String value, Player player) {
-        if (!Strings.canParseInt(value)) {
+    /**
+     * The command name an alias registration points at ("Alias for /play."
+     * gives "play"), or null when the registration is a real command.
+     */
+    private static String aliasTarget(Command command) {
+        if (
+                command.description == null
+                        || !command.description.startsWith(ALIAS_DESCRIPTION_PREFIX)
+        ) {
+            return null;
+        }
+
+        String target = command.description
+                .substring(ALIAS_DESCRIPTION_PREFIX.length())
+                .trim();
+
+        return target.endsWith(".")
+                ? target.substring(0, target.length() - 1)
+                : target;
+    }
+
+    private static void appendEntry(StringBuilder result, HelpEntry entry) {
+        Command command = entry.command();
+
+        result.append("[orange] /").append(command.text);
+
+        if (!entry.aliases().isEmpty()) {
+            result.append("[white] (");
+
+            for (int index = 0; index < entry.aliases().size(); index++) {
+                if (index > 0) {
+                    result.append(", ");
+                }
+
+                result.append("/").append(entry.aliases().get(index));
+            }
+
+            result.append(")");
+        }
+
+        result.append("[white] ")
+                .append(command.paramText)
+                .append("[lightgray] - ")
+                .append(command.description)
+                .append("\n");
+    }
+
+    private Integer parsePage(String[] args, Player player) {
+        if (args.length == 0) {
+            return 1;
+        }
+
+        if (!Strings.canParseInt(args[0])) {
             player.sendMessage("[scarlet]'page' must be a number.");
             return null;
         }
 
-        return Strings.parseInt(value);
+        return Strings.parseInt(args[0]);
     }
 
-    private record HelpRequest(
-            boolean devCommands,
-            int page
+    /**
+     * One rendered help row: a real command plus the alias names folded into
+     * it.
+     */
+    private record HelpEntry(
+            Command command,
+            List<String> aliases
     ) {
     }
 }

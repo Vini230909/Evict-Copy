@@ -26,8 +26,11 @@ A server-side Mindustry plugin for Evict-style persistent PvP on a procedurally 
 
 ```text
 /help
-/help dev
-/fullassault
+/play (/p)
+/view (/v)
+/history (/h)
+/info [player]
+/fullassault (/fa)
 /invite [number]
 /die
 /over
@@ -37,21 +40,21 @@ A server-side Mindustry plugin for Evict-style persistent PvP on a procedurally 
 ## Development Commands
 
 ```text
-/forceend
-/extinction
-/attritioncore [t1-3] [t4] [t5]
-/attritionrange [percent]
-/wall [full-wall] [small-wall] [open] [passage]
-/corecap [additional-per-core]
-/spawnunit [unit] [amount] [team]
-/info [online-player] [team] [#number]
+/restart
 ```
 
-Extinction terrain streaming can be adjusted from the server console:
+The gameplay tuning that used to be dev chat commands lives on the server
+console:
 
 ```text
-evictextinctiontiles [amount]
+evictattritioncore [t1-3] [t4] [t5]
+evictattritionrange [percent]
+evictwall [full-wall] [small-wall] [open] [passage]
+evictcorecap [additional-per-core]
 ```
+
+Extinction terrain streaming is set by `extinction.terrainChangesPerTick` in
+`config/evict-map-generator.properties`.
 
 Stored player data can be searched from the server console:
 
@@ -60,10 +63,9 @@ evictplayerinfo [name/uuid]
 ```
 
 Console player lookup searches the latest stored name first. Old stored names
-and UUIDs are used only if no latest-name match exists. If multiple online
-players match `/info`, the command shows numbered matches; use the shown
-`#number` to pick one. Running `/info` without arguments opens a clickable
-online-player selection menu.
+and UUIDs are used only if no latest-name match exists. `/info [name]` searches
+the same stored data; running `/info` without arguments opens a clickable
+player selection menu.
 
 Ore presets can be adjusted from the server console:
 

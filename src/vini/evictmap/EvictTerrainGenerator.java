@@ -39,11 +39,11 @@ public final class EvictTerrainGenerator {
     // Geometry measured from the editor reference map
     // ---------------------------------------------------------------------
 
-    private static final int SHORT_ROW_COLS = 7;
-    private static final int LONG_ROW_COLS = 8;
-    private static final int ROWS = 9;
+    private static final int SHORT_ROW_COLS = HexGrid.SHORT_ROW_COLS;
+    private static final int LONG_ROW_COLS = HexGrid.LONG_ROW_COLS;
+    private static final int ROWS = HexGrid.ROWS;
 
-    private static final int OUTER_RADIUS = 39;
+    private static final int OUTER_RADIUS = HexGrid.HEX_RADIUS;
 
     // Important: "75 tiles from center to center" was counted inclusively
     // in the editor. Tile coordinates differ by 74. Using 75 puts the

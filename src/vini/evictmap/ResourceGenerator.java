@@ -37,7 +37,8 @@ final class ResourceGenerator {
     // Placement masks
     // ---------------------------------------------------------------------
 
-    private static final int ORE_MAX_RADIUS = 39;
+    // Ore may generate anywhere inside the playable hex circle.
+    private static final int ORE_MAX_RADIUS = HexGrid.HEX_RADIUS;
     private static final int ORE_MAX_RADIUS_SQUARED =
             ORE_MAX_RADIUS * ORE_MAX_RADIUS;
 

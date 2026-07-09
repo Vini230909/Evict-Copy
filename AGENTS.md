@@ -6,7 +6,7 @@ This repository contains a server-side Mindustry plugin for Evict-style persiste
 
 The plugin is intended for a dedicated Mindustry server. Clients do not install the plugin.
 
-Current stable baseline: `1.2.28`.
+Current stable baseline: `1.3.1`.
 
 ## Workflow Rules
 
@@ -36,14 +36,20 @@ gradle jar
 - Round startup
 - Automatic next-round reset
 
-`EvictRules.java`
+`gameplay/RulesApplier.java`
 - Fixed Mindustry PvP rules
+- Banned blocks
+- Building-vs-building bullet damage scaling
+- Disables Alpha/Beta/Gamma core-unit combat damage while leaving their building and mining intact
 
 `EvictRuntimeState.java`
 - Auto-generation state
 - Current and next map seed
 
 ### Generation
+
+`HexGrid.java`
+- Shared hex-grid geometry constants (row/column counts, hex radius)
 
 `EvictTerrainGenerator.java`
 - Hex geometry
@@ -74,12 +80,13 @@ gradle jar
 - Victory checks
 - Extinction terrain queue
 
-`CaptureManager.java`
+`CoreCapture.java`
 - Destroyed-core handling
 - Immediate captured-hex cleanup
 - 5-second replacement delay
 - Second anti-abuse cleanup
 - Replacement Core Shard
+- Verified core placement (also used by surrender's Fallen restore)
 
 `AttritionManager.java`
 - Capture attrition
@@ -91,10 +98,6 @@ gradle jar
 - FFA played/won counters
 - Total and FFA playtime counters
 - Reserved ranked/ELO columns
-
-`CoreUnitDamageManager.java`
-- Disables Alpha/Beta/Gamma core-unit combat damage
-- Leaves core-unit building and mining intact
 
 `InviteManager.java`
 - Join requests
@@ -119,7 +122,7 @@ Command classes live under `commands/`.
 - No argument opens an online-player picker; `/info <name>` searches stored players
 
 `gameplay/AttackManager.java`
-- `/fullassault` (alias `/fa`), `/rally`, `/attack`
+- `/fullassault` (alias `/fa`)
 
 `RoundEndCommands.java`
 - `/die`
@@ -144,11 +147,10 @@ Command classes live under `commands/`.
 - Spawning/readiness run off the main thread; results post back to it
 
 `HelpCommands.java`
-- Filtered `/help`
-- Separate `/help dev`
+- `/help` menu: paginated, folds aliases into their target's row, never lists itself
 
-`EvictCommandCatalog.java`
-- Dev-command list used by filtered help
+`HistoryCommands.java`
+- `/history` (alias `/h`) — a player's 1v1, Teams and FFA matches, most recent first
 
 `ConsoleCommands.java`
 - Dedicated-server console commands
@@ -188,10 +190,10 @@ Capture attrition:
 - Applies once when a core is captured.
 - Applies to normal units inside the `40-tile` capture radius.
 - Tier-based values.
-- Command:
+- Console command:
 
 ```text
-/attritioncore [t1-3] [t4] [t5]
+evictattritioncore [t1-3] [t4] [t5]
 ```
 
 Range attrition:
@@ -199,10 +201,10 @@ Range attrition:
 - Applies when units are at least `2` hexes away from an owned core.
 - Same percentage for all eligible unit tiers.
 - Default: `20%`.
-- Command:
+- Console command:
 
 ```text
-/attritionrange [percent]
+evictattritionrange [percent]
 ```
 
 Core-spawned player units do not receive attrition.
@@ -229,8 +231,8 @@ config/evict-players.db
   and `evictplayerinfo` add the live unpersisted session time so an online
   player's total and FFA playtime include their current, not-yet-saved session.
 - No IP addresses are stored.
-- `/info` is admin-only and opens a clickable online-player selection menu with two players per row and a bottom cancel button.
-- `/info [name] [team] [#number]` is admin-only and searches online players by partial name. The optional team ID filters duplicate online names; `#number` selects one result from the duplicate list.
+- `/info` is public; without arguments it opens a clickable player selection menu.
+- `/info [name]` searches the stored players by partial latest name first; old names and UUIDs are searched only if no latest-name match exists.
 - Console command `evictplayerinfo [name/uuid]` searches stored database rows by partial latest name first. Old names and UUIDs are searched only if no latest-name match exists.
 
 ### Full Assault
@@ -399,57 +401,30 @@ Final phase:
 - The team owning the middle core after `4 minutes` wins, including Fallen
 - If the middle core is still Fallen after `4 minutes`, Fallen wins and the round resets normally
 
-Admin test command:
+Terrain streaming speed:
 
-```text
-/extinction
-```
-
-Terrain streaming console command:
-
-```text
-evictextinctiontiles [amount]
-```
-
-- Shows or persists Space-floor conversions per tick
+- `extinction.terrainChangesPerTick` in `config/evict-map-generator.properties`
+- Space-floor conversions per tick
 - Default: `120`
 - Allowed range: `1..4096`
-- Applies immediately
-- Persists to `config/evict-map-generator.properties`
 
 ## Help Menu Rules
-
-Normal help:
 
 ```text
 /help
 /help 2
 ```
 
-- Must show only normal player commands
-- Must not show `/help`
-- Must not advertise `/help dev`
+- There is no separate dev help; `/help` is the only listing
+- Must not show `/help` itself
+- Alias commands get no row of their own; they fold into their target's row
+  (e.g. `/history (/h)`)
+- `/restart` is listed with its commentator/admin description and stays
+  permission-gated at execution
 
-Dev help:
-
-```text
-/help dev
-/help dev 2
-```
-
-- Visible to all players
-- Contains dev commands
-- Dev commands themselves remain admin-only where applicable
-
-Current dev commands:
-- `/forceend`
-- `/extinction`
-- `/attritioncore`
-- `/attritionrange`
-- `/wall`
-- `/corecap`
-- `/spawnunit`
-- `/info`
+The former dev chat commands moved to the server console (`evictattritioncore`,
+`evictattritionrange`, `evictwall`, `evictcorecap`); `/info` is a normal player
+command now.
 
 ## Persistent Console Settings
 
@@ -480,7 +455,7 @@ evictwater [tries-per-hex] [normal-patch-tiles] [large-patch-percent] [large-pat
 - Default: `evictwater 1 3 13.33 8`.
 
 Wall settings:
-- `/wall [full-wall] [small-wall] [open] [passage]`
+- `evictwall [full-wall] [small-wall] [open] [passage]`
 
 Unit build speed:
 - `evictbuildspeed [multiplier]`

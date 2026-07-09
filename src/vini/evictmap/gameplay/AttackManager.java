@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Implements /rally, /attack and /fullassault (alias /fa).
+ * Implements the team-scoped /fullassault toggle (alias /fa).
  */
 public final class AttackManager implements GameplayManagerInterface {
     /**
@@ -42,26 +42,14 @@ public final class AttackManager implements GameplayManagerInterface {
     }
 
     /**
-     * Register commands to the handler (/rally, /attack and /fullassault).
+     * Register commands to the handler (/fullassault and its /fa alias).
      *
      * @param handler Where to register the commands to.
      */
     public void registerClientCommands(CommandHandler handler) {
         handler.register(
-                "rally",
-                "Rally units to the player.",
-                this::handleRallyCommand
-        );
-
-        handler.register(
-                "attack",
-                "Command units to attack the nearest core.",
-                this::handleAttackCommand
-        );
-
-        handler.register(
                 "fullassault",
-                "Automatically apply /attack every 5 seconds.",
+                "Send your team's idle combat units at the nearest enemy core every 5 seconds.",
                 this::handleFullassaultCommand
         );
 
@@ -83,19 +71,15 @@ public final class AttackManager implements GameplayManagerInterface {
         if (!teamManager.isRoundActiveForSystems()) return;
 
         /*
-         * This isn't quite right; there will be a slightly larger interval than 5000 ms between /attacks
-         * when fullassault is enabled. But it is close enough for now.
+         * This isn't quite right; there will be a slightly larger interval than 5000 ms between
+         * assault pulses when fullassault is enabled. But it is close enough for now.
          */
         float elapsedSeconds = (teamManager.roundRuntimeMillis() - lastFullassaultMillis) / 1000f;
         if (elapsedSeconds < FULL_ASSAULT_INTERVAL_SECONDS) return;
         lastFullassaultMillis = teamManager.roundRuntimeMillis();
 
-        // Clever Claude! Most of the time nobody will be on fullassault,
-        // so we can avoid iterating through the list of units.
         if (fullAssaultTeamIds.isEmpty()) return;
 
-        // Likewise we can avoid double iterating here, gaining another reasonable speedup
-        // over the naive option of calling handleAttackCommand in a loop.
         List<CoreBuild> coreSnapshot = teamManager.snapshotSlotCores();
         Groups.unit.each(unit -> {
             if (fullAssaultTeamIds.contains(unit.team.id)) {
@@ -109,36 +93,7 @@ public final class AttackManager implements GameplayManagerInterface {
     }
 
     /**
-     * {@code /rally} command handler (not yet implemented).
-     */
-    private void handleRallyCommand(String[] args, Player player) {
-        if (args.length != 0) {
-            player.sendMessage("Too many arguments. Usage: /rally");
-            return;
-        }
-
-        player.sendMessage("/rally is not yet implemented, but will be soon.");
-    }
-
-    /**
-     * {@code /attack} command handler (not yet implemented).
-     */
-    private void handleAttackCommand(String[] args, Player player) {
-        if (args.length != 0) {
-            player.sendMessage("Too many arguments. Usage: /attack");
-            return;
-        }
-
-        List<CoreBuild> coreSnapshot = teamManager.snapshotSlotCores();
-        Groups.unit.each(unit -> {
-            if (player.team().id == unit.team.id) {
-                attackWithUnit(unit, coreSnapshot);
-            }
-        });
-    }
-
-    /**
-     * {@code /fullassault} command handler (not yet implemented).
+     * {@code /fullassault} command handler.
      */
     private void handleFullassaultCommand(String[] args, Player player) {
         if (args.length != 0) {

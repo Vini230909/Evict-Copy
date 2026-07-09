@@ -75,20 +75,18 @@ public final class TeamManager {
      */
     private static final int FFA_DUEL_MINIMUM_START_DISTANCE = 2;
 
-    private static final int SHORT_ROW_COLS = 7;
-    private static final int LONG_ROW_COLS = 8;
-    private static final int ROWS = 9;
+    private static final int SHORT_ROW_COLS = HexGrid.SHORT_ROW_COLS;
+    private static final int LONG_ROW_COLS = HexGrid.LONG_ROW_COLS;
+    private static final int ROWS = HexGrid.ROWS;
 
     private static final long TEAM_RANDOM_XOR = 0x5445414d2d455649L;
 
     /**
-     * The generated playable hex circles use radius 39. Extinction converts
-     * each collapsed logical hex circle into space without touching the
-     * surviving neighbor selected by the nearest-center check.
+     * Extinction converts each collapsed logical hex circle into space without
+     * touching the surviving neighbor selected by the nearest-center check.
      */
-    private static final int EXTINCTION_HEX_RADIUS = 39;
     private static final int EXTINCTION_HEX_RADIUS_SQUARED =
-            EXTINCTION_HEX_RADIUS * EXTINCTION_HEX_RADIUS;
+            HexGrid.HEX_RADIUS * HexGrid.HEX_RADIUS;
 
     private static final int CENTER_ROW = ROWS / 2;
     private static final int CENTER_COL = SHORT_ROW_COLS / 2;

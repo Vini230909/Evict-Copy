@@ -20,6 +20,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Stream;
 
 import arc.Core;
@@ -83,6 +84,15 @@ public final class DuelServerManager {
      * bounce a reconnecting player back into their match. Main-thread only.
      */
     private final Map<String, Integer> activeDuelByUuid = new HashMap<>();
+
+    /**
+     * Last computed total of players inside the duel workers. Refreshed off
+     * the main thread by {@link #connectedDuelPlayers()}; the flag keeps at
+     * most one refresh in flight.
+     */
+    private volatile int cachedConnectedDuelPlayers = 0;
+    private final AtomicBoolean duelPlayerCountRefreshRunning =
+            new AtomicBoolean(false);
 
     public DuelServerManager(
             EvictSettings settings,
@@ -422,19 +432,46 @@ public final class DuelServerManager {
      * Players currently connected across all duel workers (duelists plus /view
      * spectators), read from each worker's status.properties. Lets the hub fold
      * duel players into its advertised player count. Main-thread only.
+     *
+     * <p>Called from the per-frame update loop, so the status files are never
+     * read here: this returns the last computed total and starts (at most one
+     * at a time) a background refresh, keeping disk stalls off the game loop.
+     * The count lags one refresh cycle (~2s) behind the files, which is
+     * irrelevant for an advertised player count.
      */
     public int connectedDuelPlayers() {
-        int total = 0;
-
-        for (WorkerHandle handle : workers.values()) {
-            Properties status = readStatus(handle.port);
-
-            if (status != null) {
-                total += countPlayers(status.getProperty("players", ""));
-            }
+        if (workers.isEmpty()) {
+            cachedConnectedDuelPlayers = 0;
+            return 0;
         }
 
-        return total;
+        // Snapshot the ports on the main thread (workers is main-thread only);
+        // only the file reads run on the background thread.
+        List<Integer> ports = new ArrayList<>(workers.keySet());
+
+        if (duelPlayerCountRefreshRunning.compareAndSet(false, true)) {
+            spawnExecutor.submit(() -> {
+                try {
+                    int total = 0;
+
+                    for (int port : ports) {
+                        Properties status = readStatus(port);
+
+                        if (status != null) {
+                            total += countPlayers(
+                                    status.getProperty("players", "")
+                            );
+                        }
+                    }
+
+                    cachedConnectedDuelPlayers = total;
+                } finally {
+                    duelPlayerCountRefreshRunning.set(false);
+                }
+            });
+        }
+
+        return cachedConnectedDuelPlayers;
     }
 
     private static int countPlayers(String packed) {
