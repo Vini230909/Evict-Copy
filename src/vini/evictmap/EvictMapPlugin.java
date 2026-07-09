@@ -41,7 +41,7 @@ public class EvictMapPlugin extends Plugin {
     private static final float CONNECTED_PLAYER_SCAN_INITIAL_DELAY_TICKS = 1f;
     private static final float CONNECTED_PLAYER_SCAN_INTERVAL_TICKS = 15f;
     private static final int CONNECTED_PLAYER_SCAN_ATTEMPTS = 120;
-    private static final float ADVERTISED_COUNT_REFRESH_TICKS = 120f;
+    private static final long ADVERTISED_COUNT_REFRESH_MILLIS = 2000L;
 
     private final EvictRuntimeState runtime = new EvictRuntimeState();
     private final EvictSettings settings = new EvictSettings();
@@ -126,6 +126,7 @@ public class EvictMapPlugin extends Plugin {
     private boolean refreshingWorldIndexes = false;
     private long connectedPlayerScanSerial = 0L;
     private int advertisedPlayerCount = -1;
+    private long advertisedPlayerCountRefreshedAtMillis = 0L;
 
     /**
      * When launched with -Devict.duelWorker=true this process is a spawned 1v1
@@ -395,13 +396,13 @@ public class EvictMapPlugin extends Plugin {
             attritionManager.update();
             attackManager.update();
             extinctionManager.update();
-        });
 
-        // Only the hub is listed in the multiplayer browser; keep its advertised
-        // count folded with the players inside the duel workers.
-        if (!duelWorker) {
-            scheduleAdvertisedPlayerCountRefresh();
-        }
+            // Only the hub is listed in the multiplayer browser; keep its
+            // advertised count folded with the players inside the duel workers.
+            if (!duelWorker) {
+                refreshAdvertisedPlayerCount();
+            }
+        });
 
         Log.info(
                 "[EvictMapGenerator] Loaded. Code revision 1.3.1. Use 'evictstatus' for commands and current settings."
@@ -413,19 +414,28 @@ public class EvictMapPlugin extends Plugin {
      * players in every duel worker. Mindustry's server ping reports the
      * "totalPlayers" setting, falling back to the live hub count, so folding the
      * duel players in makes the multiplayer menu show everyone online.
+     *
+     * <p>Driven from the persistent {@link Trigger#update} hook rather than a
+     * self-rescheduling {@link Time#run} chain: {@code Logic.reset()} calls
+     * {@code Time.clear()} on every map/round reload, which would silently
+     * destroy such a chain and freeze the count at its last (hub-only) value.
+     * The wall-clock throttle keeps the per-frame work cheap.
      */
-    private void scheduleAdvertisedPlayerCountRefresh() {
-        Time.run(ADVERTISED_COUNT_REFRESH_TICKS, () -> {
-            int total =
-                    Groups.player.size() + duelServerManager.connectedDuelPlayers();
+    private void refreshAdvertisedPlayerCount() {
+        if (Time.timeSinceMillis(advertisedPlayerCountRefreshedAtMillis)
+                < ADVERTISED_COUNT_REFRESH_MILLIS) {
+            return;
+        }
 
-            if (total != advertisedPlayerCount) {
-                advertisedPlayerCount = total;
-                Core.settings.put("totalPlayers", total);
-            }
+        advertisedPlayerCountRefreshedAtMillis = Time.millis();
 
-            scheduleAdvertisedPlayerCountRefresh();
-        });
+        int total =
+                Groups.player.size() + duelServerManager.connectedDuelPlayers();
+
+        if (total != advertisedPlayerCount) {
+            advertisedPlayerCount = total;
+            Core.settings.put("totalPlayers", total);
+        }
     }
 
     @Override
