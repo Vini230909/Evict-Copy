@@ -277,6 +277,13 @@ public final class ConsoleCommands {
         );
 
         handler.register(
+                "evictelo",
+                "<name/uuid> <value>",
+                "Set a stored player's ranked ELO. The player is matched like evictplayerinfo (partial latest name first, then UUID); pass a UUID if a name is ambiguous. Peak ELO only rises, so a manual set never lowers it.",
+                this::handleEloCommand
+        );
+
+        handler.register(
                 "evictwall",
                 "[full-wall] [small-wall] [open] [passage]",
                 "Show or set persistent wall-template percentages",
@@ -655,6 +662,72 @@ public final class ConsoleCommands {
         } catch (IllegalArgumentException exception) {
             Log.err(exception.getMessage());
         }
+    }
+
+    private void handleEloCommand(String[] args) {
+        if (args.length < 2) {
+            Log.err("[EvictMapGenerator] Use: evictelo <name/uuid> <value>");
+            return;
+        }
+
+        int newElo;
+
+        try {
+            newElo = Integer.parseInt(args[1].trim());
+        } catch (NumberFormatException exception) {
+            Log.err("[EvictMapGenerator] ELO must be a whole number.");
+            return;
+        }
+
+        if (newElo < 0) {
+            Log.err("[EvictMapGenerator] ELO cannot be negative.");
+            return;
+        }
+
+        String query = args[0].trim();
+
+        playerDataManager.searchPlayerInfo(query, matches -> {
+            if (matches.isEmpty()) {
+                Log.err(
+                        "[EvictMapGenerator] No stored players match '@'.",
+                        query
+                );
+                return;
+            }
+
+            if (matches.size() > 1) {
+                Log.err(
+                        "[EvictMapGenerator] '@' matches @ players; be more specific or use a UUID:",
+                        query,
+                        matches.size()
+                );
+
+                for (PlayerDataManager.PlayerInfo info : matches) {
+                    Log.info("[EvictMapGenerator] @", compactPlayerInfo(info));
+                }
+
+                return;
+            }
+
+            PlayerDataManager.PlayerInfo target = matches.get(0);
+            int previousElo = target.elo();
+
+            playerDataManager.setElo(target.uuid(), newElo, updated -> {
+                if (updated) {
+                    Log.info(
+                            "[EvictMapGenerator] Set @'s ELO to @ (was @).",
+                            target.lastName(),
+                            newElo,
+                            previousElo
+                    );
+                } else {
+                    Log.err(
+                            "[EvictMapGenerator] Could not update ELO for @.",
+                            target.lastName()
+                    );
+                }
+            });
+        });
     }
 
     private void showStoredPlayerInfo(String query) {

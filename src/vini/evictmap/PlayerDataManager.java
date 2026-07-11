@@ -33,7 +33,7 @@ public final class PlayerDataManager {
 
     private static final File DATABASE_FILE =
             new File("config/evict-players.db");
-    private static final int DEFAULT_ELO = 1000;
+    private static final int DEFAULT_ELO = EloCalculator.STARTING_ELO;
 
     /**
      * Database that /history reads from. Defaults to this server's own DB. A duel
@@ -143,11 +143,13 @@ public final class PlayerDataManager {
     }
 
     /**
-     * Records a finished 1v1 duel: a win for the winner, a loss for the loser,
-     * a played match for both, and one row in the match history. ELO counters
-     * are intentionally left untouched. Called on the hub once a worker reports
-     * its result; no-op if either UUID is missing (e.g. the worker could not
-     * identify a winner).
+     * Records a finished ranked 1v1: a win for the winner, a loss for the loser,
+     * a played match for both, the ELO swing on both profiles (see
+     * {@link EloCalculator}) and one ranked row in the match history carrying the
+     * before/after ratings. Called on the hub once a worker reports its result;
+     * no-op if either UUID is missing (e.g. the worker could not identify a
+     * winner). Only the Ranked mode reaches this path; casual 1v1 goes through
+     * {@link #recordCasualDuelResult}.
      */
     public void recordRankedResult(
             String winnerUuid,
@@ -167,6 +169,38 @@ public final class PlayerDataManager {
         long playedAtMillis = System.currentTimeMillis();
 
         enqueue(() -> applyRankedResult(
+                winnerUuid,
+                safeName(winnerName),
+                loserUuid,
+                safeName(loserName),
+                playedAtMillis
+        ));
+    }
+
+    /**
+     * Records a finished casual 1v1 as an unranked history entry: one row with
+     * win/lose and no ELO, and no ranked counters or rating change touched. The
+     * unranked counterpart to {@link #recordRankedResult}, called on the hub
+     * once a worker reports a casual 1v1 result.
+     */
+    public void recordCasualDuelResult(
+            String winnerUuid,
+            String winnerName,
+            String loserUuid,
+            String loserName
+    ) {
+        if (
+                winnerUuid == null
+                        || winnerUuid.isEmpty()
+                        || loserUuid == null
+                        || loserUuid.isEmpty()
+        ) {
+            return;
+        }
+
+        long playedAtMillis = System.currentTimeMillis();
+
+        enqueue(() -> applyCasualResult(
                 winnerUuid,
                 safeName(winnerName),
                 loserUuid,
@@ -271,6 +305,28 @@ public final class PlayerDataManager {
             Consumer<PlayerInfo> callback
     ) {
         enqueue(() -> deliver(callback, loadPlayerInfoByUuid(uuid)));
+    }
+
+    /**
+     * Overwrites a stored player's current ELO (peak ELO is only ever raised, so
+     * a manual correction never lowers the historical peak). Console admin tool.
+     * The callback reports whether a stored row was actually changed - false
+     * means no player with that exact UUID exists yet.
+     */
+    public void setElo(String uuid, int newElo, Consumer<Boolean> callback) {
+        if (uuid == null || uuid.isBlank()) {
+            deliver(callback, false);
+            return;
+        }
+
+        String trimmedUuid = uuid.trim();
+        int clampedElo = Math.max(0, newElo);
+
+        enqueue(() -> {
+            try (Connection connection = connect()) {
+                deliver(callback, writeElo(connection, trimmedUuid, clampedElo) > 0);
+            }
+        });
     }
 
     private void recordFfaParticipation(Player player) {
@@ -412,9 +468,10 @@ public final class PlayerDataManager {
 
             // One row per finished 1v1 or FFA. Names are the colored display
             // names at match time so /history can render them without the
-            // players being online. The elo columns default to 0 until the elo
-            // feature lands. FFA rows additionally carry every participant
-            // (uuids comma-joined, names newline-joined) and no loser columns.
+            // players being online. The elo before/after columns are filled for
+            // ranked 1v1 rows; FFA/Teams rows are unranked and leave them at 0.
+            // FFA rows additionally carry every participant (uuids comma-joined,
+            // names newline-joined) and no loser columns.
             statement.executeUpdate(
                     "CREATE TABLE IF NOT EXISTS duel_matches ("
                             + "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -572,33 +629,136 @@ public final class PlayerDataManager {
             long playedAtMillis
     ) throws SQLException {
         try (Connection connection = connect()) {
+            // Read both ratings before either is written, so the calculation
+            // uses the pre-match ratings for both players.
+            EloCalculator.Result elo = EloCalculator.apply(
+                    currentElo(connection, winnerUuid),
+                    currentElo(connection, loserUuid)
+            );
+
             updateRankedOutcome(connection, winnerUuid, true);
             updateRankedOutcome(connection, loserUuid, false);
+            writeElo(connection, winnerUuid, elo.winnerAfter());
+            writeElo(connection, loserUuid, elo.loserAfter());
             insertDuelMatch(
                     connection,
                     playedAtMillis,
+                    "ranked",
                     winnerUuid,
                     winnerName,
                     loserUuid,
-                    loserName
+                    loserName,
+                    elo.winnerBefore(),
+                    elo.winnerAfter(),
+                    elo.loserBefore(),
+                    elo.loserAfter()
             );
         }
     }
 
-    private void insertDuelMatch(
-            Connection connection,
-            long playedAtMillis,
+    /**
+     * Records a finished casual 1v1: one unranked /history row (win/lose, no
+     * ELO) and nothing else - no ranked counters and no rating change. The
+     * casual counterpart to {@link #applyRankedResult}.
+     */
+    private void applyCasualResult(
             String winnerUuid,
             String winnerName,
             String loserUuid,
-            String loserName
+            String loserName,
+            long playedAtMillis
+    ) throws SQLException {
+        try (Connection connection = connect()) {
+            insertDuelMatch(
+                    connection,
+                    playedAtMillis,
+                    "1v1",
+                    winnerUuid,
+                    winnerName,
+                    loserUuid,
+                    loserName,
+                    0,
+                    0,
+                    0,
+                    0
+            );
+        }
+    }
+
+    /**
+     * The stored current ELO for a UUID, or {@link EloCalculator#STARTING_ELO}
+     * if the player has no row yet (they are treated as an unrated newcomer).
+     */
+    private int currentElo(Connection connection, String uuid)
+            throws SQLException {
+        try (
+                PreparedStatement statement = connection.prepareStatement(
+                        "SELECT elo FROM players WHERE uuid = ?"
+                )
+        ) {
+            statement.setString(1, uuid);
+
+            try (ResultSet rows = statement.executeQuery()) {
+                if (rows.next()) {
+                    return rows.getInt("elo");
+                }
+            }
+        }
+
+        return EloCalculator.STARTING_ELO;
+    }
+
+    /**
+     * Sets a player's current ELO and raises their peak ELO to match if the new
+     * rating is a new high. Returns the number of rows changed (0 if no such
+     * player is stored). Shared by ranked results and the console override.
+     */
+    private static int writeElo(
+            Connection connection,
+            String uuid,
+            int newElo
+    ) throws SQLException {
+        try (
+                PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE players SET "
+                                + "elo = ?, "
+                                + "peak_elo = MAX(peak_elo, ?) "
+                                + "WHERE uuid = ?"
+                )
+        ) {
+            statement.setInt(1, newElo);
+            statement.setInt(2, newElo);
+            statement.setString(3, uuid);
+            return statement.executeUpdate();
+        }
+    }
+
+    /**
+     * Inserts one 1v1-shaped history row. mode is the wire id ("ranked" or
+     * "1v1", mirroring {@code MatchMode}); the elo columns carry the rating
+     * swing for ranked rows and are passed as 0 for unranked casual rows.
+     */
+    private void insertDuelMatch(
+            Connection connection,
+            long playedAtMillis,
+            String mode,
+            String winnerUuid,
+            String winnerName,
+            String loserUuid,
+            String loserName,
+            int winnerEloBefore,
+            int winnerEloAfter,
+            int loserEloBefore,
+            int loserEloAfter
     ) throws SQLException {
         try (
                 PreparedStatement statement = connection.prepareStatement(
                         "INSERT INTO duel_matches "
                                 + "(played_at_ms, winner_uuid, winner_name, "
-                                + "loser_uuid, loser_name) "
-                                + "VALUES (?, ?, ?, ?, ?)"
+                                + "loser_uuid, loser_name, mode, "
+                                + "winner_elo_before, winner_elo_after, "
+                                + "loser_elo_before, loser_elo_after) "
+                                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 )
         ) {
             statement.setLong(1, playedAtMillis);
@@ -606,6 +766,11 @@ public final class PlayerDataManager {
             statement.setString(3, winnerName);
             statement.setString(4, loserUuid);
             statement.setString(5, loserName);
+            statement.setString(6, mode);
+            statement.setInt(7, winnerEloBefore);
+            statement.setInt(8, winnerEloAfter);
+            statement.setInt(9, loserEloBefore);
+            statement.setInt(10, loserEloAfter);
             statement.executeUpdate();
         }
     }
@@ -687,7 +852,10 @@ public final class PlayerDataManager {
                 PreparedStatement statement = connection.prepareStatement(
                         "SELECT played_at_ms, winner_uuid, winner_name, "
                                 + "loser_uuid, loser_name, mode, "
-                                + "participant_names FROM duel_matches "
+                                + "participant_names, "
+                                + "winner_elo_before, winner_elo_after, "
+                                + "loser_elo_before, loser_elo_after "
+                                + "FROM duel_matches "
                                 + "WHERE winner_uuid = ? OR loser_uuid = ? "
                                 + "OR instr(participant_uuids, ?) > 0 "
                                 + "ORDER BY played_at_ms DESC"
@@ -706,7 +874,11 @@ public final class PlayerDataManager {
                             rows.getString("loser_uuid"),
                             rows.getString("loser_name"),
                             rows.getString("mode"),
-                            rows.getString("participant_names")
+                            rows.getString("participant_names"),
+                            rows.getInt("winner_elo_before"),
+                            rows.getInt("winner_elo_after"),
+                            rows.getInt("loser_elo_before"),
+                            rows.getInt("loser_elo_after")
                     ));
                 }
             }
@@ -997,8 +1169,10 @@ public final class PlayerDataManager {
     }
 
     /**
-     * One /history entry. mode is "1v1" or "ffa"; FFA rows carry every
-     * participant's display name (newline-joined) and no loser columns.
+     * One /history entry. mode is "ranked", "1v1", "teams" or "ffa"; FFA rows
+     * carry every participant's display name (newline-joined) and no loser
+     * columns. The elo before/after fields are only meaningful for "ranked"
+     * rows; every other mode leaves them at 0.
      */
     public record DuelMatch(
             long playedAtMillis,
@@ -1007,7 +1181,11 @@ public final class PlayerDataManager {
             String loserUuid,
             String loserName,
             String mode,
-            String participantNamesPacked
+            String participantNamesPacked,
+            int winnerEloBefore,
+            int winnerEloAfter,
+            int loserEloBefore,
+            int loserEloAfter
     ) {
     }
 }

@@ -97,7 +97,11 @@ gradle jar
 - Player profile rows
 - FFA played/won counters
 - Total and FFA playtime counters
-- Reserved ranked/ELO columns
+- Ranked win/loss/played counters and ELO (`EloCalculator`), updated after each ranked 1v1
+
+`EloCalculator.java`
+- Standard Elo rating math (starting rating 1000, K-factor 32)
+- Pure function; `PlayerDataManager` persists the results
 
 `InviteManager.java`
 - Join requests
@@ -155,6 +159,7 @@ Command classes live under `commands/`.
 `ConsoleCommands.java`
 - Dedicated-server console commands
 - Stored player-data lookup
+- Player ELO override (`evictelo`)
 
 ## Important Gameplay Rules
 
@@ -225,7 +230,8 @@ config/evict-players.db
 - Profiles are keyed by player UUID.
 - Stored values include last name, first seen, last seen, total playtime, FFA playtime, FFA played and FFA won.
 - All observed names are stored per UUID in `player_names`.
-- Ranked playtime, ranked wins, ranked losses, ranked matches played, ELO and peak ELO columns exist for later ranked/1v1 features.
+- Ranked wins, losses, matches played, ELO and peak ELO are updated after each Ranked match (the `Ranked` mode is the only ranked one; casual `1v1` never touches them); a match row also stores both players' before/after ELO. Ranked playtime is a reserved column for later.
+- New players start at ELO 1000; peak ELO only ever rises.
 - FFA playtime is counted only after a player receives a personal team in that round.
 - Stored playtime is flushed at round starts, on leave and on shutdown. `/info`
   and `evictplayerinfo` add the live unpersisted session time so an online
@@ -234,6 +240,7 @@ config/evict-players.db
 - `/info` is public; without arguments it opens a clickable player selection menu.
 - `/info [name]` searches the stored players by partial latest name first; old names and UUIDs are searched only if no latest-name match exists.
 - Console command `evictplayerinfo [name/uuid]` searches stored database rows by partial latest name first. Old names and UUIDs are searched only if no latest-name match exists.
+- Console command `evictelo <name/uuid> <value>` sets a stored player's ELO. The player is matched like `evictplayerinfo` (partial latest name first, then UUID); an ambiguous name lists the candidates instead of changing anything. Peak ELO is only ever raised, so a manual set never lowers it.
 
 ### Full Assault
 
@@ -304,11 +311,18 @@ config/evict-players.db
 ```
 
 - Available to every player.
-- First opens a game-mode menu: `1v1`, `Teams`, `Random Teams`, `FFA`,
-  `Training`, `Sandbox`.
+- First opens a game-mode menu: `1v1`, `Ranked`, `Teams`, `Random Teams`,
+  `FFA`, `Training`, `Sandbox`.
 - **1v1**: a menu of other online players, two per row, with a bottom cancel
   button. Selecting a player sends that player an accept/decline challenge
-  menu. The only ranked mode (recorded via `result.properties` on the hub).
+  menu. Casual - the result is stored as an unranked `/history` entry (win/lose,
+  no ELO) and touches no ranked counters.
+- **Ranked**: the exact same opponent-pick and accept/decline flow as `1v1`,
+  but rated. The only ranked mode: its result updates both players' ELO and peak
+  ELO, increments their ranked win/loss/played counters, and is stored as a
+  ranked `/history` entry with the before/after ratings (recorded via
+  `result.properties` on the hub). Behaves like a 1v1 on the worker; only the
+  hub records it differently.
 - **Teams**: up to 8 rosters are built purely through pick menus (no typed
   input); the challenger starts on Team 1 and picks always fill the current
   team. Two full-width bottom buttons: `Next team` starts the following team
@@ -350,9 +364,9 @@ config/evict-players.db
   worker server process. Workers are spawned on demand, never kept idle.
 - The hub-worker handshake (`duel.properties`) carries `mode`, `team.count`
   and `team.N` UUID lists; the result file carries `mode`, `winner.uuid(s)`,
-  `loser.uuid(s)` and `reason`. Only `1v1` results are recorded as ranked;
-  `teams` and `ffa` results become unranked `/history` entries; Training and
-  Sandbox are never recorded.
+  `loser.uuid(s)` and `reason`. Only `ranked` results are recorded as ranked;
+  `1v1`, `teams` and `ffa` results become unranked `/history` entries; Training
+  and Sandbox are never recorded.
 - On accept, `DuelServerManager` reserves a free worker port, provisions the
   worker folder from the hub's own jar/`config/mods`/`config/maps` if missing,
   launches `java -Devict.duelWorker=true -jar <jar>`, injects `config port` and

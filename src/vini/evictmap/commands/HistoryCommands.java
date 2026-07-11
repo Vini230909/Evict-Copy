@@ -17,11 +17,11 @@ import vini.evictmap.PlayerNameFormatter;
 
 /**
  * /history (alias /h): first pick a player, then page through that player's
- * 1v1, Teams and FFA matches.
- * A 1v1 entry is win/lose from the picked player's perspective, both names,
- * and an elo line (ELO is not computed yet, so the line shows a zero delta).
- * Teams and FFA entries list everyone with just win/lose below - they are
- * unranked. Training and Sandbox sessions leave no history.
+ * Ranked, 1v1, Teams and FFA matches.
+ * A Ranked entry is win/lose from the picked player's perspective, both names,
+ * and an elo line showing the points swing from that match. Casual 1v1, Teams
+ * and FFA entries are unranked, so they show just win/lose with no elo line.
+ * Training and Sandbox sessions leave no history.
  */
 public final class HistoryCommands {
 
@@ -262,15 +262,41 @@ public final class HistoryCommands {
         boolean won = subjectUuid.equals(match.winnerUuid());
         String subject = won ? match.winnerName() : match.loserName();
         String opponent = won ? match.loserName() : match.winnerName();
-        String eloDelta = won ? "[green]+0[]" : "[scarlet]-0[]";
+
+        // Ranked 1v1 shows the ELO swing; casual 1v1 is unranked, so like Teams
+        // and FFA it shows just win/lose with no elo line.
+        if (MatchMode.RANKED.id().equals(match.mode())) {
+            int eloDelta = won
+                    ? match.winnerEloAfter() - match.winnerEloBefore()
+                    : match.loserEloAfter() - match.loserEloBefore();
+
+            return "[lightgray]Ranked[]\n"
+                    + winLose(won) + "\n" + subject + " [white]vs[] " + opponent
+                    + "\n[gray]elo: []" + formatEloDelta(eloDelta);
+        }
 
         return "[lightgray]1v1[]\n"
-                + winLose(won) + "\n" + subject + " [white]vs[] " + opponent
-                + "\n[gray]elo: []" + eloDelta;
+                + winLose(won) + "\n" + subject + " [white]vs[] " + opponent;
     }
 
     private static String winLose(boolean won) {
         return won ? "[green]win[]" : "[scarlet]lose[]";
+    }
+
+    /**
+     * A signed, colored ELO swing: green gain, red loss, gray for no change
+     * (older 1v1 rows recorded before ELO was tracked carry a zero swing).
+     */
+    private static String formatEloDelta(int delta) {
+        if (delta > 0) {
+            return "[green]+" + delta + "[]";
+        }
+
+        if (delta < 0) {
+            return "[scarlet]" + delta + "[]";
+        }
+
+        return "[gray]0[]";
     }
 
     private static boolean packedContainsUuid(String packed, String uuid) {

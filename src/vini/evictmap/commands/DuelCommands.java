@@ -24,7 +24,10 @@ import java.util.Set;
 /**
  * /play (alias /p) match-making.
  * The command first asks for a game mode:
- * - 1v1: pick one opponent, they accept/decline, both go to a worker.
+ * - 1v1: pick one opponent, they accept/decline, both go to a worker. Casual -
+ * nothing is rated.
+ * - Ranked: identical flow to 1v1, but the result moves both players' ELO and
+ * is stored as a ranked match.
  * - Teams: build two rosters (even or uneven) purely through pick menus, every
  * picked player gets an accept/decline invite, then everyone is sent over.
  * - Random Teams: choose a team count (2-8), pick one pool of players like
@@ -69,6 +72,7 @@ public final class DuelCommands {
      */
     private static final MatchMode[] MODE_MENU_OPTIONS = {
             MatchMode.ONE_VS_ONE,
+            MatchMode.RANKED,
             MatchMode.TEAMS,
             MatchMode.RANDOM_TEAMS,
             MatchMode.FFA,
@@ -90,13 +94,14 @@ public final class DuelCommands {
     private final int viewMenuId;
 
     /**
-     * Challenger UUID -> ordered opponent UUIDs shown in their 1v1 menu.
+     * Challenger UUID -> the mode they chose and the ordered opponent UUIDs
+     * shown in their 1v1/Ranked selection menu.
      */
-    private final Map<String, List<String>> selectionTargetsByChallengerUuid =
+    private final Map<String, Selection> selectionByChallengerUuid =
             new HashMap<>();
 
     /**
-     * Opponent UUID -> outstanding 1v1 challenge against them. The serial
+     * Opponent UUID -> outstanding 1v1/Ranked challenge against them. The serial
      * lets the expiry task recognise whether the entry it armed for is still
      * the current one.
      */
@@ -149,7 +154,7 @@ public final class DuelCommands {
     void registerClientCommands(CommandHandler handler) {
         handler.<Player>register(
                 "play",
-                "Start a match: 1v1, Teams, Random Teams, FFA, Training or Sandbox.",
+                "Start a match: 1v1, Ranked, Teams, Random Teams, FFA, Training or Sandbox.",
                 (args, player) -> openModeMenu(player)
         );
 
@@ -190,7 +195,7 @@ public final class DuelCommands {
 
         String uuid = player.uuid();
 
-        selectionTargetsByChallengerUuid.remove(uuid);
+        selectionByChallengerUuid.remove(uuid);
         challengeByOpponentUuid.remove(uuid);
         challengeByOpponentUuid.values().removeIf(
                 pending -> pending.challengerUuid().equals(uuid)
@@ -228,9 +233,10 @@ public final class DuelCommands {
                 "[accent]Play",
                 "Select a game mode.",
                 new String[][]{
-                        {"1v1", "Teams"},
-                        {"Random Teams", "FFA"},
-                        {"Training", "Sandbox"},
+                        {"1v1", "Ranked"},
+                        {"Teams", "Random Teams"},
+                        {"FFA", "Training"},
+                        {"Sandbox"},
                         {"[red]Cancel"}
                 }
         );
@@ -244,7 +250,7 @@ public final class DuelCommands {
         MatchMode mode = MODE_MENU_OPTIONS[option];
 
         switch (mode) {
-            case ONE_VS_ONE -> openSelectionMenu(player);
+            case ONE_VS_ONE, RANKED -> openSelectionMenu(player, mode);
             case TEAMS, FFA -> beginDraft(player, mode, 0);
             case RANDOM_TEAMS -> openTeamCountMenu(player);
             case TRAINING, SANDBOX -> startSoloMatch(player, mode);
@@ -308,9 +314,10 @@ public final class DuelCommands {
         }
     }
 
-    // --- 1v1 (unchanged flow: pick one opponent, accept/decline) ---
+    // --- 1v1 / Ranked (pick one opponent, accept/decline; same flow, the mode
+    //     is carried through so only the launched match differs) ---
 
-    private void openSelectionMenu(Player player) {
+    private void openSelectionMenu(Player player, MatchMode mode) {
         List<Player> opponents = otherOnlinePlayers(player);
 
         if (opponents.isEmpty()) {
@@ -337,13 +344,16 @@ public final class DuelCommands {
         }
 
         rows.add(new String[]{"[red]Cancel"});
-        selectionTargetsByChallengerUuid.put(player.uuid(), targetUuids);
+        selectionByChallengerUuid.put(
+                player.uuid(),
+                new Selection(mode, targetUuids)
+        );
 
         Call.menu(
                 player.con,
                 selectionMenuId,
-                "[accent]1v1",
-                "Select a player to challenge to a 1v1.",
+                "[accent]" + mode.label(),
+                "Select a player to challenge to a " + mode.label() + ".",
                 rows.toArray(new String[0][])
         );
     }
@@ -353,18 +363,20 @@ public final class DuelCommands {
             return;
         }
 
-        List<String> targetUuids =
-                selectionTargetsByChallengerUuid.remove(player.uuid());
+        Selection selection =
+                selectionByChallengerUuid.remove(player.uuid());
 
         if (
-                targetUuids == null
+                selection == null
                         || option < 0
-                        || option >= targetUuids.size()
+                        || option >= selection.targetUuids().size()
         ) {
             return;
         }
 
-        Player opponent = onlinePlayerByUuid(targetUuids.get(option));
+        MatchMode mode = selection.mode();
+        Player opponent =
+                onlinePlayerByUuid(selection.targetUuids().get(option));
 
         if (opponent == null || opponent == player) {
             player.sendMessage("[scarlet]That player is no longer online.[]");
@@ -387,7 +399,7 @@ public final class DuelCommands {
 
         challengeByOpponentUuid.put(
                 opponentUuid,
-                new PendingChallenge(player.uuid(), serial)
+                new PendingChallenge(player.uuid(), mode, serial)
         );
         Time.run(
                 PENDING_RESPONSE_TIMEOUT_TICKS,
@@ -403,9 +415,10 @@ public final class DuelCommands {
         Call.menu(
                 opponent.con,
                 challengeMenuId,
-                "[accent]1v1 Challenge",
+                "[accent]" + mode.label() + " Challenge",
                 PlayerNameFormatter.displayName(player)
-                        + "[white] has challenged you to a 1v1.",
+                        + "[white] has challenged you to a "
+                        + mode.label() + ".",
                 new String[][]{
                         {"[green]Accept"},
                         {"[red]Decline"}
@@ -433,6 +446,7 @@ public final class DuelCommands {
         }
 
         String challengerUuid = pending.challengerUuid();
+        MatchMode mode = pending.mode();
 
         Player challenger = onlinePlayerByUuid(challengerUuid);
 
@@ -447,7 +461,8 @@ public final class DuelCommands {
             challenger.sendMessage(
                     "[scarlet]"
                             + PlayerNameFormatter.displayName(opponent)
-                            + "[scarlet] declined your 1v1.[]"
+                            + "[scarlet] declined your "
+                            + mode.label() + ".[]"
             );
             return;
         }
@@ -461,7 +476,7 @@ public final class DuelCommands {
         rosters.add(List.of(challenger));
         rosters.add(List.of(opponent));
 
-        if (!duelManager.requestMatch(MatchMode.ONE_VS_ONE, rosters)) {
+        if (!duelManager.requestMatch(mode, rosters)) {
             challenger.sendMessage(
                     "[scarlet]All match servers are busy right now. Try again shortly.[]"
             );
@@ -1155,6 +1170,7 @@ public final class DuelCommands {
 
         challengeByOpponentUuid.remove(opponentUuid);
 
+        String modeLabel = pending.mode().label();
         Player opponent = onlinePlayerByUuid(opponentUuid);
         Player challenger = onlinePlayerByUuid(pending.challengerUuid());
 
@@ -1164,13 +1180,15 @@ public final class DuelCommands {
                             + (opponent == null
                             ? "Your opponent"
                             : PlayerNameFormatter.displayName(opponent))
-                            + "[scarlet] did not answer your 1v1 challenge in time.[]"
+                            + "[scarlet] did not answer your "
+                            + modeLabel + " challenge in time.[]"
             );
         }
 
         if (opponent != null) {
             opponent.sendMessage(
-                    "[lightgray]The 1v1 challenge against you expired.[]"
+                    "[lightgray]The " + modeLabel
+                            + " challenge against you expired.[]"
             );
         }
     }
@@ -1291,9 +1309,21 @@ public final class DuelCommands {
     }
 
     /**
-     * An outstanding 1v1 challenge: who sent it, and the serial its expiry
-     * task was armed with.
+     * A challenger's open 1v1/Ranked selection menu: the mode they picked and
+     * the ordered opponents shown, so the clicked option resolves to the right
+     * player and the challenge launches in the right mode.
      */
-    private record PendingChallenge(String challengerUuid, int serial) {
+    private record Selection(MatchMode mode, List<String> targetUuids) {
+    }
+
+    /**
+     * An outstanding 1v1/Ranked challenge: who sent it, in which mode, and the
+     * serial its expiry task was armed with.
+     */
+    private record PendingChallenge(
+            String challengerUuid,
+            MatchMode mode,
+            int serial
+    ) {
     }
 }

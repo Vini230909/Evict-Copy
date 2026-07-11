@@ -947,11 +947,18 @@ public final class DuelServerManager {
             // Credit the ranked record and match history on the hub's database;
             // the worker runs in its own process and cannot reach this DB. The
             // colored display names captured at match start let /history render
-            // them later without the players being online. Only 1v1 is ranked;
-            // Teams and FFA are stored as unranked history entries listing
-            // everyone; Training and Sandbox leave no history at all.
+            // them later without the players being online. Only Ranked feeds
+            // ELO; casual 1v1, Teams and FFA are stored as unranked history
+            // entries; Training and Sandbox leave no history at all.
             if (mode.duel().ranked()) {
                 playerDataManager.recordRankedResult(
+                        winnerUuid,
+                        displayNameFor(handle, winnerUuid),
+                        loserUuid,
+                        displayNameFor(handle, loserUuid)
+                );
+            } else if (mode == MatchMode.ONE_VS_ONE) {
+                playerDataManager.recordCasualDuelResult(
                         winnerUuid,
                         displayNameFor(handle, winnerUuid),
                         loserUuid,

@@ -16,6 +16,7 @@ public final class DuelModes {
 
     static {
         register(new OneVsOne());
+        register(new Ranked());
         register(new Teams());
         register(new Ffa());
         register(new Training());
