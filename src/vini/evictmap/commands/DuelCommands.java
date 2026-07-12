@@ -49,6 +49,12 @@ public final class DuelCommands {
     private static final int ACCEPT_OPTION = 0;
 
     /**
+     * Sentinel stored in a /v menu's target-port list for the worker-side
+     * "Return to the lobby" row; never a real worker port.
+     */
+    private static final int RETURN_TO_LOBBY_PORT = -1;
+
+    /**
      * Safety cap for the Teams builder; the Next team button disappears once
      * this many rosters exist. Also the largest Random Teams team count.
      */
@@ -166,7 +172,7 @@ public final class DuelCommands {
 
         handler.<Player>register(
                 "view",
-                "Spectate an ongoing match, or return to the lobby if spectating.",
+                "Spectate an ongoing match; while spectating, switch matches or return to the lobby.",
                 (args, player) -> handleViewCommand(player)
         );
 
@@ -1030,11 +1036,46 @@ public final class DuelCommands {
                 return;
             }
 
-            worker.returnSpectatorToHub(player);
+            openWorkerViewMenu(player);
             return;
         }
 
         openViewMenu(player);
+    }
+
+    /**
+     * The /v menu on a match worker: a spectator may hop straight to another
+     * ongoing match or return to the hub lobby. The lobby row is stored as
+     * {@link #RETURN_TO_LOBBY_PORT} so handleViewSelection can tell it apart
+     * from a real worker port.
+     */
+    private void openWorkerViewMenu(Player player) {
+        List<DuelWorker.SiblingMatch> matches =
+                worker.listOtherOngoingMatches();
+
+        List<Integer> targetPorts = new ArrayList<>();
+        List<String[]> rows = new ArrayList<>();
+
+        for (DuelWorker.SiblingMatch match : matches) {
+            targetPorts.add(match.port());
+            rows.add(new String[]{match.label()});
+        }
+
+        targetPorts.add(RETURN_TO_LOBBY_PORT);
+        rows.add(new String[]{"[green]Return to the lobby"});
+        rows.add(new String[]{"[red]Cancel"});
+
+        viewTargetsByViewerUuid.put(player.uuid(), targetPorts);
+
+        Call.menu(
+                player.con,
+                viewMenuId,
+                "[accent]Spectate",
+                matches.isEmpty()
+                        ? "No other matches are running right now."
+                        : "Select another match to watch, or return to the lobby.",
+                rows.toArray(new String[0][])
+        );
     }
 
     private void openViewMenu(Player player) {
@@ -1088,7 +1129,27 @@ public final class DuelCommands {
             return;
         }
 
-        if (!duelManager.viewDuel(player, targetPorts.get(option))) {
+        int port = targetPorts.get(option);
+
+        if (worker.isActive()) {
+            // The worker menu only opens for spectators, but re-check in case
+            // this one was promoted into the sandbox while the menu was up.
+            if (worker.isParticipant(player.uuid())) {
+                return;
+            }
+
+            if (port == RETURN_TO_LOBBY_PORT) {
+                worker.returnSpectatorToHub(player);
+            } else if (!worker.connectSpectatorToSibling(player, port)) {
+                player.sendMessage(
+                        "[scarlet]That match is no longer available.[]"
+                );
+            }
+
+            return;
+        }
+
+        if (!duelManager.viewDuel(player, port)) {
             player.sendMessage(
                     "[scarlet]That match is no longer available.[]"
             );

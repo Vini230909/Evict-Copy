@@ -154,6 +154,8 @@ public final class DuelServerManager {
         handle.bannedBlocks = snapshotBannedBlockNames();
         workers.put(port, handle);
 
+        announceMatchStart(mode, handle.label);
+
         spawnExecutor.submit(() -> spawnAndRedirect(handle, rosterUuids));
 
         scheduleLifetimeKill(handle);
@@ -222,6 +224,20 @@ public final class DuelServerManager {
         return label;
     }
 
+    /**
+     * Tells everyone still in the hub that a match is starting, right after
+     * every rostered player accepted and just before they are redirected to
+     * the worker. The label carries the mode for every mode except 1v1 (see
+     * {@link #matchLabel}), so 1v1 appends it here.
+     */
+    private static void announceMatchStart(MatchMode mode, String label) {
+        String announcement = mode == MatchMode.ONE_VS_ONE
+                ? label + " [lightgray](" + mode.label() + ")[]"
+                : label;
+
+        Call.sendMessage("[accent]Match starting:[] " + announcement);
+    }
+
     private void spawnAndRedirect(
             WorkerHandle handle,
             List<List<String>> rosterUuids
@@ -229,7 +245,7 @@ public final class DuelServerManager {
         try {
             File workerDir = provisionWorkerDir(handle);
 
-            writeHandshake(workerDir, handle.mode, rosterUuids);
+            writeHandshake(workerDir, handle.mode, handle.label, rosterUuids);
 
             Process process = launchWorker(workerDir, handle.port);
             handle.process = process;
@@ -483,12 +499,19 @@ public final class DuelServerManager {
      * if that match is no longer available so the caller can tell the player.
      */
     public boolean viewDuel(Player viewer, int port) {
-        if (viewer == null || !isOngoing(workers.get(port))) {
+        WorkerHandle handle = workers.get(port);
+
+        if (viewer == null || !isOngoing(handle)) {
             return false;
         }
 
         viewer.sendMessage(
-                "[accent]Connecting you to the 1v1 as a spectator...[]"
+                "[accent]Connecting you to the " + handle.mode.label()
+                        + " as a spectator...[]"
+        );
+        Call.sendMessage(
+                PlayerNameFormatter.displayName(viewer)
+                        + "[accent] is now spectating[] " + handle.label
         );
         Call.connect(viewer.con, settings.duelServerIp(), port);
         return true;
@@ -861,10 +884,14 @@ public final class DuelServerManager {
     private void writeHandshake(
             File workerDir,
             MatchMode mode,
+            String label,
             List<List<String>> rosterUuids
     ) throws IOException {
         Properties properties = new Properties();
         properties.setProperty("mode", mode.id());
+        // The display label ("A vs B (Teams)") is repeated in the handshake so
+        // sibling workers can list this match in their own /v hop menu.
+        properties.setProperty("label", label);
         properties.setProperty(
                 "team.count",
                 Integer.toString(rosterUuids.size())

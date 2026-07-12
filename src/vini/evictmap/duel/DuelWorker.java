@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
@@ -412,6 +413,164 @@ public final class DuelWorker {
     }
 
     /**
+     * Worker folders share one base folder and are named by port (see the
+     * hub's DuelServerManager: duel-workers/duel-&lt;port&gt;), and this
+     * worker's working directory is its own folder - so its siblings are the
+     * other "duel-" folders next to it.
+     */
+    private static final String SIBLING_DIR_PREFIX = "duel-";
+
+    /**
+     * How recently a sibling's status.properties (rewritten every
+     * {@link #STATUS_INTERVAL_SECONDS}) must have been touched to count its
+     * match as alive. A worker that died leaves a stale file behind and drops
+     * out of the hop menu after this window instead of trapping viewers.
+     */
+    private static final long SIBLING_STATUS_FRESH_MILLIS = 10_000L;
+
+    /**
+     * An ongoing match on a sibling worker that a spectator may hop to.
+     */
+    public record SiblingMatch(int port, String label) {
+    }
+
+    /**
+     * The matches running on sibling workers right now, ordered by port. A
+     * sibling counts while its status file is fresh, not finished, and no
+     * result has been written - mirroring the hub's isOngoing check as far as
+     * the filesystem allows (a worker cannot see another's process handle).
+     */
+    public List<SiblingMatch> listOtherOngoingMatches() {
+        List<SiblingMatch> matches = new ArrayList<>();
+
+        if (!active) {
+            return matches;
+        }
+
+        try {
+            File ownDir = new File(".").getCanonicalFile();
+            File[] siblings = ownDir.getParentFile() == null
+                    ? null
+                    : ownDir.getParentFile().listFiles(File::isDirectory);
+
+            if (siblings == null) {
+                return matches;
+            }
+
+            for (File dir : siblings) {
+                int port = parseSiblingPort(dir.getName());
+
+                if (port < 0 || dir.getCanonicalFile().equals(ownDir)) {
+                    continue;
+                }
+
+                if (new File(dir, RESULT_FILE.getName()).exists()) {
+                    continue;
+                }
+
+                File statusFile = new File(dir, STATUS_FILE.getName());
+
+                if (
+                        !statusFile.exists()
+                                || System.currentTimeMillis()
+                                - statusFile.lastModified()
+                                > SIBLING_STATUS_FRESH_MILLIS
+                ) {
+                    continue;
+                }
+
+                Properties status = new Properties();
+
+                try (FileInputStream input = new FileInputStream(statusFile)) {
+                    status.load(input);
+                }
+
+                if ("finished".equals(status.getProperty("state", ""))) {
+                    continue;
+                }
+
+                matches.add(new SiblingMatch(port, siblingLabel(dir, port)));
+            }
+        } catch (Exception exception) {
+            Log.err(
+                    "[EvictMapGenerator] Duel worker could not scan sibling matches.",
+                    exception
+            );
+        }
+
+        matches.sort(Comparator.comparingInt(SiblingMatch::port));
+        return matches;
+    }
+
+    /**
+     * The port a sibling folder name encodes, or -1 for any other folder.
+     */
+    private static int parseSiblingPort(String dirName) {
+        if (!dirName.startsWith(SIBLING_DIR_PREFIX)) {
+            return -1;
+        }
+
+        try {
+            return Integer.parseInt(
+                    dirName.substring(SIBLING_DIR_PREFIX.length())
+            );
+        } catch (NumberFormatException ignored) {
+            return -1;
+        }
+    }
+
+    /**
+     * The display label a sibling's hub handshake carries for its match, or a
+     * plain port fallback for a handshake written by an older hub.
+     */
+    private static String siblingLabel(File dir, int port) {
+        Properties handshake = new Properties();
+
+        try (
+                FileInputStream input = new FileInputStream(
+                        new File(dir, HANDSHAKE_FILE.getName())
+                )
+        ) {
+            handshake.load(input);
+        } catch (Exception ignored) {
+            // Fall through to the port fallback.
+        }
+
+        String label = handshake.getProperty("label", "").trim();
+        return label.isEmpty() ? "Match on port " + port : label;
+    }
+
+    /**
+     * Sends a spectator over to a sibling worker's match. Workers share the
+     * hub's IP (one machine, see the hub's handshake comment), so the hub
+     * address reaches the sibling too. Returns false when that match is no
+     * longer ongoing so the caller can tell the player.
+     */
+    public boolean connectSpectatorToSibling(Player player, int port) {
+        if (
+                !active
+                        || player == null
+                        || hubIp == null
+                        || hubIp.isBlank()
+        ) {
+            return false;
+        }
+
+        boolean stillOngoing = listOtherOngoingMatches().stream()
+                .anyMatch(match -> match.port() == port);
+
+        if (!stillOngoing) {
+            return false;
+        }
+
+        player.sendMessage(
+                "[accent]Connecting you to the next match as a spectator...[]"
+        );
+        Call.connect(player.con, hubIp, port);
+        return true;
+    }
+
+    /**
      * Called once the worker has hosted its round.
      */
     public void begin() {
@@ -442,6 +601,14 @@ public final class DuelWorker {
             return;
         }
 
+        if (
+                player != null
+                        && handshakeLoaded
+                        && !isParticipant(player.uuid())
+        ) {
+            welcomeSpectator(player);
+        }
+
         if (matchStarted) {
             if (pausedForDisconnect && bothPlayersPresent()) {
                 endDisconnectPause();
@@ -468,6 +635,23 @@ public final class DuelWorker {
             startFreezeApplied = true;
         }
         showWaitingHud();
+    }
+
+    /**
+     * Private greeting for a spectator arriving on this worker. The hub's
+     * "connecting you..." line is lost with the server switch, so the mode
+     * and the way back to the lobby are repeated here.
+     */
+    private void welcomeSpectator(Player player) {
+        String message = "[accent]You are now spectating this "
+                + mode.label()
+                + " match. Use /v to switch matches or return to the lobby.[]";
+
+        if (duelMode.allowsSpectatorInvites()) {
+            message += "\n[lightgray]Use /invite to ask to join the sandbox.[]";
+        }
+
+        player.sendMessage(message);
     }
 
     /**
