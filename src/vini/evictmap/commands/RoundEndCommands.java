@@ -218,10 +218,7 @@ public final class RoundEndCommands {
         }
 
         Call.sendMessage(
-                "[accent]The opening 10 minutes have passed.[]\n"
-                        + "[lightgray]Match players: []"
-                        + activeMatchPlayers
-                        + "[lightgray].[]"
+                "[lightgray]Playing: []" + activeMatchPlayers
         );
     }
 }

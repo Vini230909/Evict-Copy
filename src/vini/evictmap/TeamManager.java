@@ -790,14 +790,14 @@ public final class TeamManager {
         return tied ? null : bestTeam;
     }
 
-    private int nonFallenCoreKills(int teamId) {
-        int count = 0;
-
-        for (Map<Integer, Integer> counts : capturesByDefenderTeamId.values()) {
-            count += counts.getOrDefault(teamId, 0);
-        }
-
-        return count;
+    /**
+     * True once a team has captured at least one core, counting neutral Fallen
+     * cores too. Every personal team starts owning exactly one hex, so any peak
+     * above that means it took over another core - the signal that it is
+     * actually playing rather than sitting on its start.
+     */
+    private boolean hasCapturedAnyCore(int teamId) {
+        return maximumOwnedHexesByTeamId.getOrDefault(teamId, 0) > 1;
     }
 
     private boolean validClaimant(Team team) {
@@ -1414,7 +1414,7 @@ public final class TeamManager {
         for (int teamId : personalTeamCreationOrder) {
             if (
                     !isActivePersonalTeam(teamId)
-                            || nonFallenCoreKills(teamId) <= 0
+                            || !hasCapturedAnyCore(teamId)
             ) {
                 continue;
             }
