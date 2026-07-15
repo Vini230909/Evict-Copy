@@ -1,4 +1,8 @@
-package vini.evictmap;
+package vini.evictmap.round;
+
+import vini.evictmap.gen.CoreMarkerFloor;
+
+import vini.evictmap.gen.HexGrid;
 
 import arc.util.Log;
 import arc.util.Time;
@@ -8,7 +12,7 @@ import mindustry.game.Team;
 import mindustry.world.Block;
 import mindustry.world.Tile;
 import mindustry.world.blocks.storage.CoreBlock.CoreBuild;
-import vini.evictmap.TeamManager.HexSlot;
+import vini.evictmap.round.TeamManager.HexSlot;
 import vini.evictmap.gameplay.AttritionManager;
 
 import java.util.ArrayList;
@@ -40,7 +44,7 @@ import java.util.Map;
  * cores), clearBuildingsInHex() (a new start hex is wiped first) and
  * explodeCore() (a surrendered team's hexes ripple out on /die).
  */
-final class CoreCapture {
+public final class CoreCapture {
 
     /**
      * Captures intentionally do not complete instantly. The empty center is
@@ -92,7 +96,7 @@ final class CoreCapture {
     private record Capture(HexSlot hex, Team defender, Team attacker, long serial, AttritionManager attrition) {
     }
 
-    void handleCoreChange(CoreBuild core, AttritionManager attrition) {
+    public void handleCoreChange(CoreBuild core, AttritionManager attrition) {
         if (
                 !team.isRoundActiveForSystems()
                         || team.isCaptureSuppressed()

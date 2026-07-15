@@ -1,6 +1,9 @@
 package vini.evictmap.commands;
 
 import vini.evictmap.*;
+import vini.evictmap.gen.*;
+import vini.evictmap.data.*;
+import vini.evictmap.round.*;
 
 import arc.util.CommandHandler;
 import mindustry.gen.Call;

@@ -1,4 +1,4 @@
-package vini.evictmap;
+package vini.evictmap.data;
 
 /**
  * Standard Elo rating math for ranked 1v1 duels.

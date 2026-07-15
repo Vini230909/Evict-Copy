@@ -1,4 +1,4 @@
-package vini.evictmap;
+package vini.evictmap.gen;
 
 /**
  * Shared hex-grid geometry, measured from the editor reference map. The
@@ -6,22 +6,22 @@ package vini.evictmap;
  * ResourceGenerator) and the round systems (TeamManager) must agree on - if
  * the grid ever changes, it changes here and nowhere else.
  */
-final class HexGrid {
+public final class HexGrid {
 
     /** Columns in the short (even) rows. */
-    static final int SHORT_ROW_COLS = 7;
+    public static final int SHORT_ROW_COLS = 7;
 
     /** Columns in the long (odd) rows. */
-    static final int LONG_ROW_COLS = 8;
+    public static final int LONG_ROW_COLS = 8;
 
     /** Number of hex rows. */
-    static final int ROWS = 9;
+    public static final int ROWS = 9;
 
     /**
      * Radius of one playable hex circle, in tiles. Terrain carves this circle,
      * ore placement is bounded by it, and Extinction converts it to space.
      */
-    static final int HEX_RADIUS = 39;
+    public static final int HEX_RADIUS = 39;
 
     private HexGrid() {
     }

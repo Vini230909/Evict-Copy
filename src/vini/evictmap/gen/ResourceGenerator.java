@@ -1,4 +1,6 @@
-package vini.evictmap;
+package vini.evictmap.gen;
+
+import vini.evictmap.gen.EvictSettings;
 
 import arc.util.noise.Simplex;
 import mindustry.Vars;
@@ -932,7 +934,7 @@ final class ResourceGenerator {
     record HexCenter(int x, int y) {
     }
 
-    record Summary(
+    public record Summary(
             int waterTiles,
             int tarTiles,
             int copperTiles,
@@ -945,7 +947,7 @@ final class ResourceGenerator {
             int tarGeneratedPatches,
             int oreFallbackRepairs
     ) {
-        String compact() {
+        public String compact() {
             return "water=" + waterTiles
                     + ", tar=" + tarTiles
                     + ", copper=" + copperTiles

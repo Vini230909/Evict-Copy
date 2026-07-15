@@ -1,6 +1,11 @@
 package vini.evictmap.commands;
 
 import vini.evictmap.*;
+import vini.evictmap.gen.*;
+import vini.evictmap.data.*;
+import vini.evictmap.round.*;
+import vini.evictmap.core.cmd.CommandContext;
+import vini.evictmap.core.cmd.Commands;
 import vini.evictmap.duel.DuelWorker;
 
 import arc.util.CommandHandler;
@@ -42,17 +47,17 @@ public final class RoundEndCommands {
     }
 
     void registerClientCommands(CommandHandler handler) {
-        handler.register(
-                "die",
-                "Leader only: surrender your complete team after 10 minutes.",
-                this::surrender
-        );
+        Commands commands = new Commands();
 
-        handler.register(
-                "over",
-                "End an eligible round immediately.",
-                this::endEarly
-        );
+        commands.command("die").client()
+                .description("Leader only: surrender your complete team after 10 minutes.")
+                .run(this::surrender);
+
+        commands.command("over").client()
+                .description("End an eligible round immediately.")
+                .run(this::endEarly);
+
+        commands.installClient(handler);
     }
 
     public void beginRound() {
@@ -64,11 +69,8 @@ public final class RoundEndCommands {
         );
     }
 
-    private void surrender(String[] args, Player player) {
-        if (args.length != 0) {
-            player.sendMessage("[scarlet]Use: /die[]");
-            return;
-        }
+    private void surrender(CommandContext ctx) {
+        Player player = ctx.sender();
 
         if (!teamManager.isRoundActiveForSystems()) {
             player.sendMessage("[scarlet]No active Evict round.[]");
@@ -116,16 +118,13 @@ public final class RoundEndCommands {
         }
     }
 
-    private void endEarly(String[] args, Player player) {
+    private void endEarly(CommandContext ctx) {
+        Player player = ctx.sender();
+
         if (duelWorker) {
             player.sendMessage(
                     "[scarlet]/over is not available in 1v1 duels.[]"
             );
-            return;
-        }
-
-        if (args.length != 0) {
-            player.sendMessage("[scarlet]Use: /over[]");
             return;
         }
 

@@ -1,17 +1,17 @@
-package vini.evictmap;
+package vini.evictmap.gen;
 
 import mindustry.Vars;
 import mindustry.content.Blocks;
 import mindustry.world.Tile;
 
-final class CoreMarkerFloor {
+public final class CoreMarkerFloor {
 
     private static final int MARKER_RADIUS = 1;
 
     private CoreMarkerFloor() {
     }
 
-    static void place(int centerX, int centerY) {
+    public static void place(int centerX, int centerY) {
         for (
                 int y = centerY - MARKER_RADIUS;
                 y <= centerY + MARKER_RADIUS;

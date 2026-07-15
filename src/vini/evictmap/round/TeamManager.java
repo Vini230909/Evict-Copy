@@ -1,4 +1,10 @@
-package vini.evictmap;
+package vini.evictmap.round;
+
+import vini.evictmap.gen.StartLoadout;
+
+import vini.evictmap.PlayerNameFormatter;
+
+import vini.evictmap.gen.HexGrid;
 
 import arc.func.Cons;
 import arc.graphics.Color;
@@ -178,23 +184,23 @@ public final class TeamManager {
      */
     private long pauseStartedAtMillis = 0L;
 
-    TeamManager(Cons<Team> victoryHandler) {
+    public TeamManager(Cons<Team> victoryHandler) {
         this.victoryHandler = victoryHandler;
     }
 
-    void setInviteManager(InviteManager inviteManager) {
+    public void setInviteManager(InviteManager inviteManager) {
         this.inviteManager = inviteManager;
     }
 
-    void setDuelMode(boolean duelMode) {
+    public void setDuelMode(boolean duelMode) {
         this.duelMode = duelMode;
     }
 
-    void setDuelMinimumTeams(int duelMinimumTeams) {
+    public void setDuelMinimumTeams(int duelMinimumTeams) {
         this.duelMinimumTeams = Math.max(1, duelMinimumTeams);
     }
 
-    void setDuelSurrenderRestoresFallenCores(
+    public void setDuelSurrenderRestoresFallenCores(
             boolean duelSurrenderRestoresFallenCores
     ) {
         this.duelSurrenderRestoresFallenCores =
@@ -206,23 +212,23 @@ public final class TeamManager {
      * one hex so more players can claim a safe start before the map runs out
      * of hexes far enough from everyone else already playing.
      */
-    void setDuelFfaReducedStartDistance(boolean reduced) {
+    public void setDuelFfaReducedStartDistance(boolean reduced) {
         this.minimumStartDistance = reduced
                 ? FFA_DUEL_MINIMUM_START_DISTANCE
                 : DEFAULT_MINIMUM_START_DISTANCE;
     }
 
-    void setTeammateResolver(
+    public void setTeammateResolver(
             Function<String, List<String>> teammateUuidsResolver
     ) {
         this.teammateUuidsResolver = teammateUuidsResolver;
     }
 
-    void setDuelEliminationHandler(Cons<Team> duelEliminationHandler) {
+    public void setDuelEliminationHandler(Cons<Team> duelEliminationHandler) {
         this.duelEliminationHandler = duelEliminationHandler;
     }
 
-    void beginRound(List<HexSlot> newSlots, long seed) {
+    public void beginRound(List<HexSlot> newSlots, long seed) {
         slots.clear();
         slots.addAll(newSlots);
 
@@ -268,7 +274,7 @@ public final class TeamManager {
      * personal team; duel workers use this so /view spectators are kept out of
      * the match across a regenerate.
      */
-    void assignConnectedPlayers(Predicate<Player> spectator) {
+    public void assignConnectedPlayers(Predicate<Player> spectator) {
         if (!roundActive || resetting) {
             return;
         }
@@ -287,9 +293,9 @@ public final class TeamManager {
             }
 
             if (spectator != null && spectator.test(player)) {
-                assignSpectator(player);
+            assignSpectator(player);
             } else {
-                handlePlayerJoin(player);
+            handlePlayerJoin(player);
             }
         });
     }
@@ -300,7 +306,7 @@ public final class TeamManager {
      * assignment scan from later handing them a personal team. Used on duel
      * workers for /view spectators.
      */
-    void assignSpectator(Player player) {
+    public void assignSpectator(Player player) {
         if (player == null) {
             return;
         }
@@ -309,7 +315,7 @@ public final class TeamManager {
         assignPlayerToTeam(player, Team.derelict);
     }
 
-    void handlePlayerJoin(Player player) {
+    public void handlePlayerJoin(Player player) {
         if (!roundActive || resetting || player == null) {
             return;
         }
@@ -480,7 +486,7 @@ public final class TeamManager {
         }
     }
 
-    String compactStatus() {
+    public String compactStatus() {
         int claimed = 0;
         int neutral = 0;
         int capturing = 0;
@@ -1336,7 +1342,7 @@ public final class TeamManager {
         ) == FALLEN_TEAM_ID;
     }
 
-    boolean isPersonalRoundPlayer(Player player) {
+    public boolean isPersonalRoundPlayer(Player player) {
         if (player == null) {
             return false;
         }
@@ -1348,7 +1354,7 @@ public final class TeamManager {
                 && teamId != Team.derelict.id;
     }
 
-    List<String> playerUuidsForTeam(Team team) {
+    public List<String> playerUuidsForTeam(Team team) {
         List<String> result = new ArrayList<>();
 
         if (team == null) {
@@ -1785,7 +1791,7 @@ public final class TeamManager {
 
     // --- accessed by CoreCapture (the core-capture/placement file) ---
 
-    CoreCapture coreCapture() {
+    public CoreCapture coreCapture() {
         return coreCapture;
     }
 
@@ -1815,7 +1821,7 @@ public final class TeamManager {
      * fires even while the game is paused, so pause and unpause are both
      * observed within a frame.
      */
-    void updatePauseTracking() {
+    public void updatePauseTracking() {
         if (Vars.state.isPaused()) {
             if (pauseStartedAtMillis == 0L) {
                 pauseStartedAtMillis = System.currentTimeMillis();
@@ -2080,18 +2086,18 @@ public final class TeamManager {
     }
 
     public static final class HexSlot {
-        final int col;
-        final int row;
-        final int x;
-        final int y;
-        final int protectedSides;
+        public final int col;
+        public final int row;
+        public final int x;
+        public final int y;
+        public final int protectedSides;
 
         public int ownerTeamId = FALLEN_TEAM_ID;
         public boolean capturing = false;
         public int pendingCaptureTeamId = FALLEN_TEAM_ID;
         public boolean extinct = false;
 
-        HexSlot(
+        public HexSlot(
                 int col,
                 int row,
                 int x,

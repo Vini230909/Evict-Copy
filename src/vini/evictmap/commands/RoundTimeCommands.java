@@ -1,6 +1,13 @@
 package vini.evictmap.commands;
 
 import vini.evictmap.*;
+import vini.evictmap.gen.*;
+import vini.evictmap.data.*;
+import vini.evictmap.round.*;
+
+import vini.evictmap.core.cmd.CommandContext;
+import vini.evictmap.core.cmd.Commands;
+import vini.evictmap.core.text.Text;
 
 import arc.util.CommandHandler;
 import mindustry.gen.Groups;
@@ -31,11 +38,11 @@ public final class RoundTimeCommands {
     }
 
     void registerClientCommands(CommandHandler handler) {
-        handler.register(
-                "time",
-                "Show round time and your time since first joining this round.",
-                this::showTime
-        );
+        Commands commands = new Commands();
+        commands.command("time").client()
+                .description("Show round time and your time since first joining this round.")
+                .run(this::showTime);
+        commands.installClient(handler);
     }
 
     public void beginRound() {
@@ -69,12 +76,8 @@ public final class RoundTimeCommands {
         });
     }
 
-    private void showTime(String[] args, Player player) {
-        if (args.length != 0) {
-            player.sendMessage("[scarlet]Use: /time[]");
-            return;
-        }
-
+    private void showTime(CommandContext ctx) {
+        Player player = ctx.sender();
         long currentMillis = System.currentTimeMillis();
         long pausedMillis = teamManager.roundPausedMillis();
         FirstJoin firstJoin = firstJoinByPlayerUuid.get(player.uuid());
@@ -94,13 +97,10 @@ public final class RoundTimeCommands {
                         - (pausedMillis - firstJoin.pausedMillisAtJoin())
         );
 
-        player.sendMessage(
-                "[accent]Round time: [white]"
-                        + roundTime
-                        + "[]\n[accent]Your first-join time: [white]"
-                        + formatDuration(personalMillis)
-                        + "[]"
-        );
+        ctx.reply(Text.of()
+                .accent("Round time: ").white(roundTime)
+                .add("\n")
+                .accent("Your first-join time: ").white(formatDuration(personalMillis)));
     }
 
     private FirstJoin fallbackFirstJoin(

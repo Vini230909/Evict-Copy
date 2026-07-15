@@ -1,4 +1,4 @@
-package vini.evictmap;
+package vini.evictmap.gen;
 
 import java.util.Random;
 
@@ -16,7 +16,7 @@ public final class EvictRuntimeState {
     public Long nextSeed = null;
     public Long lastSeed = null;
 
-    long consumeNextSeed() {
+    public long consumeNextSeed() {
         long seed = nextSeed == null ? randomSeed() : nextSeed;
         nextSeed = null;
         return seed;

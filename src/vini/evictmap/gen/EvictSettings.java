@@ -1,4 +1,4 @@
-package vini.evictmap;
+package vini.evictmap.gen;
 
 import arc.util.Log;
 
@@ -141,7 +141,7 @@ public final class EvictSettings {
     private final EnumMap<OreKind, OreSettings> oreSettings =
             new EnumMap<>(OreKind.class);
 
-    EvictSettings() {
+    public EvictSettings() {
         for (OreKind kind : OreKind.values()) {
             oreSettings.put(
                     kind,
@@ -155,7 +155,7 @@ public final class EvictSettings {
         }
     }
 
-    void load() {
+    public void load() {
         if (!SETTINGS_FILE.exists()) {
             save();
             Log.info(

@@ -1,6 +1,6 @@
 # CLAUDE.md — EvictMapGenerator
 
-Server-side Mindustry plugin (game v157.4, Java 17 source) for Evict-style persistent PvP on a procedurally generated hex map. Runs on a dedicated server; clients install nothing. Current version **1.3.1** — `plugin.json` `version` and the startup revision string in `EvictMapPlugin` must always match.
+Server-side Mindustry plugin (game v157.4, Java 17 source) for Evict-style persistent PvP on a procedurally generated hex map. Runs on a dedicated server; clients install nothing. Current version **1.4.0** — `plugin.json` `version` and the startup revision string in `EvictMapPlugin` must always match.
 
 One jar, two roles:
 - **Hub** — the normal Evict FFA server players connect to.
@@ -25,11 +25,23 @@ Deploy: copy the jar into the server's `config/mods/` and restart. **Delete `due
 
 ## Code map (`src/vini/evictmap/`)
 
+Package layout (reorganised in 1.4.0): `core/` shared infrastructure, `gen/`
+generation + settings, `round/` team/round systems, `data/` persistence, `gameplay/`,
+`duel/`, `commands/`, `metrics/`. `EvictMapPlugin`, `RestartManager` and
+`PlayerNameFormatter` stay at the package root.
+
+Core infrastructure (`core/`) — reusable, gameplay-agnostic:
+- `text/Colors`, `text/Text`, `text/Msg` — named colour tags + a fluent coloured-message builder (`Text.of().scarlet(...).player(p)...sendTo(...)`) + a small reusable-message catalogue. Replaces hundreds of inline `[scarlet]…[]` literals.
+- `cmd/` — the command framework: `Command`/`Command.Builder` (declare a command as data), `Arg`/`ArgType` (typed `"name:type"` args, e.g. `"target:player"`), `Perm`, `CommandContext` (injected sender + typed getters + `reply/success/error/fail`), `CommandError`, `Commands` (registers into Mindustry's `CommandHandler`, doing perms/parsing/error-catching centrally).
+- `io/PropertiesFile` — load/save `Properties` with mkdirs + typed getters.
+- `util/Players` (online lookup by uuid/name), `util/PluginLog` (`[EvictMapGenerator]`-prefixed logging), `util/Ticks` (second↔tick).
+
 Lifecycle:
-- `EvictMapPlugin` — composition root: event wiring, manager construction, round startup, auto next-round reset; on a worker also wires the referee and the empty-server self-exit.
-- `EvictRuntimeState` — auto-generation state, current/next map seed.
-- `EvictSettings` — loads/persists `config/evict-map-generator.properties`.
-- `RestartManager` — `evictrestart` console restart flow (see its class javadoc for the removal rule).
+- `EvictMapPlugin` — composition root: `bootstrap()` + `configureWorkerReferee()` + event wiring (broken out of the old monolithic `init()`), manager construction, round startup, auto next-round reset; on a worker also wires the referee and the empty-server self-exit.
+- `gen/EvictRuntimeState` — auto-generation state, current/next map seed.
+- `gen/EvictSettings` — loads/persists `config/evict-map-generator.properties`.
+- `RestartManager` — implemented `evictrestart` graceful-restart flow (queue / `cancel` / `now`); the plugin only exits cleanly, an external start-script loop relaunches it — see `docs/RESTART_LOOP.md`.
+- `metrics/MetricsReporter` — throttled hub metrics log line (players, duel players, active matches).
 - `gameplay/RulesApplier` — fixed PvP rules, banned blocks, building-vs-building bullet damage scaling, disables Alpha/Beta/Gamma core-unit combat damage while keeping their building/mining.
 
 Generation:
@@ -59,11 +71,12 @@ Matches:
 
 Commands (`commands/`):
 - `ClientCommands` — single registration point for player chat commands.
-- `ConsoleCommands` — console commands (`evict*`), stored player lookup, `evictelo`.
+- `ConsoleCommands` — console commands (`evict*`), stored player lookup, `evictelo`, `evictrestart`; declared on the `core/cmd` framework (the old ~319-line `register()` is now a flat list of `command(...).run(...)`).
 - `DuelCommands` — `/play` `/p` menus.
 - `HelpCommands` — `/help`.
 - `HistoryCommands` — `/history` `/h`.
 - `InfoCommands` — `/info`.
+- `LeaderboardCommands` — `/leaderboard` (`/top`, `/lb`): ranked ELO ladder over the player DB.
 - `RoundEndCommands` — `/die`, `/over`.
 - `RoundTimeCommands` — `/time`.
 
@@ -107,6 +120,7 @@ Commands (`commands/`):
 - `/time` — round runtime since map start + the player's connected time since first join this round (join records remembered across startup scans; fallback is round start).
 - `/help [page]` — paginated; never lists itself; aliases fold into their target's row (e.g. `/history (/h)`); `/restart` is listed with its commentator/admin description and stays permission-gated. There is no separate dev help — former dev chat commands are console-only (`evictattritioncore`, `evictattritionrange`, `evictwall`, `evictcorecap`).
 - `/history` (`/h`) — a player's 1v1, Teams and FFA matches, most recent first.
+- `/leaderboard` (`/top`, `/lb`) — the ranked ELO ladder (players with ≥ 1 ranked match), highest first; optional count (1–25, default 10).
 
 ### Matches (`/play`, `/p`)
 Game-mode menu: `1v1`, `Ranked`, `Teams`, `Random Teams`, `FFA`, `Training`, `Sandbox`.
@@ -148,6 +162,7 @@ Water: configured tries per hex (not per-core fallback); decimal tries give a fr
 - Build speed: `evictbuildspeed [multiplier]` — unit-factory build speed each round; no argument shows current; default `1.4`; stored as `rules.unitBuildSpeedMultiplier` and copied into every worker; applies next generated match.
 - Duel pool: `evictduelserver [ip] [basePort] [maxWorkers] [map]` — no argument shows config; omitted values keep current. `ip` is what clients reach workers at (blank = `/play` inert); workers use `basePort .. basePort+maxWorkers-1`. Defaults: ip unset, basePort `6568`, maxWorkers `4`, map `evict-map`, worker jar `server-release.jar`.
 - Player data: `evictplayerinfo [name/uuid]`, `evictelo <name/uuid> <value>` (see Player data above).
+- Restart: `evictrestart` queues a graceful update restart (fires when no worker runs and the round ends / hub is empty / round is < 10 min old with a 30 s warning); `evictrestart cancel` drops it; `evictrestart now` exits immediately. Needs the external start-script loop from `docs/RESTART_LOOP.md` to actually relaunch.
 
 ## Safety notes
 

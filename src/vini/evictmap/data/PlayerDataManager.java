@@ -1,4 +1,6 @@
-package vini.evictmap;
+package vini.evictmap.data;
+
+import vini.evictmap.round.TeamManager;
 
 import arc.Core;
 import arc.util.Log;
@@ -53,7 +55,7 @@ public final class PlayerDataManager {
             new HashMap<>();
     private final Set<String> ffaParticipantsThisRound = new HashSet<>();
 
-    void start() {
+    public void start() {
         enqueue(this::createSchema);
 
         Runtime.getRuntime().addShutdownHook(
@@ -61,7 +63,7 @@ public final class PlayerDataManager {
         );
     }
 
-    void beginFfaRound() {
+    public void beginFfaRound() {
         synchronized (this) {
             long now = System.currentTimeMillis();
             flushActiveSessions(now);
@@ -74,7 +76,7 @@ public final class PlayerDataManager {
         }
     }
 
-    void handlePlayerJoin(Player player) {
+    public void handlePlayerJoin(Player player) {
         if (player == null) {
             return;
         }
@@ -93,7 +95,7 @@ public final class PlayerDataManager {
         enqueue(() -> upsertPlayer(uuid, name, now));
     }
 
-    void handlePlayerLeave(Player player) {
+    public void handlePlayerLeave(Player player) {
         if (player == null) {
             return;
         }
@@ -112,7 +114,7 @@ public final class PlayerDataManager {
         }
     }
 
-    void recordConnectedFfaParticipants(TeamManager teamManager) {
+    public void recordConnectedFfaParticipants(TeamManager teamManager) {
         Groups.player.each(player -> {
             if (
                     teamManager.isPersonalRoundPlayer(player)
@@ -122,7 +124,7 @@ public final class PlayerDataManager {
         });
     }
 
-    void recordFfaWinner(TeamManager teamManager, Team winner) {
+    public void recordFfaWinner(TeamManager teamManager, Team winner) {
         if (
                 winner == null
                         || winner == TeamManager.FALLEN_TEAM
@@ -294,6 +296,17 @@ public final class PlayerDataManager {
             Consumer<List<PlayerInfo>> callback
     ) {
         enqueue(() -> deliver(callback, searchPlayerInfo(query)));
+    }
+
+    /**
+     * The top ranked players by ELO (only those who have played a ranked match),
+     * highest first, for the /leaderboard command. Delivered on the main thread.
+     */
+    public void topRankedByElo(
+            int limit,
+            Consumer<List<PlayerInfo>> callback
+    ) {
+        enqueue(() -> deliver(callback, loadTopRankedByElo(limit)));
     }
 
     /**
@@ -910,6 +923,28 @@ public final class PlayerDataManager {
         }
     }
 
+    private List<PlayerInfo> loadTopRankedByElo(int limit) throws SQLException {
+        int clamped = Math.max(1, Math.min(limit, 100));
+        List<PlayerInfo> result = new ArrayList<>();
+
+        try (
+                Connection connection = connect();
+                PreparedStatement statement = connection.prepareStatement(
+                        "SELECT * FROM players WHERE ranked_matches_played > 0 "
+                                + "ORDER BY elo DESC, ranked_wins DESC LIMIT ?"
+                )
+        ) {
+            statement.setInt(1, clamped);
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    result.add(playerInfo(connection, rows));
+                }
+            }
+        }
+
+        return result;
+    }
+
     private List<PlayerInfo> searchPlayerInfo(String query)
             throws SQLException {
         List<PlayerInfo> result = new ArrayList<>();
@@ -1108,7 +1143,7 @@ public final class PlayerDataManager {
         return names;
     }
 
-    void useHistoryDatabase(File file) {
+    public void useHistoryDatabase(File file) {
         if (file != null) {
             historyDatabaseFile = file;
         }

@@ -1,4 +1,8 @@
-package vini.evictmap;
+package vini.evictmap.gen;
+
+import vini.evictmap.round.TeamManager;
+
+import vini.evictmap.gen.EvictSettings;
 
 import arc.util.Log;
 import mindustry.Vars;
@@ -31,7 +35,7 @@ public final class EvictTerrainGenerator {
 
     private final EvictSettings settings;
 
-    EvictTerrainGenerator(EvictSettings settings) {
+    public EvictTerrainGenerator(EvictSettings settings) {
         this.settings = settings;
     }
 
@@ -126,7 +130,7 @@ public final class EvictTerrainGenerator {
      *                      (duel /restart, evictgen on a live map) needs the per-tile push,
      *                      because no fresh snapshot is sent there.
      */
-    GeneratedRound generate(long seed, boolean syncToClients) {
+    public GeneratedRound generate(long seed, boolean syncToClients) {
         if (
                 Vars.world == null
                         || Vars.world.width() <= 0
@@ -266,7 +270,7 @@ public final class EvictTerrainGenerator {
         );
     }
 
-    record GeneratedRound(
+    public record GeneratedRound(
             List<TeamManager.HexSlot> slots,
             int normalHexes,
             int filledHexes,

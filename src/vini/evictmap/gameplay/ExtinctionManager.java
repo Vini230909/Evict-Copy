@@ -8,7 +8,7 @@ import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Unit;
 import mindustry.world.Tile;
-import vini.evictmap.TeamManager;
+import vini.evictmap.round.TeamManager;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;

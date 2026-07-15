@@ -1,4 +1,4 @@
-package vini.evictmap;
+package vini.evictmap.data;
 
 import arc.util.Log;
 import mindustry.gen.Player;
@@ -68,7 +68,7 @@ public final class RankManager {
         }
     }
 
-    void load() {
+    public void load() {
         ranksByUuid.clear();
 
         if (RANKS_FILE.exists()) {
@@ -168,7 +168,7 @@ public final class RankManager {
      * into this worker, so hub admins keep their powers (and /restart) on a duel
      * server. A no-op on the hub, where nothing is synced.
      */
-    void markSyncedAdmin(Player player) {
+    public void markSyncedAdmin(Player player) {
         if (player != null && !player.admin && isSyncedAdmin(player.uuid())) {
             player.admin = true;
         }

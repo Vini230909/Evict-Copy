@@ -1477,28 +1477,8 @@ public final class DuelWorker {
             List<String> loserUuids,
             String reason
     ) {
-        Properties properties = new Properties();
-        properties.setProperty("mode", mode.id());
-        properties.setProperty(
-                "winner.uuid",
-                winnerUuids.isEmpty() ? "" : winnerUuids.get(0)
-        );
-        properties.setProperty(
-                "loser.uuid",
-                loserUuids.isEmpty() ? "" : loserUuids.get(0)
-        );
-        properties.setProperty("winner.uuids", String.join(",", winnerUuids));
-        properties.setProperty("loser.uuids", String.join(",", loserUuids));
-        properties.setProperty("reason", reason);
-
-        try (FileOutputStream output = new FileOutputStream(RESULT_FILE)) {
-            properties.store(output, "Evict duel result");
-        } catch (Exception exception) {
-            Log.err(
-                    "[EvictMapGenerator] Duel worker could not write the result file.",
-                    exception
-            );
-        }
+        new vini.evictmap.duel.ipc.DuelResult(mode.id(), winnerUuids, loserUuids, reason)
+                .write(RESULT_FILE);
     }
 
     private static int parsePort(String value, int fallback) {

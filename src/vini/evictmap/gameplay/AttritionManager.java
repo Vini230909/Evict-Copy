@@ -10,8 +10,8 @@ import mindustry.gen.Groups;
 import mindustry.gen.Unit;
 import mindustry.gen.Unitc;
 import mindustry.type.UnitType;
-import vini.evictmap.EvictSettings;
-import vini.evictmap.TeamManager;
+import vini.evictmap.gen.EvictSettings;
+import vini.evictmap.round.TeamManager;
 
 import java.util.HashMap;
 import java.util.Map;

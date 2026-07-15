@@ -6,6 +6,21 @@ remove, and useful features to add or replace existing ones with.
 
 This is a menu, not a plan. Nothing here changes gameplay unless it says so.
 
+## Status — shipped in the 1.4.0 restructure
+
+Done on the `Huge-restruction-idea` branch (build stays green):
+
+- **C0 message/colour layer** — `core/text/` (`Colors`, `Text` builder, `Msg`).
+- **Command framework (F)** — `core/cmd/` (`Command`, `Arg`/`ArgType` typed `"name:type"` args, `Perm`, `CommandContext`, `Commands`).
+- **C2/C3 + logging utils** — `core/util/Players`, `core/util/PluginLog`, `core/util/Ticks`, `core/io/PropertiesFile`.
+- **B1** — `ConsoleCommands.register()` (was ~319 lines) is now a flat declarative list on the framework; `evictrestart` added.
+- **B2** — `EvictMapPlugin.init()` broken into `bootstrap()` / `configureWorkerReferee()` / `freeEliminatedDuelTeam()` + event wiring.
+- **Restart command** — `RestartManager` implemented (`evictrestart` / `cancel` / `now`) + external loop guide in `docs/RESTART_LOOP.md`.
+- **Features (G)** — `/leaderboard` (`/top`,`/lb`) + `metrics/MetricsReporter`.
+- **Package reorg** — `core/`, `gen/`, `round/`, `data/`, `metrics/` subpackages; cross-package API promoted to `public`.
+
+Not yet done (candidates below still open): full **A** god-class splits (TeamManager/DuelWorker/DuelServerManager internals), **C1** duel-IPC value types, **C4** `Setting<T>`, **E** tests, broad **C0** adoption across the remaining ~250 inline colour tags.
+
 ## How to read the ratings
 
 Every item starts with a rating **`[1]`–`[5]`** that blends *how much it helps* with
