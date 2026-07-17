@@ -20,7 +20,6 @@ import mindustry.gen.Unit;
 import mindustry.world.Tile;
 import mindustry.world.blocks.storage.CoreBlock.CoreBuild;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -81,10 +80,6 @@ public final class TeamManager {
      */
     private static final int FFA_DUEL_MINIMUM_START_DISTANCE = 2;
 
-    private static final int SHORT_ROW_COLS = HexGrid.SHORT_ROW_COLS;
-    private static final int LONG_ROW_COLS = HexGrid.LONG_ROW_COLS;
-    private static final int ROWS = HexGrid.ROWS;
-
     private static final long TEAM_RANDOM_XOR = 0x5445414d2d455649L;
 
     /**
@@ -94,10 +89,18 @@ public final class TeamManager {
     private static final int EXTINCTION_HEX_RADIUS_SQUARED =
             HexGrid.HEX_RADIUS * HexGrid.HEX_RADIUS;
 
-    private static final int CENTER_ROW = ROWS / 2;
-    private static final int CENTER_COL = SHORT_ROW_COLS / 2;
-
     private final List<HexSlot> slots = new ArrayList<>();
+
+    /**
+     * Every hex on the map (the owned/ownable {@link #slots} plus the filled
+     * wall hexes), used only to resolve which hex a unit physically sits in.
+     * Filled hexes carry no core and never appear in {@link #slots}, but a unit
+     * standing over one must still be recognised as inside that hex - otherwise
+     * range attrition snaps it to the nearest normal hex, which can be two grid
+     * steps from an adjacent owned core, and kills a unit that is really only
+     * one hex away. Never used for ownership, capture or victory.
+     */
+    private final List<HexSlot> locationHexes = new ArrayList<>();
     private final Map<String, Integer> teamIdByPlayerUuid = new HashMap<>();
     private final Map<Integer, String> playerNameByTeamId = new HashMap<>();
     private final Map<Integer, String> leaderUuidByTeamId = new HashMap<>();
@@ -228,9 +231,17 @@ public final class TeamManager {
         this.duelEliminationHandler = duelEliminationHandler;
     }
 
-    public void beginRound(List<HexSlot> newSlots, long seed) {
+    public void beginRound(List<HexSlot> newSlots, List<HexSlot> filledHexes, long seed) {
         slots.clear();
         slots.addAll(newSlots);
+
+        // Location lookup spans every hex (ownable + filled walls); ownership
+        // logic keeps using slots alone.
+        locationHexes.clear();
+        locationHexes.addAll(newSlots);
+        if (filledHexes != null) {
+            locationHexes.addAll(filledHexes);
+        }
 
         teamIdByPlayerUuid.clear();
         playerNameByTeamId.clear();
@@ -553,7 +564,7 @@ public final class TeamManager {
         for (HexSlot occupied : slots) {
             if (
                     effectiveOwnerTeamId(occupied) != FALLEN_TEAM_ID
-                            && gridDistance(candidate, occupied)
+                            && HexGeometry.gridDistance(candidate, occupied)
                             < minimumStartDistance
             ) {
                 return false;
@@ -1528,13 +1539,6 @@ public final class TeamManager {
                 : playerName;
     }
 
-    private long squaredDistance(int tileX, int tileY, HexSlot slot) {
-        long dx = tileX - slot.x;
-        long dy = tileY - slot.y;
-
-        return dx * dx + dy * dy;
-    }
-
     private int effectiveOwnerTeamId(HexSlot slot) {
         if (slot.extinct) {
             return Team.derelict.id;
@@ -1593,10 +1597,7 @@ public final class TeamManager {
     }
 
     public int gridDistanceFromCenter(HexSlot slot) {
-        return gridDistance(
-                new HexSlot(CENTER_COL, CENTER_ROW, 0, 0, 0),
-                slot
-        );
+        return HexGeometry.gridDistanceFromCenter(slot);
     }
 
     public void finishExtinction(Team winner) {
@@ -1719,27 +1720,11 @@ public final class TeamManager {
             int tileY,
             HexSlot collapsing
     ) {
-        HexSlot closest = closestHexSlotIncludingExtinct(tileX, tileY);
+        HexSlot closest = HexGeometry.closestHexSlotIncludingExtinct(slots, tileX, tileY);
 
         return closest != null
                 && collapsing == closest
-                && squaredDistance(tileX, tileY, closest) <= EXTINCTION_HEX_RADIUS_SQUARED;
-    }
-
-    private HexSlot closestHexSlotIncludingExtinct(int tileX, int tileY) {
-        HexSlot closest = null;
-        long closestDistanceSquared = Long.MAX_VALUE;
-
-        for (HexSlot slot : slots) {
-            long distanceSquared = squaredDistance(tileX, tileY, slot);
-
-            if (distanceSquared < closestDistanceSquared) {
-                closest = slot;
-                closestDistanceSquared = distanceSquared;
-            }
-        }
-
-        return closest;
+                && HexGeometry.squaredDistance(tileX, tileY, closest) <= EXTINCTION_HEX_RADIUS_SQUARED;
     }
 
     public List<HexSlot> slots() {
@@ -1875,7 +1860,7 @@ public final class TeamManager {
             return false;
         }
 
-        HexSlot unitHex = closestHexSlot(unit.tileX(), unit.tileY());
+        HexSlot unitHex = HexGeometry.closestHexSlot(locationHexes, unit.tileX(), unit.tileY());
 
         if (unitHex == null) {
             return false;
@@ -1890,34 +1875,11 @@ public final class TeamManager {
              * the unit hex and its direct neighbors instead of every slot.
              */
             if (
-                    isSameOrAdjacentHex(unitHex, coreHex)
+                    HexGeometry.isSameOrAdjacentHex(unitHex, coreHex)
                             && effectiveCoreOwnerTeamId(coreHex) == teamId
             ) {
                 return true;
             }
-        }
-
-        return false;
-    }
-
-    /**
-     * True when two hex slots are the same hex or share an edge. This matches
-     * {@code gridDistance(a, b) <= 1} on the obstacle-free offset grid without
-     * the BFS allocations, which matters because range attrition runs this for
-     * every unit on a fixed interval.
-     */
-    private static boolean isSameOrAdjacentHex(HexSlot a, HexSlot b) {
-        int colDelta = b.col - a.col;
-        int rowDelta = b.row - a.row;
-
-        if (rowDelta == 0) {
-            return colDelta >= -1 && colDelta <= 1;
-        }
-
-        if (rowDelta == 1 || rowDelta == -1) {
-            return a.row % 2 == 0
-                    ? colDelta == 0 || colDelta == 1
-                    : colDelta == 0 || colDelta == -1;
         }
 
         return false;
@@ -1972,26 +1934,6 @@ public final class TeamManager {
         return closest;
     }
 
-    private HexSlot closestHexSlot(int tileX, int tileY) {
-        HexSlot closest = null;
-        long closestDistanceSquared = Long.MAX_VALUE;
-
-        for (HexSlot slot : slots) {
-            if (slot.extinct) {
-                continue;
-            }
-
-            long distanceSquared = squaredDistance(tileX, tileY, slot);
-
-            if (distanceSquared < closestDistanceSquared) {
-                closest = slot;
-                closestDistanceSquared = distanceSquared;
-            }
-        }
-
-        return closest;
-    }
-
     private void assignPlayerToTeam(Player player, Team team) {
         player.team(team);
 
@@ -2002,73 +1944,6 @@ public final class TeamManager {
          */
         player.clearUnit();
         player.checkSpawn();
-    }
-
-    private int gridDistance(HexSlot first, HexSlot second) {
-        GridPos start = new GridPos(first.col, first.row);
-        GridPos target = new GridPos(second.col, second.row);
-
-        if (start.equals(target)) {
-            return 0;
-        }
-
-        ArrayDeque<GridStep> queue = new ArrayDeque<>();
-        Set<GridPos> visited = new HashSet<>();
-
-        queue.add(new GridStep(start, 0));
-        visited.add(start);
-
-        while (!queue.isEmpty()) {
-            GridStep step = queue.removeFirst();
-
-            for (GridPos neighbour : neighbourSlots(step.position)) {
-                if (!validGridPos(neighbour) || !visited.add(neighbour)) {
-                    continue;
-                }
-
-                int distance = step.distance + 1;
-
-                if (neighbour.equals(target)) {
-                    return distance;
-                }
-
-                queue.addLast(new GridStep(neighbour, distance));
-            }
-        }
-
-        return Integer.MAX_VALUE;
-    }
-
-    private List<GridPos> neighbourSlots(GridPos position) {
-        List<GridPos> result = new ArrayList<>();
-
-        result.add(new GridPos(position.col - 1, position.row));
-        result.add(new GridPos(position.col + 1, position.row));
-
-        if (position.row % 2 == 0) {
-            result.add(new GridPos(position.col, position.row - 1));
-            result.add(new GridPos(position.col + 1, position.row - 1));
-            result.add(new GridPos(position.col, position.row + 1));
-            result.add(new GridPos(position.col + 1, position.row + 1));
-        } else {
-            result.add(new GridPos(position.col - 1, position.row - 1));
-            result.add(new GridPos(position.col, position.row - 1));
-            result.add(new GridPos(position.col - 1, position.row + 1));
-            result.add(new GridPos(position.col, position.row + 1));
-        }
-
-        return result;
-    }
-
-    private boolean validGridPos(GridPos position) {
-        return position.row >= 0
-                && position.row < ROWS
-                && position.col >= 0
-                && position.col < colsForRow(position.row);
-    }
-
-    private int colsForRow(int row) {
-        return row % 2 == 0 ? SHORT_ROW_COLS : LONG_ROW_COLS;
     }
 
     public record EarlyEndStatus(
@@ -2083,38 +1958,5 @@ public final class TeamManager {
             Team team,
             int remainingCores
     ) {
-    }
-
-    public static final class HexSlot {
-        public final int col;
-        public final int row;
-        public final int x;
-        public final int y;
-        public final int protectedSides;
-
-        public int ownerTeamId = FALLEN_TEAM_ID;
-        public boolean capturing = false;
-        public int pendingCaptureTeamId = FALLEN_TEAM_ID;
-        public boolean extinct = false;
-
-        public HexSlot(
-                int col,
-                int row,
-                int x,
-                int y,
-                int protectedSides
-        ) {
-            this.col = col;
-            this.row = row;
-            this.x = x;
-            this.y = y;
-            this.protectedSides = protectedSides;
-        }
-    }
-
-    private record GridPos(int col, int row) {
-    }
-
-    private record GridStep(GridPos position, int distance) {
     }
 }

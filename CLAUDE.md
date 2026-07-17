@@ -53,6 +53,8 @@ Generation:
 
 Round systems:
 - `TeamManager` — personal teams, Fallen handling, leaders, claims, eliminations, surrender, victory checks, Extinction terrain queue.
+- `HexSlot` — one hex cell: immutable geometry (col/row, center tile, protected sides) + live capture/Extinction state. Shared by TeamManager, CoreCapture, terrain gen and Extinction.
+- `HexGeometry` — pure offset-grid math over `HexSlot` (tile distance, BFS grid distance, adjacency, nearest-slot); stateless and unit-testable.
 - `TeamColors` — picks new team ids with colours distinguishable from those in play.
 - `CoreCapture` — destroyed-core lifecycle: immediate captured-hex cleanup, 5 s replacement delay, second anti-abuse cleanup, replacement Core Shard, verified core placement (also used by surrender's Fallen restore).
 - `gameplay/AttritionManager` — capture attrition and range attrition.

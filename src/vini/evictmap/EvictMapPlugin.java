@@ -503,7 +503,7 @@ public class EvictMapPlugin extends Plugin {
 
         refreshWorldIndexes();
 
-        teamManager.beginRound(round.slots(), seed);
+        teamManager.beginRound(round.slots(), round.filledSlots(), seed);
         playerDataManager.beginFfaRound();
         attritionManager.beginRound();
         attackManager.beginRound();
