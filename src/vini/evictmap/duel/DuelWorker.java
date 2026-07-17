@@ -79,6 +79,15 @@ public final class DuelWorker {
      */
     private static final float CAMERA_SETTLE_TICKS = 18f;
 
+    /**
+     * How many queued build plans a client syncs to the server at most (the
+     * head of its queue; see TypeIO.getMaxPlans - possibly fewer when
+     * byte[]/String plan configs eat the 500-byte budget). Beyond this the
+     * server cannot know a player's full queue, so the pause plan guard must
+     * not scrub what it cannot enumerate.
+     */
+    private static final int PLAN_SYNC_CAP = 20;
+
     private final boolean active;
 
     private final ScheduledExecutorService scheduler =
@@ -184,6 +193,15 @@ public final class DuelWorker {
      * time. Plans queued before the pause survive untouched.
      */
     private final Map<String, Set<String>> pausePlanKeysByUuid = new HashMap<>();
+
+    /**
+     * Players whose synced queue was already at the {@link #PLAN_SYNC_CAP}
+     * (or carried size-capped configs) when it was baselined: their full
+     * client-side queue is unknowable, so they are exempt from scrubbing -
+     * deleting blueprints they placed before the pause would be worse than
+     * missing a few queued during it.
+     */
+    private final Set<String> planGuardExemptUuids = new HashSet<>();
     private boolean planGuardActive = false;
 
     /**
@@ -1043,6 +1061,7 @@ public final class DuelWorker {
         pauseChargedUuid = null;
         planGuardActive = false;
         pausePlanKeysByUuid.clear();
+        planGuardExemptUuids.clear();
 
         hideHud();
         Call.sendMessage("[accent]The match was restarted by a commentator.[]");
@@ -1141,24 +1160,46 @@ public final class DuelWorker {
      */
     private void beginPlanGuard() {
         pausePlanKeysByUuid.clear();
+        planGuardExemptUuids.clear();
 
         Groups.player.each(player -> {
             Unit unit = player == null || player.dead() ? null : player.unit();
 
-            if (unit == null) {
-                return;
+            if (unit != null) {
+                baselinePausePlans(player, unit);
             }
-
-            Set<String> keys = new HashSet<>();
-
-            for (BuildPlan plan : unit.plans()) {
-                keys.add(planKey(plan));
-            }
-
-            pausePlanKeysByUuid.put(player.uuid(), keys);
         });
 
         planGuardActive = true;
+    }
+
+    /**
+     * Records this player's currently synced plans as their allowed set. If
+     * the synced head of the queue may be truncated (at the sync cap, or
+     * carrying the configs that shrink it), the full queue is unknowable and
+     * the player is exempted from scrubbing instead - see
+     * {@link #planGuardExemptUuids}.
+     */
+    private void baselinePausePlans(Player player, Unit unit) {
+        Set<String> keys = new HashSet<>();
+        boolean truncatable = unit.plans().size >= PLAN_SYNC_CAP;
+
+        for (BuildPlan plan : unit.plans()) {
+            if (
+                    plan.config instanceof byte[]
+                            || plan.config instanceof String
+            ) {
+                truncatable = true;
+            }
+
+            keys.add(planKey(plan));
+        }
+
+        if (truncatable) {
+            planGuardExemptUuids.add(player.uuid());
+        } else {
+            pausePlanKeysByUuid.put(player.uuid(), keys);
+        }
     }
 
     private void endPlanGuard() {
@@ -1169,6 +1210,7 @@ public final class DuelWorker {
         scrubPausePlans();
         planGuardActive = false;
         pausePlanKeysByUuid.clear();
+        planGuardExemptUuids.clear();
     }
 
     /**
@@ -1204,11 +1246,26 @@ public final class DuelWorker {
                 return;
             }
 
+            if (planGuardExemptUuids.contains(player.uuid())) {
+                return;
+            }
+
             Set<String> allowed = pausePlanKeysByUuid.get(player.uuid());
+
+            if (allowed == null) {
+                // First sight of this queue during the guard: the rejoiner
+                // whose client just re-sent its pre-disconnect plans, or a
+                // player who was dead when the pause began. Those are their
+                // existing blueprints, not ones drawn during the freeze -
+                // baseline them instead of wiping them.
+                baselinePausePlans(player, unit);
+                return;
+            }
+
             List<BuildPlan> added = new ArrayList<>();
 
             for (BuildPlan plan : unit.plans()) {
-                if (allowed == null || !allowed.contains(planKey(plan))) {
+                if (!allowed.contains(planKey(plan))) {
                     added.add(plan);
                 }
             }
