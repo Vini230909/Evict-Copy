@@ -166,6 +166,17 @@ public final class DuelWorker {
     private long pauseChargeStartMillis = 0L;
 
     /**
+     * Participants the match has already moved on without: their disconnect
+     * pause expired unreturned, or they left with no pause budget remaining.
+     * They stay rostered participants (they may still come back), but a later
+     * disconnect pause no longer waits for them - otherwise one permanent
+     * leaver would make every future pause run its full length even though
+     * everyone still competing is present. Rejoining removes the waiver.
+     * Cleared on /restart.
+     */
+    private final Set<String> waivedUuids = new HashSet<>();
+
+    /**
      * The build plans each player already had queued when the disconnect
      * pause began. While the guard is active, every update tick removes any
      * plan not in here from both the server-side queue and the placing
@@ -610,6 +621,10 @@ public final class DuelWorker {
         }
 
         if (matchStarted) {
+            if (player != null) {
+                waivedUuids.remove(player.uuid());
+            }
+
             if (pausedForDisconnect && bothPlayersPresent()) {
                 endDisconnectPause();
             }
@@ -709,6 +724,14 @@ public final class DuelWorker {
                         || !duelMode.gated()
                         || player == null
         ) {
+            return;
+        }
+
+        // A dead connection can time out and fire its leave event *after* the
+        // same player already reconnected - both Player entities share one
+        // uuid until the ghost is gone. That stale leave must not freeze the
+        // match: the player is still here on the newer connection.
+        if (isOnlineElsewhere(player)) {
             return;
         }
 
@@ -1016,6 +1039,7 @@ public final class DuelWorker {
         // back, and a pause that was running is not charged to anyone. The
         // world regenerates, so the plan guard is dropped without a scrub.
         usedPauseMillisByUuid.clear();
+        waivedUuids.clear();
         pauseChargedUuid = null;
         planGuardActive = false;
         pausePlanKeysByUuid.clear();
@@ -1050,6 +1074,7 @@ public final class DuelWorker {
         int windowSeconds = remainingPauseSeconds(player.uuid());
 
         if (windowSeconds <= 0) {
+            waivedUuids.add(player.uuid());
             Call.sendMessage(
                     "[scarlet]" + PlayerNameFormatter.displayName(player)
                             + "[scarlet] left but has no rejoin time left this match. The match continues.[]"
@@ -1152,7 +1177,19 @@ public final class DuelWorker {
      * the still-syncing clients queue them.
      */
     public void update() {
-        if (!active || !planGuardActive) {
+        if (!active) {
+            return;
+        }
+
+        // The resume must not hinge on the PlayerJoin event alone: whatever
+        // order the engine delivers leave/join in, and whatever else runs in
+        // the join chain, the moment everyone required is connected again the
+        // pause ends. This trigger fires even while the game is paused.
+        if (pausedForDisconnect && bothPlayersPresent()) {
+            endDisconnectPause();
+        }
+
+        if (!planGuardActive) {
             return;
         }
 
@@ -1205,6 +1242,15 @@ public final class DuelWorker {
             return;
         }
 
+        // The join event is not the only way everyone can be back: a ghost
+        // connection's stale leave may have started this pause after the real
+        // rejoin already happened. Re-check every countdown second so a pause
+        // nobody is missing from heals itself instead of running out.
+        if (bothPlayersPresent()) {
+            endDisconnectPause();
+            return;
+        }
+
         showHud(
                 "[scarlet]" + disconnectedName
                         + "[scarlet] left  -  [accent]" + remaining
@@ -1239,6 +1285,11 @@ public final class DuelWorker {
     private void expireDisconnectPause(int serial) {
         if (serial != disconnectSerial || !pausedForDisconnect) {
             return;
+        }
+
+        // The leaver never came back: stop requiring them for future pauses.
+        if (pauseChargedUuid != null && !isOnline(pauseChargedUuid)) {
+            waivedUuids.add(pauseChargedUuid);
         }
 
         pausedForDisconnect = false;
@@ -1372,12 +1423,25 @@ public final class DuelWorker {
         }
 
         for (String uuid : participantUuids) {
-            if (!isOnline(uuid)) {
+            if (!waivedUuids.contains(uuid) && !isOnline(uuid)) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    /**
+     * True when another Player entity with the same uuid is still connected -
+     * i.e. this leave belongs to a timed-out ghost connection of a player who
+     * has already reconnected, not to a real disconnect.
+     */
+    private boolean isOnlineElsewhere(Player leaving) {
+        return Groups.player.find(
+                player -> player != null
+                        && player != leaving
+                        && player.uuid().equals(leaving.uuid())
+        ) != null;
     }
 
     private boolean isOnline(String uuid) {

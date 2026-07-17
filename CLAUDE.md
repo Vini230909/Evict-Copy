@@ -1,6 +1,6 @@
 # CLAUDE.md — EvictMapGenerator
 
-Server-side Mindustry plugin (game v157.4, Java 17 source) for Evict-style persistent PvP on a procedurally generated hex map. Runs on a dedicated server; clients install nothing. Current version **1.4.0** — `plugin.json` `version` and the startup revision string in `EvictMapPlugin` must always match.
+Server-side Mindustry plugin (game v157.4, Java 17 source) for Evict-style persistent PvP on a procedurally generated hex map. Runs on a dedicated server; clients install nothing. Current version **1.4.1** — `plugin.json` `version` and the startup revision string in `EvictMapPlugin` must always match.
 
 One jar, two roles:
 - **Hub** — the normal Evict FFA server players connect to.
@@ -14,7 +14,7 @@ One jar, two roles:
 
 No system `java`/`gradle` on this machine — point `JAVA_HOME` at the VSCode Java extension's bundled JDK 21 first (glob `~/.vscode/extensions/redhat.java-*/jre/*`). Build after every code change; fix compile errors immediately.
 
-Deploy: copy the jar into the server's `config/mods/` and restart. **Delete `duel-workers/` after every plugin update** — workers are provisioned from the hub's own files and would otherwise keep running the stale jar. The server console is not a shell: set the port with `config port <n>`, host with `host evict-map pvp`; `evictauto` defaults ON, so hosting auto-generates an Evict round.
+Deploy: copy the jar into the server's `config/mods/` and restart — nothing else. `duel-workers/` must **not** be deleted: every worker spawn re-copies `config/mods` into its folder and `refreshWorkerJars()` updates stale server jars on hub startup, so workers pick up a new plugin automatically. The server console is not a shell: set the port with `config port <n>`, host with `host evict-map pvp`; `evictauto` defaults ON, so hosting auto-generates an Evict round.
 
 ## Working rules
 
@@ -107,10 +107,13 @@ Commands (`commands/`):
 
 ### Player data (`config/evict-players.db`)
 - Async writes on one background thread; profiles keyed by UUID; no IP addresses stored.
-- Stored: last name, first/last seen, total playtime, FFA playtime, FFA played/won; all observed names per UUID in `player_names`.
-- Ranked wins/losses/played, ELO and peak ELO update only after a **Ranked** match (casual 1v1 never touches them); match rows store both players' before/after ELO. Ranked playtime is a reserved column.
+- Stored: last name, first/last seen, one total playtime, normal + ranked match counters, ELO/peak ELO; all observed names per UUID in `player_names`. Match stats exist only for normal and ranked matches — the main-lobby FFA round has no stats (legacy `ffa_*` / `ranked_playtime_ms` columns in old databases are ignored).
+- Ranked wins/losses/played, ELO and peak ELO update only after a **Ranked** match (casual 1v1 never touches them); match rows store both players' before/after ELO.
+- Normal wins/losses/played count every competitive `/play` match: casual 1v1, Teams and `/play` FFA (Random Teams records as Teams; Training/Sandbox never record). Ranked matches count only in the ranked counters. `/info` shows Total playtime, Normal, Ranked and ELO.
+- Every `players` column newer than the original baseline has an `ALTER TABLE` guard, so databases created by old plugin versions upgrade in place instead of failing writes silently.
+- One-time stats repair (tracked via `PRAGMA user_version`): pre-1.4 builds counted every casual 1v1 in the ranked counters, so on first startup the plugin recounts normal/ranked counters from the `duel_matches` rows and replays all ranked rows chronologically through `EloCalculator`, rewriting each row's before/after ratings and every player's ELO/peak (manual `evictelo` values from before the repair are replaced).
 - New players start at ELO 1000; peak ELO only ever rises (manual `evictelo` sets never lower it).
-- FFA playtime counts only after the player has a personal team that round. Playtime flushes at round start, on leave and on shutdown; `/info` and `evictplayerinfo` add live unpersisted session time.
+- Playtime flushes at round start, on leave and on shutdown; `/info` and `evictplayerinfo` add live unpersisted session time.
 - Lookup order for `/info [name]`, `evictplayerinfo`, `evictelo`: partial latest-name match first; old names and UUIDs only if no latest-name match. Ambiguous `evictelo` names list candidates and change nothing.
 - `/info` is public, never shows UUIDs; with no argument it opens a clickable online-player picker.
 

@@ -1,11 +1,7 @@
 package vini.evictmap.data;
 
-import vini.evictmap.round.TeamManager;
-
 import arc.Core;
 import arc.util.Log;
-import mindustry.game.Team;
-import mindustry.gen.Groups;
 import mindustry.gen.Player;
 
 import java.io.File;
@@ -17,10 +13,8 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -53,7 +47,6 @@ public final class PlayerDataManager {
 
     private final Map<String, ActiveSession> activeSessionsByUuid =
             new HashMap<>();
-    private final Set<String> ffaParticipantsThisRound = new HashSet<>();
 
     public void start() {
         enqueue(this::createSchema);
@@ -63,15 +56,17 @@ public final class PlayerDataManager {
         );
     }
 
-    public void beginFfaRound() {
+    /**
+     * Flushes every connected player's session playtime at a round start, so
+     * stored totals stay fresh across rounds.
+     */
+    public void beginRound() {
         synchronized (this) {
             long now = System.currentTimeMillis();
             flushActiveSessions(now);
-            ffaParticipantsThisRound.clear();
 
             for (ActiveSession session : activeSessionsByUuid.values()) {
                 session.startedAtMillis = now;
-                session.ffaParticipant = false;
             }
         }
     }
@@ -110,36 +105,6 @@ public final class PlayerDataManager {
                         session,
                         System.currentTimeMillis()
                 );
-            }
-        }
-    }
-
-    public void recordConnectedFfaParticipants(TeamManager teamManager) {
-        Groups.player.each(player -> {
-            if (
-                    teamManager.isPersonalRoundPlayer(player)
-            ) {
-                recordFfaParticipation(player);
-            }
-        });
-    }
-
-    public void recordFfaWinner(TeamManager teamManager, Team winner) {
-        if (
-                winner == null
-                        || winner == TeamManager.FALLEN_TEAM
-                        || winner == Team.derelict
-        ) {
-            return;
-        }
-
-        List<String> winnerUuids = teamManager.playerUuidsForTeam(winner);
-
-        synchronized (this) {
-            for (String uuid : winnerUuids) {
-                if (ffaParticipantsThisRound.contains(uuid)) {
-                    enqueue(() -> incrementFfaWins(uuid));
-                }
             }
         }
     }
@@ -212,9 +177,9 @@ public final class PlayerDataManager {
     }
 
     /**
-     * Records a finished FFA as an unranked history entry: one row listing
-     * every participant, a win only in the sense of /history rendering. No
-     * ranked counters or ELO are touched. Called on the hub once a worker
+     * Records a finished /play FFA: one history row listing every participant
+     * plus a normal win for the winner and a normal loss for everyone else.
+     * Never touches ranked counters or ELO. Called on the hub once a worker
      * reports an FFA result.
      */
     public void recordFfaMatch(
@@ -237,7 +202,7 @@ public final class PlayerDataManager {
         String uuidsPacked = String.join(",", participantUuids);
         String namesPacked = String.join("\n", participantNames);
 
-        enqueue(() -> insertFfaMatch(
+        enqueue(() -> applyFfaResult(
                 playedAtMillis,
                 winnerUuid,
                 safeWinnerName,
@@ -247,9 +212,10 @@ public final class PlayerDataManager {
     }
 
     /**
-     * Records a finished Teams match as an unranked history entry: the two
-     * rosters and who won. No ranked counters or ELO are touched. Called on
-     * the hub once a worker reports a Teams result.
+     * Records a finished Teams match: one history row with the two rosters and
+     * who won, plus a normal win for every winner and a normal loss for every
+     * loser. Never touches ranked counters or ELO. Called on the hub once a
+     * worker reports a Teams result.
      */
     public void recordTeamsMatch(
             List<String> winnerUuids,
@@ -272,7 +238,7 @@ public final class PlayerDataManager {
         String winnerLabel = safeName(winnerTeamLabel);
         String loserLabel = safeName(loserTeamLabel);
 
-        enqueue(() -> insertTeamsMatch(
+        enqueue(() -> applyTeamsResult(
                 playedAtMillis,
                 winnersPacked,
                 winnerLabel,
@@ -342,31 +308,6 @@ public final class PlayerDataManager {
         });
     }
 
-    private void recordFfaParticipation(Player player) {
-        String uuid = player.uuid();
-        String name = player.plainName();
-        long now = System.currentTimeMillis();
-        boolean newlyParticipating;
-
-        synchronized (this) {
-            ActiveSession session =
-                    activeSessionsByUuid.computeIfAbsent(
-                            uuid,
-                            ignored -> new ActiveSession(name, now)
-                    );
-
-            session.lastName = name;
-            session.ffaParticipant = true;
-            newlyParticipating = ffaParticipantsThisRound.add(uuid);
-        }
-
-        enqueue(() -> upsertPlayer(uuid, name, now));
-
-        if (newlyParticipating) {
-            enqueue(() -> incrementFfaPlayed(uuid));
-        }
-    }
-
     private void shutdown() {
         synchronized (this) {
             flushActiveSessions(System.currentTimeMillis());
@@ -399,7 +340,6 @@ public final class PlayerDataManager {
     ) {
         long playedMillis =
                 Math.max(0L, finishedAtMillis - session.startedAtMillis);
-        long ffaPlayedMillis = session.ffaParticipant ? playedMillis : 0L;
         String name = session.lastName;
 
         session.startedAtMillis = finishedAtMillis;
@@ -409,8 +349,7 @@ public final class PlayerDataManager {
                         uuid,
                         name,
                         finishedAtMillis,
-                        playedMillis,
-                        ffaPlayedMillis
+                        playedMillis
                 )
         );
     }
@@ -451,22 +390,62 @@ public final class PlayerDataManager {
                 Statement statement = connection.createStatement()
         ) {
             statement.executeUpdate(
+                    // Old databases may additionally carry legacy
+                    // ffa_playtime_ms / ffa_played / ffa_won /
+                    // ranked_playtime_ms columns from removed features; they
+                    // are simply ignored.
                     "CREATE TABLE IF NOT EXISTS players ("
                             + "uuid TEXT PRIMARY KEY,"
                             + "last_name TEXT NOT NULL,"
                             + "first_seen_ms INTEGER NOT NULL,"
                             + "last_seen_ms INTEGER NOT NULL,"
                             + "total_playtime_ms INTEGER NOT NULL DEFAULT 0,"
-                            + "ffa_playtime_ms INTEGER NOT NULL DEFAULT 0,"
-                            + "ffa_played INTEGER NOT NULL DEFAULT 0,"
-                            + "ffa_won INTEGER NOT NULL DEFAULT 0,"
-                            + "ranked_playtime_ms INTEGER NOT NULL DEFAULT 0,"
                             + "ranked_wins INTEGER NOT NULL DEFAULT 0,"
                             + "ranked_losses INTEGER NOT NULL DEFAULT 0,"
                             + "ranked_matches_played INTEGER NOT NULL DEFAULT 0,"
+                            + "normal_wins INTEGER NOT NULL DEFAULT 0,"
+                            + "normal_losses INTEGER NOT NULL DEFAULT 0,"
+                            + "normal_matches_played INTEGER NOT NULL DEFAULT 0,"
                             + "elo INTEGER NOT NULL DEFAULT " + DEFAULT_ELO + ","
                             + "peak_elo INTEGER NOT NULL DEFAULT " + DEFAULT_ELO
                             + ")"
+            );
+
+            // Databases created by older plugin versions predate some of the
+            // columns above; CREATE TABLE IF NOT EXISTS never adds them, so
+            // ranked writes and /info reads would fail silently on upgraded
+            // servers. ALTER fails harmlessly where a column already exists.
+            addColumnIfMissing(
+                    statement, "players",
+                    "ranked_wins INTEGER NOT NULL DEFAULT 0"
+            );
+            addColumnIfMissing(
+                    statement, "players",
+                    "ranked_losses INTEGER NOT NULL DEFAULT 0"
+            );
+            addColumnIfMissing(
+                    statement, "players",
+                    "ranked_matches_played INTEGER NOT NULL DEFAULT 0"
+            );
+            addColumnIfMissing(
+                    statement, "players",
+                    "normal_wins INTEGER NOT NULL DEFAULT 0"
+            );
+            addColumnIfMissing(
+                    statement, "players",
+                    "normal_losses INTEGER NOT NULL DEFAULT 0"
+            );
+            addColumnIfMissing(
+                    statement, "players",
+                    "normal_matches_played INTEGER NOT NULL DEFAULT 0"
+            );
+            addColumnIfMissing(
+                    statement, "players",
+                    "elo INTEGER NOT NULL DEFAULT " + DEFAULT_ELO
+            );
+            addColumnIfMissing(
+                    statement, "players",
+                    "peak_elo INTEGER NOT NULL DEFAULT " + DEFAULT_ELO
             );
 
             statement.executeUpdate(
@@ -506,15 +485,15 @@ public final class PlayerDataManager {
             // Databases created before the FFA history feature miss the new
             // columns; ALTER fails harmlessly where they already exist.
             addColumnIfMissing(
-                    statement,
+                    statement, "duel_matches",
                     "mode TEXT NOT NULL DEFAULT '1v1'"
             );
             addColumnIfMissing(
-                    statement,
+                    statement, "duel_matches",
                     "participant_uuids TEXT NOT NULL DEFAULT ''"
             );
             addColumnIfMissing(
-                    statement,
+                    statement, "duel_matches",
                     "participant_names TEXT NOT NULL DEFAULT ''"
             );
 
@@ -533,20 +512,252 @@ public final class PlayerDataManager {
                 "[EvictMapGenerator] Player data storage ready: @",
                 DATABASE_FILE.getPath()
         );
+
+        repairStatsIfNeeded();
     }
 
     /**
-     * Adds a column to duel_matches, ignoring the "duplicate column name"
-     * error on databases that already have it. SQLite has no
-     * ADD COLUMN IF NOT EXISTS.
+     * Data revision stored in {@code PRAGMA user_version}. Revision 1 is the
+     * one-time stats repair: plugin versions before 1.4 incremented the ranked
+     * win/loss counters for every casual 1v1, so upgraded databases carry
+     * casual games inside their ranked numbers. The repair recounts both
+     * counter sets from the match history and replays every ranked match
+     * through {@link EloCalculator} so ratings match the recorded games.
+     */
+    private static final int STATS_REPAIR_VERSION = 1;
+
+    private void repairStatsIfNeeded() throws SQLException {
+        try (
+                Connection connection = connect();
+                Statement statement = connection.createStatement()
+        ) {
+            int version = 0;
+
+            try (ResultSet rows = statement.executeQuery("PRAGMA user_version")) {
+                if (rows.next()) {
+                    version = rows.getInt(1);
+                }
+            }
+
+            if (version >= STATS_REPAIR_VERSION) {
+                return;
+            }
+
+            recountStatsFromHistory(connection);
+            statement.executeUpdate(
+                    "PRAGMA user_version = " + STATS_REPAIR_VERSION
+            );
+
+            Log.info(
+                    "[EvictMapGenerator] One-time stats repair done: normal/ranked "
+                            + "counters recounted and ELO replayed from match history."
+            );
+        }
+    }
+
+    /**
+     * Rebuilds every player's normal and ranked counters from the duel_matches
+     * rows and replays all ranked matches chronologically through
+     * {@link EloCalculator}, rewriting each ranked row's before/after ratings
+     * and every player's current and peak ELO. Normal counts every competitive
+     * duel row - 1v1, Teams and /play FFA (Training/Sandbox never leave rows);
+     * ranked counts only ranked rows. Playtime and any legacy columns are
+     * untouched. Manual evictelo overrides are replaced by the replayed
+     * values.
+     */
+    private void recountStatsFromHistory(Connection connection)
+            throws SQLException {
+        record MatchRow(
+                long id,
+                String mode,
+                String winnerUuids,
+                String loserUuids,
+                String participantUuids
+        ) {
+        }
+
+        List<MatchRow> matchRows = new ArrayList<>();
+
+        try (
+                PreparedStatement select = connection.prepareStatement(
+                        "SELECT id, mode, winner_uuid, loser_uuid, "
+                                + "participant_uuids FROM duel_matches "
+                                + "ORDER BY played_at_ms, id"
+                );
+                ResultSet rows = select.executeQuery()
+        ) {
+            while (rows.next()) {
+                matchRows.add(new MatchRow(
+                        rows.getLong("id"),
+                        rows.getString("mode"),
+                        rows.getString("winner_uuid"),
+                        rows.getString("loser_uuid"),
+                        rows.getString("participant_uuids")
+                ));
+            }
+        }
+
+        boolean autoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+
+        try {
+            Map<String, StatTally> tallies = new HashMap<>();
+
+            try (
+                    PreparedStatement updateRankedRow = connection.prepareStatement(
+                            "UPDATE duel_matches SET "
+                                    + "winner_elo_before = ?, winner_elo_after = ?, "
+                                    + "loser_elo_before = ?, loser_elo_after = ? "
+                                    + "WHERE id = ?"
+                    )
+            ) {
+                for (MatchRow row : matchRows) {
+                    switch (row.mode()) {
+                        case "1v1", "teams" -> {
+                            for (String uuid : splitUuids(row.winnerUuids())) {
+                                tally(tallies, uuid).normalWins++;
+                            }
+                            for (String uuid : splitUuids(row.loserUuids())) {
+                                tally(tallies, uuid).normalLosses++;
+                            }
+                        }
+                        case "ffa" -> {
+                            tally(tallies, row.winnerUuids()).normalWins++;
+                            for (String uuid : splitUuids(row.participantUuids())) {
+                                if (!uuid.equals(row.winnerUuids())) {
+                                    tally(tallies, uuid).normalLosses++;
+                                }
+                            }
+                        }
+                        case "ranked" -> {
+                            StatTally winner = tally(tallies, row.winnerUuids());
+                            StatTally loser = tally(tallies, row.loserUuids());
+                            EloCalculator.Result result =
+                                    EloCalculator.apply(winner.elo, loser.elo);
+
+                            winner.rankedWins++;
+                            loser.rankedLosses++;
+                            winner.elo = result.winnerAfter();
+                            loser.elo = result.loserAfter();
+                            winner.peakElo =
+                                    Math.max(winner.peakElo, winner.elo);
+                            loser.peakElo = Math.max(loser.peakElo, loser.elo);
+
+                            updateRankedRow.setInt(1, result.winnerBefore());
+                            updateRankedRow.setInt(2, result.winnerAfter());
+                            updateRankedRow.setInt(3, result.loserBefore());
+                            updateRankedRow.setInt(4, result.loserAfter());
+                            updateRankedRow.setLong(5, row.id());
+                            updateRankedRow.executeUpdate();
+                        }
+                        default -> {
+                            // Unknown mode: leave the row alone.
+                        }
+                    }
+                }
+            }
+
+            try (Statement statement = connection.createStatement()) {
+                statement.executeUpdate(
+                        "UPDATE players SET "
+                                + "normal_wins = 0, normal_losses = 0, "
+                                + "normal_matches_played = 0, "
+                                + "ranked_wins = 0, ranked_losses = 0, "
+                                + "ranked_matches_played = 0, "
+                                + "elo = " + DEFAULT_ELO + ", "
+                                + "peak_elo = " + DEFAULT_ELO
+                );
+            }
+
+            try (
+                    PreparedStatement updatePlayer = connection.prepareStatement(
+                            "UPDATE players SET "
+                                    + "normal_wins = ?, normal_losses = ?, "
+                                    + "normal_matches_played = ?, "
+                                    + "ranked_wins = ?, ranked_losses = ?, "
+                                    + "ranked_matches_played = ?, "
+                                    + "elo = ?, peak_elo = ? "
+                                    + "WHERE uuid = ?"
+                    )
+            ) {
+                for (Map.Entry<String, StatTally> entry : tallies.entrySet()) {
+                    StatTally tallied = entry.getValue();
+
+                    updatePlayer.setInt(1, tallied.normalWins);
+                    updatePlayer.setInt(2, tallied.normalLosses);
+                    updatePlayer.setInt(
+                            3, tallied.normalWins + tallied.normalLosses
+                    );
+                    updatePlayer.setInt(4, tallied.rankedWins);
+                    updatePlayer.setInt(5, tallied.rankedLosses);
+                    updatePlayer.setInt(
+                            6, tallied.rankedWins + tallied.rankedLosses
+                    );
+                    updatePlayer.setInt(7, tallied.elo);
+                    updatePlayer.setInt(8, tallied.peakElo);
+                    updatePlayer.setString(9, entry.getKey());
+                    updatePlayer.executeUpdate();
+                }
+            }
+
+            connection.commit();
+        } catch (SQLException exception) {
+            connection.rollback();
+            throw exception;
+        } finally {
+            connection.setAutoCommit(autoCommit);
+        }
+    }
+
+    /** One player's recounted stats while replaying the match history. */
+    private static final class StatTally {
+        int normalWins;
+        int normalLosses;
+        int rankedWins;
+        int rankedLosses;
+        // Peak ELO can never sit below the starting rating - a player who only
+        // ever lost still peaked at their starting 1000.
+        int elo = DEFAULT_ELO;
+        int peakElo = DEFAULT_ELO;
+    }
+
+    private static StatTally tally(Map<String, StatTally> tallies, String uuid) {
+        return tallies.computeIfAbsent(uuid, ignored -> new StatTally());
+    }
+
+    /**
+     * Splits a comma-packed UUID list (Teams rosters, FFA participants) into
+     * its entries. UUIDs are fixed-length base64 without commas, so a plain
+     * split is always element-exact.
+     */
+    private static List<String> splitUuids(String packed) {
+        List<String> uuids = new ArrayList<>();
+
+        if (packed == null || packed.isEmpty()) {
+            return uuids;
+        }
+
+        for (String uuid : packed.split(",")) {
+            if (!uuid.isEmpty()) {
+                uuids.add(uuid);
+            }
+        }
+
+        return uuids;
+    }
+
+    /**
+     * Adds a column to a table, ignoring the "duplicate column name" error on
+     * databases that already have it. SQLite has no ADD COLUMN IF NOT EXISTS.
      */
     private static void addColumnIfMissing(
             Statement statement,
+            String table,
             String columnDefinition
     ) {
         try {
             statement.executeUpdate(
-                    "ALTER TABLE duel_matches ADD COLUMN " + columnDefinition
+                    "ALTER TABLE " + table + " ADD COLUMN " + columnDefinition
             );
         } catch (SQLException ignored) {
             // Column already exists.
@@ -583,8 +794,7 @@ public final class PlayerDataManager {
             String uuid,
             String name,
             long seenAtMillis,
-            long totalMillis,
-            long ffaMillis
+            long totalMillis
     ) throws SQLException {
         upsertPlayer(uuid, name, seenAtMillis);
 
@@ -594,42 +804,14 @@ public final class PlayerDataManager {
                         "UPDATE players SET "
                                 + "last_name = ?, "
                                 + "last_seen_ms = ?, "
-                                + "total_playtime_ms = total_playtime_ms + ?, "
-                                + "ffa_playtime_ms = ffa_playtime_ms + ? "
+                                + "total_playtime_ms = total_playtime_ms + ? "
                                 + "WHERE uuid = ?"
                 )
         ) {
             statement.setString(1, name);
             statement.setLong(2, seenAtMillis);
             statement.setLong(3, totalMillis);
-            statement.setLong(4, ffaMillis);
-            statement.setString(5, uuid);
-            statement.executeUpdate();
-        }
-    }
-
-    private void incrementFfaPlayed(String uuid) throws SQLException {
-        try (
-                Connection connection = connect();
-                PreparedStatement statement = connection.prepareStatement(
-                        "UPDATE players SET ffa_played = ffa_played + 1 "
-                                + "WHERE uuid = ?"
-                )
-        ) {
-            statement.setString(1, uuid);
-            statement.executeUpdate();
-        }
-    }
-
-    private void incrementFfaWins(String uuid) throws SQLException {
-        try (
-                Connection connection = connect();
-                PreparedStatement statement = connection.prepareStatement(
-                        "UPDATE players SET ffa_won = ffa_won + 1 "
-                                + "WHERE uuid = ?"
-                )
-        ) {
-            statement.setString(1, uuid);
+            statement.setString(4, uuid);
             statement.executeUpdate();
         }
     }
@@ -671,8 +853,8 @@ public final class PlayerDataManager {
 
     /**
      * Records a finished casual 1v1: one unranked /history row (win/lose, no
-     * ELO) and nothing else - no ranked counters and no rating change. The
-     * casual counterpart to {@link #applyRankedResult}.
+     * ELO) plus the normal win/loss counters - never the ranked counters and
+     * no rating change. The casual counterpart to {@link #applyRankedResult}.
      */
     private void applyCasualResult(
             String winnerUuid,
@@ -682,6 +864,8 @@ public final class PlayerDataManager {
             long playedAtMillis
     ) throws SQLException {
         try (Connection connection = connect()) {
+            updateOutcome(connection, winnerUuid, true, "normal");
+            updateOutcome(connection, loserUuid, false, "normal");
             insertDuelMatch(
                     connection,
                     playedAtMillis,
@@ -788,7 +972,39 @@ public final class PlayerDataManager {
         }
     }
 
+    /**
+     * Applies a finished /play FFA on the writer thread: normal win for the
+     * winner, normal loss for every other participant, one history row.
+     */
+    private void applyFfaResult(
+            long playedAtMillis,
+            String winnerUuid,
+            String winnerName,
+            String participantUuidsPacked,
+            String participantNamesPacked
+    ) throws SQLException {
+        try (Connection connection = connect()) {
+            updateOutcome(connection, winnerUuid, true, "normal");
+
+            for (String uuid : splitUuids(participantUuidsPacked)) {
+                if (!uuid.equals(winnerUuid)) {
+                    updateOutcome(connection, uuid, false, "normal");
+                }
+            }
+
+            insertFfaMatch(
+                    connection,
+                    playedAtMillis,
+                    winnerUuid,
+                    winnerName,
+                    participantUuidsPacked,
+                    participantNamesPacked
+            );
+        }
+    }
+
     private void insertFfaMatch(
+            Connection connection,
             long playedAtMillis,
             String winnerUuid,
             String winnerName,
@@ -796,7 +1012,6 @@ public final class PlayerDataManager {
             String participantNamesPacked
     ) throws SQLException {
         try (
-                Connection connection = connect();
                 PreparedStatement statement = connection.prepareStatement(
                         "INSERT INTO duel_matches "
                                 + "(played_at_ms, winner_uuid, winner_name, "
@@ -815,11 +1030,44 @@ public final class PlayerDataManager {
     }
 
     /**
+     * Applies a finished Teams match on the writer thread: normal win for
+     * every winning-roster player, normal loss for every losing-roster
+     * player, one history row.
+     */
+    private void applyTeamsResult(
+            long playedAtMillis,
+            String winnerUuidsPacked,
+            String winnerTeamLabel,
+            String loserUuidsPacked,
+            String loserTeamLabel
+    ) throws SQLException {
+        try (Connection connection = connect()) {
+            for (String uuid : splitUuids(winnerUuidsPacked)) {
+                updateOutcome(connection, uuid, true, "normal");
+            }
+
+            for (String uuid : splitUuids(loserUuidsPacked)) {
+                updateOutcome(connection, uuid, false, "normal");
+            }
+
+            insertTeamsMatch(
+                    connection,
+                    playedAtMillis,
+                    winnerUuidsPacked,
+                    winnerTeamLabel,
+                    loserUuidsPacked,
+                    loserTeamLabel
+            );
+        }
+    }
+
+    /**
      * Teams rows pack the whole winning/losing rosters into the winner/loser
      * uuid columns (comma-joined) so /history can tell which side the picked
      * player was on; the name columns hold the ready-made team labels.
      */
     private void insertTeamsMatch(
+            Connection connection,
             long playedAtMillis,
             String winnerUuidsPacked,
             String winnerTeamLabel,
@@ -827,7 +1075,6 @@ public final class PlayerDataManager {
             String loserTeamLabel
     ) throws SQLException {
         try (
-                Connection connection = connect();
                 PreparedStatement statement = connection.prepareStatement(
                         "INSERT INTO duel_matches "
                                 + "(played_at_ms, winner_uuid, winner_name, "
@@ -909,12 +1156,29 @@ public final class PlayerDataManager {
             String uuid,
             boolean won
     ) throws SQLException {
+        updateOutcome(connection, uuid, won, "ranked");
+    }
+
+    /**
+     * Bumps one player's win-or-loss and matches-played counters for one
+     * counter set: "ranked" (rated matches only) or "normal" (casual 1v1).
+     */
+    private void updateOutcome(
+            Connection connection,
+            String uuid,
+            boolean won,
+            String counterPrefix
+    ) throws SQLException {
+        String wins = counterPrefix + "_wins";
+        String losses = counterPrefix + "_losses";
+        String played = counterPrefix + "_matches_played";
+
         try (
                 PreparedStatement statement = connection.prepareStatement(
                         "UPDATE players SET "
-                                + (won ? "ranked_wins = ranked_wins + 1, "
-                                : "ranked_losses = ranked_losses + 1, ")
-                                + "ranked_matches_played = ranked_matches_played + 1 "
+                                + (won ? wins + " = " + wins + " + 1, "
+                                : losses + " = " + losses + " + 1, ")
+                                + played + " = " + played + " + 1 "
                                 + "WHERE uuid = ?"
                 )
         ) {
@@ -1060,20 +1324,13 @@ public final class PlayerDataManager {
          */
         long now = System.currentTimeMillis();
         long liveTotalMillis;
-        long liveFfaMillis;
 
         synchronized (this) {
             ActiveSession session = activeSessionsByUuid.get(uuid);
 
-            if (session == null) {
-                liveTotalMillis = 0L;
-                liveFfaMillis = 0L;
-            } else {
-                liveTotalMillis =
-                        Math.max(0L, now - session.startedAtMillis);
-                liveFfaMillis =
-                        session.ffaParticipant ? liveTotalMillis : 0L;
-            }
+            liveTotalMillis = session == null
+                    ? 0L
+                    : Math.max(0L, now - session.startedAtMillis);
         }
 
         return new PlayerInfo(
@@ -1083,13 +1340,12 @@ public final class PlayerDataManager {
                 result.getLong("first_seen_ms"),
                 result.getLong("last_seen_ms"),
                 result.getLong("total_playtime_ms") + liveTotalMillis,
-                result.getLong("ffa_playtime_ms") + liveFfaMillis,
-                result.getInt("ffa_played"),
-                result.getInt("ffa_won"),
-                result.getLong("ranked_playtime_ms"),
                 result.getInt("ranked_wins"),
                 result.getInt("ranked_losses"),
                 result.getInt("ranked_matches_played"),
+                result.getInt("normal_wins"),
+                result.getInt("normal_losses"),
+                result.getInt("normal_matches_played"),
                 result.getInt("elo"),
                 result.getInt("peak_elo")
         );
@@ -1176,7 +1432,6 @@ public final class PlayerDataManager {
     private static final class ActiveSession {
         String lastName;
         long startedAtMillis;
-        boolean ffaParticipant;
 
         ActiveSession(String lastName, long startedAtMillis) {
             this.lastName = lastName;
@@ -1191,13 +1446,12 @@ public final class PlayerDataManager {
             long firstSeenMillis,
             long lastSeenMillis,
             long totalPlaytimeMillis,
-            long ffaPlaytimeMillis,
-            int ffaPlayed,
-            int ffaWon,
-            long rankedPlaytimeMillis,
             int rankedWins,
             int rankedLosses,
             int rankedMatchesPlayed,
+            int normalWins,
+            int normalLosses,
+            int normalMatchesPlayed,
             int elo,
             int peakElo
     ) {

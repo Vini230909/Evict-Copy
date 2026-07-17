@@ -591,7 +591,6 @@ public final class ConsoleCommands {
         return info.lastName()
                 + " | uuid=" + info.uuid()
                 + " | names=" + String.join(", ", info.knownNames())
-                + " | FFA=" + info.ffaWon() + "/" + info.ffaPlayed()
                 + " | playtime=" + formatDuration(info.totalPlaytimeMillis());
     }
 
@@ -600,9 +599,9 @@ public final class ConsoleCommands {
                 + " | uuid=" + info.uuid()
                 + " | names=" + String.join(", ", info.knownNames())
                 + " | totalPlaytime=" + formatDuration(info.totalPlaytimeMillis())
-                + " | ffaPlaytime=" + formatDuration(info.ffaPlaytimeMillis())
-                + " | ffaWon=" + info.ffaWon()
-                + " | ffaPlayed=" + info.ffaPlayed()
+                + " | normalWins=" + info.normalWins()
+                + " | normalLosses=" + info.normalLosses()
+                + " | normalPlayed=" + info.normalMatchesPlayed()
                 + " | rankedWins=" + info.rankedWins()
                 + " | rankedLosses=" + info.rankedLosses()
                 + " | rankedPlayed=" + info.rankedMatchesPlayed()
