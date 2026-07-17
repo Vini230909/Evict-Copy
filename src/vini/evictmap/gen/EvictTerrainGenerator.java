@@ -1,4 +1,9 @@
-package vini.evictmap;
+package vini.evictmap.gen;
+
+import vini.evictmap.round.TeamManager;
+import vini.evictmap.round.HexSlot;
+
+import vini.evictmap.gen.EvictSettings;
 
 import arc.util.Log;
 import mindustry.Vars;
@@ -31,7 +36,7 @@ public final class EvictTerrainGenerator {
 
     private final EvictSettings settings;
 
-    EvictTerrainGenerator(EvictSettings settings) {
+    public EvictTerrainGenerator(EvictSettings settings) {
         this.settings = settings;
     }
 
@@ -126,7 +131,7 @@ public final class EvictTerrainGenerator {
      *                      (duel /restart, evictgen on a live map) needs the per-tile push,
      *                      because no fresh snapshot is sent there.
      */
-    GeneratedRound generate(long seed, boolean syncToClients) {
+    public GeneratedRound generate(long seed, boolean syncToClients) {
         if (
                 Vars.world == null
                         || Vars.world.width() <= 0
@@ -212,6 +217,7 @@ public final class EvictTerrainGenerator {
 
         return new GeneratedRound(
                 startHexSlots(centers, normalCells, filledCells),
+                filledHexSlots(centers, filledCells),
                 normalCells.size(),
                 filledCells.size(),
                 repairedConnectivityEdges.size(),
@@ -266,8 +272,9 @@ public final class EvictTerrainGenerator {
         );
     }
 
-    record GeneratedRound(
-            List<TeamManager.HexSlot> slots,
+    public record GeneratedRound(
+            List<HexSlot> slots,
+            List<HexSlot> filledSlots,
             int normalHexes,
             int filledHexes,
             int repairedConnectivityEdges,
@@ -760,19 +767,19 @@ public final class EvictTerrainGenerator {
         }
     }
 
-    private List<TeamManager.HexSlot> startHexSlots(
+    private List<HexSlot> startHexSlots(
             Map<Cell, Point> centers,
             List<Cell> normalCells,
             Set<Cell> filledCells
     ) {
-        List<TeamManager.HexSlot> slots = new ArrayList<>();
+        List<HexSlot> slots = new ArrayList<>();
 
         for (Cell cell : normalCells) {
             Point center = centers.get(cell);
             int protectedSides = protectedStartSides(cell, filledCells);
 
             slots.add(
-                    new TeamManager.HexSlot(
+                    new HexSlot(
                             cell.col,
                             cell.row,
                             center.x,
@@ -780,6 +787,28 @@ public final class EvictTerrainGenerator {
                             protectedSides
                     )
             );
+        }
+
+        return slots;
+    }
+
+    /**
+     * Location-only hex slots for the filled (wall) hexes. They own no core and
+     * never take part in ownership or victory; the round system uses them only
+     * so a unit sitting over a wall hex is recognised as inside that hex rather
+     * than snapped to a possibly-non-adjacent normal hex (see
+     * {@code TeamManager.locationHexes}). {@code protectedSides} is irrelevant
+     * here, so it is left 0.
+     */
+    private List<HexSlot> filledHexSlots(
+            Map<Cell, Point> centers,
+            Set<Cell> filledCells
+    ) {
+        List<HexSlot> slots = new ArrayList<>();
+
+        for (Cell cell : filledCells) {
+            Point center = centers.get(cell);
+            slots.add(new HexSlot(cell.col, cell.row, center.x, center.y, 0));
         }
 
         return slots;

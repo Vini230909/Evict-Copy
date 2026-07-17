@@ -1,5 +1,9 @@
 package vini.evictmap;
 
+import vini.evictmap.gen.*;
+import vini.evictmap.data.*;
+import vini.evictmap.round.*;
+
 import arc.Core;
 import arc.Events;
 import arc.util.CommandHandler;
@@ -27,6 +31,7 @@ import vini.evictmap.duel.DuelServerManager;
 import vini.evictmap.duel.DuelWorker;
 import vini.evictmap.duel.modes.DuelMode;
 import vini.evictmap.commands.*;
+import vini.evictmap.core.util.PluginLog;
 
 import java.util.HashMap;
 
@@ -77,6 +82,12 @@ public class EvictMapPlugin extends Plugin {
     private final DuelServerManager duelServerManager =
             new DuelServerManager(settings, playerDataManager);
 
+    private final vini.evictmap.metrics.MetricsReporter metricsReporter =
+            new vini.evictmap.metrics.MetricsReporter(
+                    () -> duelServerManager.activeDuels().size(),
+                    duelServerManager::connectedDuelPlayers
+            );
+
     private final DuelCommands duelCommands =
             new DuelCommands(
                     duelServerManager,
@@ -91,6 +102,9 @@ public class EvictMapPlugin extends Plugin {
     private final InfoCommands infoCommands =
             new InfoCommands(playerDataManager);
 
+    private final LeaderboardCommands leaderboardCommands =
+            new LeaderboardCommands(playerDataManager);
+
     private final HelpCommands helpCommands =
             new HelpCommands();
 
@@ -103,11 +117,24 @@ public class EvictMapPlugin extends Plugin {
                     duelCommands,
                     historyCommands,
                     infoCommands,
+                    leaderboardCommands,
                     helpCommands
             );
 
     private final EvictTerrainGenerator terrainGenerator =
             new EvictTerrainGenerator(settings);
+
+    /**
+     * Graceful-restart coordinator. The plugin only exits cleanly; an external
+     * start-script loop (docs/RESTART_LOOP.md) brings the server back up.
+     */
+    private final RestartManager restartManager =
+            new RestartManager(
+                    () -> duelServerManager.activeDuels().size(),
+                    Groups.player::size,
+                    teamManager::roundRuntimeMillis,
+                    () -> Core.app.exit()
+            );
 
     private final ConsoleCommands consoleCommands =
             new ConsoleCommands(
@@ -118,6 +145,7 @@ public class EvictMapPlugin extends Plugin {
                     playerDataManager,
                     duelServerManager,
                     rankManager,
+                    restartManager,
                     // evictgen regenerates the live map in place with no fresh snapshot,
                     // so connected clients only see the new terrain via the per-tile sync.
                     seed -> generate(seed, true)
@@ -142,76 +170,15 @@ public class EvictMapPlugin extends Plugin {
 
     @Override
     public void init() {
-        settings.load();
-        rankManager.load();
-        playerDataManager.start();
+        bootstrap();
 
-        // A duel worker's own DB has no real matches; point /history at the hub
-        // DB (the worker runs in duel-workers/duel-<port>/, so the hub config is
-        // two levels up) so spectators and players still see real history.
         if (duelWorker) {
-            playerDataManager.useHistoryDatabase(
-                    new java.io.File("../../config/evict-players.db")
-            );
-
-            installDuelChatFilter();
-        }
-        RulesApplier.applyRules();
-        teamManager.setInviteManager(inviteManager);
-        teamManager.setDuelMode(duelWorker);
-
-        // Teams-mode workers put a whole handshake roster on one Mindustry
-        // team; on the hub (and in other modes) the resolver finds no
-        // teammates and normal per-player assignment applies.
-        if (duelWorker) {
-            teamManager.setTeammateResolver(duelWorkerReferee::rosterTeammates);
-
-            // A leaving participant only pauses the match while their team is
-            // still in the running; an eliminated FFA player walking out must
-            // not freeze the survivors.
-            duelWorkerReferee.setStillCompeting(
-                    player -> player != null
-                            && teamManager.isActivePersonalTeam(player.team().id)
-            );
-
-            // A knocked-out FFA or Teams player is free: demoted to a
-            // spectator, they can watch, /v back to the lobby, or disconnect -
-            // the hub will let them join the main round normally instead of
-            // bouncing them back into this match. In two-team games the
-            // deciding elimination fires this too, harmlessly: the victory
-            // resolves right after from the unchanged rosters.
-            teamManager.setDuelEliminationHandler(team -> {
-                DuelMode workerMode = duelWorkerReferee.duelMode();
-
-                if (!workerMode.eliminatesWipedTeams()) {
-                    return;
-                }
-
-                for (String uuid : teamManager.playerUuidsForTeam(team)) {
-                    duelWorkerReferee.demoteToSpectator(uuid);
-
-                    Player member = Groups.player.find(
-                            online -> online != null && online.uuid().equals(uuid)
-                    );
-
-                    if (member != null) {
-                        teamManager.assignSpectator(member);
-                        member.sendMessage(
-                                "[scarlet]You are out of the "
-                                        + workerMode.mode().label()
-                                        + " match.[] [accent]You are now spectating - use [white]/v[accent] to return to the lobby.[]"
-                        );
-                    }
-                }
-            });
-        }
-
-        // Hub only: a server update means a new jar + a restart, so on startup
-        // bring every existing duel-worker folder onto the current jar. This
-        // keeps idle workers from redirecting clients to a version-mismatched
-        // server (seen as a Network I/O error) without deleting the folders and
-        // losing their logs.
-        if (!duelWorker) {
+            configureWorkerReferee();
+        } else {
+            // Hub only: a server update means a new jar + a restart, so on
+            // startup bring every existing duel-worker folder onto the current
+            // jar. This keeps idle workers off a version-mismatched server
+            // without deleting the folders and losing their logs.
             duelServerManager.refreshWorkerJars();
         }
 
@@ -316,8 +283,8 @@ public class EvictMapPlugin extends Plugin {
                     duelWorker
                             && !duelWorkerReferee.isParticipant(event.player.uuid())
             ) {
-                teamManager.assignSpectator(event.player);
-                duelWorkerReferee.handlePlayerJoin(event.player);
+                guarded("spectator assign", () -> teamManager.assignSpectator(event.player));
+                guarded("duelWorker join", () -> duelWorkerReferee.handlePlayerJoin(event.player));
                 event.player.sendMessage(
                         "[accent]Spectating this match. Use [white]/v[accent] to return to the lobby.[]"
                 );
@@ -349,20 +316,22 @@ public class EvictMapPlugin extends Plugin {
                 return;
             }
 
-            playerDataManager.handlePlayerJoin(event.player);
-            roundTimeCommands.handlePlayerJoin(event.player);
-            teamManager.handlePlayerJoin(event.player);
-            playerDataManager.recordConnectedFfaParticipants(teamManager);
-            duelWorkerReferee.handlePlayerJoin(event.player);
+            // Each handler runs isolated: one failing must not starve the ones
+            // after it - above all the referee's disconnect-pause bookkeeping,
+            // which has to see every join or a paused match never resumes.
+            guarded("playerData join", () -> playerDataManager.handlePlayerJoin(event.player));
+            guarded("roundTime join", () -> roundTimeCommands.handlePlayerJoin(event.player));
+            guarded("teamManager join", () -> teamManager.handlePlayerJoin(event.player));
+            guarded("duelWorker join", () -> duelWorkerReferee.handlePlayerJoin(event.player));
         });
 
         Events.on(PlayerLeave.class, event -> {
-            playerDataManager.handlePlayerLeave(event.player);
-            inviteManager.handlePlayerLeave(event.player);
-            duelCommands.handlePlayerLeave(event.player);
-            historyCommands.handlePlayerLeave(event.player);
-            infoCommands.handlePlayerLeave(event.player);
-            duelWorkerReferee.handlePlayerLeave(event.player);
+            guarded("playerData leave", () -> playerDataManager.handlePlayerLeave(event.player));
+            guarded("invite leave", () -> inviteManager.handlePlayerLeave(event.player));
+            guarded("duelCommands leave", () -> duelCommands.handlePlayerLeave(event.player));
+            guarded("history leave", () -> historyCommands.handlePlayerLeave(event.player));
+            guarded("info leave", () -> infoCommands.handlePlayerLeave(event.player));
+            guarded("duelWorker leave", () -> duelWorkerReferee.handlePlayerLeave(event.player));
         });
 
         Events.on(TilePreChangeEvent.class, tilePreChangeEvent -> {
@@ -401,12 +370,87 @@ public class EvictMapPlugin extends Plugin {
             // advertised count folded with the players inside the duel workers.
             if (!duelWorker) {
                 refreshAdvertisedPlayerCount();
+                metricsReporter.update();
             }
         });
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.3.1. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.4.1. Use 'evictstatus' for commands and current settings."
         );
+    }
+
+    /** Loads persisted state and applies the fixed round rules and team wiring. */
+    private void bootstrap() {
+        settings.load();
+        rankManager.load();
+        playerDataManager.start();
+
+        // A duel worker's own DB has no real matches; point /history at the hub
+        // DB (the worker runs in duel-workers/duel-<port>/, so the hub config is
+        // two levels up) so spectators and players still see real history.
+        if (duelWorker) {
+            playerDataManager.useHistoryDatabase(
+                    new java.io.File("../../config/evict-players.db")
+            );
+
+            installDuelChatFilter();
+        }
+
+        RulesApplier.applyRules();
+        teamManager.setInviteManager(inviteManager);
+        teamManager.setDuelMode(duelWorker);
+    }
+
+    /**
+     * Duel-worker-only: teach the team system the roster rules for the match
+     * mode - how teammates group, when a leaver pauses the match, and what
+     * happens to a wiped-out team (freed as a spectator, or a deciding loss).
+     */
+    private void configureWorkerReferee() {
+        // Teams-mode workers put a whole handshake roster on one Mindustry
+        // team; on the hub (and in other modes) the resolver finds no
+        // teammates and normal per-player assignment applies.
+        teamManager.setTeammateResolver(duelWorkerReferee::rosterTeammates);
+
+        // A leaving participant only pauses the match while their team is
+        // still in the running; an eliminated FFA player walking out must
+        // not freeze the survivors.
+        teamManager.setDuelEliminationHandler(this::freeEliminatedDuelTeam);
+
+        duelWorkerReferee.setStillCompeting(
+                player -> player != null
+                        && teamManager.isActivePersonalTeam(player.team().id)
+        );
+    }
+
+    /**
+     * A knocked-out FFA or Teams player is free: demoted to a spectator, they
+     * can watch, /v back to the lobby, or disconnect - the hub will let them
+     * join the main round normally instead of bouncing them back into this
+     * match. In two-team games the deciding elimination fires this too,
+     * harmlessly: the victory resolves right after from the unchanged rosters.
+     */
+    private void freeEliminatedDuelTeam(Team team) {
+        DuelMode workerMode = duelWorkerReferee.duelMode();
+
+        if (!workerMode.eliminatesWipedTeams()) {
+            return;
+        }
+
+        for (String uuid : teamManager.playerUuidsForTeam(team)) {
+            duelWorkerReferee.demoteToSpectator(uuid);
+
+            Player member = vini.evictmap.core.util.Players.byUuid(uuid);
+
+            if (member != null) {
+                teamManager.assignSpectator(member);
+                member.sendMessage(
+                        "[scarlet]You are out of the "
+                                + workerMode.mode().label()
+                                + " match.[] [accent]You are now spectating - use [white]/v[accent] to return to the lobby.[]"
+                );
+            }
+        }
     }
 
     /**
@@ -462,8 +506,8 @@ public class EvictMapPlugin extends Plugin {
 
         refreshWorldIndexes();
 
-        teamManager.beginRound(round.slots(), seed);
-        playerDataManager.beginFfaRound();
+        teamManager.beginRound(round.slots(), round.filledSlots(), seed);
+        playerDataManager.beginRound();
         attritionManager.beginRound();
         attackManager.beginRound();
         inviteManager.beginRound();
@@ -543,7 +587,6 @@ public class EvictMapPlugin extends Plugin {
     }
 
     private void handleRoundVictory(Team winner) {
-        playerDataManager.recordFfaWinner(teamManager, winner);
         runtime.nextSeed = runtime.randomSeed();
 
         Log.info(
@@ -553,12 +596,15 @@ public class EvictMapPlugin extends Plugin {
         );
 
         Events.fire(new GameOverEvent(winner));
+
+        // Best moment for a queued update restart: the fresh process will
+        // generate the next round, so no player loses progress.
+        restartManager.onRoundEnded();
     }
 
     private void assignConnectedPlayersAndRecordStats() {
         roundTimeCommands.rememberConnectedPlayers();
         teamManager.assignConnectedPlayers(this::isDuelSpectator);
-        playerDataManager.recordConnectedFfaParticipants(teamManager);
     }
 
     /**
@@ -652,6 +698,24 @@ public class EvictMapPlugin extends Plugin {
         duelWorkerReferee.restartMatch();
     }
 
+
+    /**
+     * Runs one player-event handler isolated from the others. Arc's Events.fire
+     * lets an exception abort every remaining listener statement, so without
+     * this a single failing handler would silently skip the rest of the chain
+     * (and take the vanilla listeners registered after this plugin down with
+     * it). The failure is logged with its stage name instead.
+     */
+    private static void guarded(String stage, Runnable handler) {
+        try {
+            handler.run();
+        } catch (Exception exception) {
+            PluginLog.err(
+                    "Player event handler '" + stage + "' failed.",
+                    exception
+            );
+        }
+    }
 
     private void refreshWorldIndexes() {
         refreshingWorldIndexes = true;

@@ -1,6 +1,6 @@
 # CLAUDE.md — EvictMapGenerator
 
-Server-side Mindustry plugin (game v157.4, Java 17 source) for Evict-style persistent PvP on a procedurally generated hex map. Runs on a dedicated server; clients install nothing. Current version **1.3.1** — `plugin.json` `version` and the startup revision string in `EvictMapPlugin` must always match.
+Server-side Mindustry plugin (game v157.4, Java 17 source) for Evict-style persistent PvP on a procedurally generated hex map. Runs on a dedicated server; clients install nothing. Current version **1.4.1** — `plugin.json` `version` and the startup revision string in `EvictMapPlugin` must always match.
 
 One jar, two roles:
 - **Hub** — the normal Evict FFA server players connect to.
@@ -14,7 +14,7 @@ One jar, two roles:
 
 No system `java`/`gradle` on this machine — point `JAVA_HOME` at the VSCode Java extension's bundled JDK 21 first (glob `~/.vscode/extensions/redhat.java-*/jre/*`). Build after every code change; fix compile errors immediately.
 
-Deploy: copy the jar into the server's `config/mods/` and restart. **Delete `duel-workers/` after every plugin update** — workers are provisioned from the hub's own files and would otherwise keep running the stale jar. The server console is not a shell: set the port with `config port <n>`, host with `host evict-map pvp`; `evictauto` defaults ON, so hosting auto-generates an Evict round.
+Deploy: copy the jar into the server's `config/mods/` and restart — nothing else. `duel-workers/` must **not** be deleted: every worker spawn re-copies `config/mods` into its folder and `refreshWorkerJars()` updates stale server jars on hub startup, so workers pick up a new plugin automatically. The server console is not a shell: set the port with `config port <n>`, host with `host evict-map pvp`; `evictauto` defaults ON, so hosting auto-generates an Evict round.
 
 ## Working rules
 
@@ -25,11 +25,23 @@ Deploy: copy the jar into the server's `config/mods/` and restart. **Delete `due
 
 ## Code map (`src/vini/evictmap/`)
 
+Package layout (reorganised in 1.4.0): `core/` shared infrastructure, `gen/`
+generation + settings, `round/` team/round systems, `data/` persistence, `gameplay/`,
+`duel/`, `commands/`, `metrics/`. `EvictMapPlugin`, `RestartManager` and
+`PlayerNameFormatter` stay at the package root.
+
+Core infrastructure (`core/`) — reusable, gameplay-agnostic:
+- `text/Colors`, `text/Text`, `text/Msg` — named colour tags + a fluent coloured-message builder (`Text.of().scarlet(...).player(p)...sendTo(...)`) + a small reusable-message catalogue. Replaces hundreds of inline `[scarlet]…[]` literals.
+- `cmd/` — the command framework: `Command`/`Command.Builder` (declare a command as data), `Arg`/`ArgType` (typed `"name:type"` args, e.g. `"target:player"`), `Perm`, `CommandContext` (injected sender + typed getters + `reply/success/error/fail`), `CommandError`, `Commands` (registers into Mindustry's `CommandHandler`, doing perms/parsing/error-catching centrally).
+- `io/PropertiesFile` — load/save `Properties` with mkdirs + typed getters.
+- `util/Players` (online lookup by uuid/name), `util/PluginLog` (`[EvictMapGenerator]`-prefixed logging), `util/Ticks` (second↔tick).
+
 Lifecycle:
-- `EvictMapPlugin` — composition root: event wiring, manager construction, round startup, auto next-round reset; on a worker also wires the referee and the empty-server self-exit.
-- `EvictRuntimeState` — auto-generation state, current/next map seed.
-- `EvictSettings` — loads/persists `config/evict-map-generator.properties`.
-- `RestartManager` — `evictrestart` console restart flow (see its class javadoc for the removal rule).
+- `EvictMapPlugin` — composition root: `bootstrap()` + `configureWorkerReferee()` + event wiring (broken out of the old monolithic `init()`), manager construction, round startup, auto next-round reset; on a worker also wires the referee and the empty-server self-exit.
+- `gen/EvictRuntimeState` — auto-generation state, current/next map seed.
+- `gen/EvictSettings` — loads/persists `config/evict-map-generator.properties`.
+- `RestartManager` — implemented `evictrestart` graceful-restart flow (queue / `cancel` / `now`); the plugin only exits cleanly, an external start-script loop relaunches it — see `docs/RESTART_LOOP.md`.
+- `metrics/MetricsReporter` — throttled hub metrics log line (players, duel players, active matches).
 - `gameplay/RulesApplier` — fixed PvP rules, banned blocks, building-vs-building bullet damage scaling, disables Alpha/Beta/Gamma core-unit combat damage while keeping their building/mining.
 
 Generation:
@@ -41,6 +53,8 @@ Generation:
 
 Round systems:
 - `TeamManager` — personal teams, Fallen handling, leaders, claims, eliminations, surrender, victory checks, Extinction terrain queue.
+- `HexSlot` — one hex cell: immutable geometry (col/row, center tile, protected sides) + live capture/Extinction state. Shared by TeamManager, CoreCapture, terrain gen and Extinction.
+- `HexGeometry` — pure offset-grid math over `HexSlot` (tile distance, BFS grid distance, adjacency, nearest-slot); stateless and unit-testable.
 - `TeamColors` — picks new team ids with colours distinguishable from those in play.
 - `CoreCapture` — destroyed-core lifecycle: immediate captured-hex cleanup, 5 s replacement delay, second anti-abuse cleanup, replacement Core Shard, verified core placement (also used by surrender's Fallen restore).
 - `gameplay/AttritionManager` — capture attrition and range attrition.
@@ -59,11 +73,12 @@ Matches:
 
 Commands (`commands/`):
 - `ClientCommands` — single registration point for player chat commands.
-- `ConsoleCommands` — console commands (`evict*`), stored player lookup, `evictelo`.
+- `ConsoleCommands` — console commands (`evict*`), stored player lookup, `evictelo`, `evictrestart`; declared on the `core/cmd` framework (the old ~319-line `register()` is now a flat list of `command(...).run(...)`).
 - `DuelCommands` — `/play` `/p` menus.
 - `HelpCommands` — `/help`.
 - `HistoryCommands` — `/history` `/h`.
 - `InfoCommands` — `/info`.
+- `LeaderboardCommands` — `/leaderboard` (`/top`, `/lb`): ranked ELO ladder over the player DB.
 - `RoundEndCommands` — `/die`, `/over`.
 - `RoundTimeCommands` — `/time`.
 
@@ -92,10 +107,13 @@ Commands (`commands/`):
 
 ### Player data (`config/evict-players.db`)
 - Async writes on one background thread; profiles keyed by UUID; no IP addresses stored.
-- Stored: last name, first/last seen, total playtime, FFA playtime, FFA played/won; all observed names per UUID in `player_names`.
-- Ranked wins/losses/played, ELO and peak ELO update only after a **Ranked** match (casual 1v1 never touches them); match rows store both players' before/after ELO. Ranked playtime is a reserved column.
+- Stored: last name, first/last seen, one total playtime, normal + ranked match counters, ELO/peak ELO; all observed names per UUID in `player_names`. Match stats exist only for normal and ranked matches — the main-lobby FFA round has no stats (legacy `ffa_*` / `ranked_playtime_ms` columns in old databases are ignored).
+- Ranked wins/losses/played, ELO and peak ELO update only after a **Ranked** match (casual 1v1 never touches them); match rows store both players' before/after ELO.
+- Normal wins/losses/played count every competitive `/play` match: casual 1v1, Teams and `/play` FFA (Random Teams records as Teams; Training/Sandbox never record). Ranked matches count only in the ranked counters. `/info` shows Total playtime, Normal, Ranked and ELO.
+- Every `players` column newer than the original baseline has an `ALTER TABLE` guard, so databases created by old plugin versions upgrade in place instead of failing writes silently.
+- One-time stats repair (tracked via `PRAGMA user_version`): pre-1.4 builds counted every casual 1v1 in the ranked counters, so on first startup the plugin recounts normal/ranked counters from the `duel_matches` rows and replays all ranked rows chronologically through `EloCalculator`, rewriting each row's before/after ratings and every player's ELO/peak (manual `evictelo` values from before the repair are replaced).
 - New players start at ELO 1000; peak ELO only ever rises (manual `evictelo` sets never lower it).
-- FFA playtime counts only after the player has a personal team that round. Playtime flushes at round start, on leave and on shutdown; `/info` and `evictplayerinfo` add live unpersisted session time.
+- Playtime flushes at round start, on leave and on shutdown; `/info` and `evictplayerinfo` add live unpersisted session time.
 - Lookup order for `/info [name]`, `evictplayerinfo`, `evictelo`: partial latest-name match first; old names and UUIDs only if no latest-name match. Ambiguous `evictelo` names list candidates and change nothing.
 - `/info` is public, never shows UUIDs; with no argument it opens a clickable online-player picker.
 
@@ -107,6 +125,7 @@ Commands (`commands/`):
 - `/time` — round runtime since map start + the player's connected time since first join this round (join records remembered across startup scans; fallback is round start).
 - `/help [page]` — paginated; never lists itself; aliases fold into their target's row (e.g. `/history (/h)`); `/restart` is listed with its commentator/admin description and stays permission-gated. There is no separate dev help — former dev chat commands are console-only (`evictattritioncore`, `evictattritionrange`, `evictwall`, `evictcorecap`).
 - `/history` (`/h`) — a player's 1v1, Teams and FFA matches, most recent first.
+- `/leaderboard` (`/top`, `/lb`) — the ranked ELO ladder (players with ≥ 1 ranked match), highest first; optional count (1–25, default 10).
 
 ### Matches (`/play`, `/p`)
 Game-mode menu: `1v1`, `Ranked`, `Teams`, `Random Teams`, `FFA`, `Training`, `Sandbox`.
@@ -148,6 +167,7 @@ Water: configured tries per hex (not per-core fallback); decimal tries give a fr
 - Build speed: `evictbuildspeed [multiplier]` — unit-factory build speed each round; no argument shows current; default `1.4`; stored as `rules.unitBuildSpeedMultiplier` and copied into every worker; applies next generated match.
 - Duel pool: `evictduelserver [ip] [basePort] [maxWorkers] [map]` — no argument shows config; omitted values keep current. `ip` is what clients reach workers at (blank = `/play` inert); workers use `basePort .. basePort+maxWorkers-1`. Defaults: ip unset, basePort `6568`, maxWorkers `4`, map `evict-map`, worker jar `server-release.jar`.
 - Player data: `evictplayerinfo [name/uuid]`, `evictelo <name/uuid> <value>` (see Player data above).
+- Restart: `evictrestart` queues a graceful update restart (fires when no worker runs and the round ends / hub is empty / round is < 10 min old with a 30 s warning); `evictrestart cancel` drops it; `evictrestart now` exits immediately. Needs the external start-script loop from `docs/RESTART_LOOP.md` to actually relaunch.
 
 ## Safety notes
 

@@ -8,7 +8,8 @@ import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Unit;
 import mindustry.world.Tile;
-import vini.evictmap.TeamManager;
+import vini.evictmap.round.TeamManager;
+import vini.evictmap.round.HexSlot;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -67,7 +68,7 @@ public final class ExtinctionManager implements GameplayManagerInterface {
      * A queue holding a list of hexes to collapse.
      * Will be drained at 1 hex per tick when no other work is going on.
      */
-    private final ArrayDeque<TeamManager.HexSlot> queueOfHexesToCollapse = new ArrayDeque<>();
+    private final ArrayDeque<HexSlot> queueOfHexesToCollapse = new ArrayDeque<>();
 
     /**
      * A queue holding a list of tiles to fill with void (Blocks.space).
@@ -119,7 +120,7 @@ public final class ExtinctionManager implements GameplayManagerInterface {
         }
 
         if(!queueOfHexesToCollapse.isEmpty()) {
-            TeamManager.HexSlot slot = queueOfHexesToCollapse.pollFirst();
+            HexSlot slot = queueOfHexesToCollapse.pollFirst();
 
             slot.extinct = true;
             slot.capturing = false;
@@ -216,7 +217,7 @@ public final class ExtinctionManager implements GameplayManagerInterface {
      * @param ringNumber Which ring to collapse (number from 1 to 5).
      */
     private void collapseRing(int ringNumber) {
-        for (TeamManager.HexSlot slot : teamManager.slots())
+        for (HexSlot slot : teamManager.slots())
             if (!slot.extinct && teamManager.gridDistanceFromCenter(slot) >= ringNumber)
                 queueOfHexesToCollapse.addLast(slot);
     }

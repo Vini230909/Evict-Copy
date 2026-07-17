@@ -7,7 +7,7 @@ import mindustry.gen.Groups;
 import mindustry.gen.Player;
 import mindustry.gen.Unit;
 import mindustry.world.blocks.storage.CoreBlock.CoreBuild;
-import vini.evictmap.TeamManager;
+import vini.evictmap.round.TeamManager;
 
 import java.util.HashSet;
 import java.util.List;

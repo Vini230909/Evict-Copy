@@ -1,4 +1,4 @@
-package vini.evictmap;
+package vini.evictmap.gen;
 
 import arc.struct.Seq;
 import arc.util.Log;
@@ -18,7 +18,7 @@ import mindustry.world.blocks.storage.CoreBlock.CoreBuild;
  * self-contained JAR. The schematic is 15x15, contains one centered Nucleus at
  * local coordinate 7,7 and preserves rotations plus block configurations.
  */
-final class StartLoadout {
+public final class StartLoadout {
 
     private static final String START_SCHEMATIC_BASE64 =
             "bXNjaAF4nDWTbW7UMBCGJ3Y+vHG85Qi9wEr8RL0DJ0D8cFMjVgpJlE1bqqr34K4Uyrzz0o02T5zMvPPhsVzJVS31nH8U+VAezuN+"
@@ -37,7 +37,7 @@ final class StartLoadout {
     private StartLoadout() {
     }
 
-    static void place(int coreX, int coreY, Team team) {
+    public static void place(int coreX, int coreY, Team team) {
         Stile schematicCore = START_SCHEMATIC.tiles.find(
                 stile -> stile.block instanceof mindustry.world.blocks.storage.CoreBlock
         );

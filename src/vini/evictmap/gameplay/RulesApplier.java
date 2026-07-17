@@ -18,7 +18,7 @@ import mindustry.world.blocks.defense.turrets.ContinuousTurret;
 import mindustry.world.blocks.defense.turrets.ItemTurret;
 import mindustry.world.blocks.defense.turrets.LiquidTurret;
 import mindustry.world.blocks.defense.turrets.PowerTurret;
-import vini.evictmap.TeamManager;
+import vini.evictmap.round.TeamManager;
 
 /**
  * Apply static rules to the map.

@@ -1,6 +1,9 @@
 package vini.evictmap.commands;
 
 import vini.evictmap.*;
+import vini.evictmap.gen.*;
+import vini.evictmap.data.*;
+import vini.evictmap.round.*;
 
 import arc.util.CommandHandler;
 import vini.evictmap.gameplay.AttackManager;
@@ -17,6 +20,7 @@ public final class ClientCommands {
     private final DuelCommands duels;
     private final HistoryCommands history;
     private final InfoCommands info;
+    private final LeaderboardCommands leaderboard;
     private final HelpCommands help;
 
     public ClientCommands(
@@ -27,6 +31,7 @@ public final class ClientCommands {
             DuelCommands duels,
             HistoryCommands history,
             InfoCommands info,
+            LeaderboardCommands leaderboard,
             HelpCommands help
     ) {
         this.fullassault = fullassault;
@@ -36,6 +41,7 @@ public final class ClientCommands {
         this.duels = duels;
         this.history = history;
         this.info = info;
+        this.leaderboard = leaderboard;
         this.help = help;
     }
 
@@ -47,6 +53,7 @@ public final class ClientCommands {
         duels.registerClientCommands(handler);
         history.registerClientCommands(handler);
         info.registerClientCommands(handler);
+        leaderboard.registerClientCommands(handler);
 
         // Register last so the filtered menu replaces vanilla /help.
         help.registerClientCommands(handler);

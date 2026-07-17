@@ -79,6 +79,15 @@ public final class DuelWorker {
      */
     private static final float CAMERA_SETTLE_TICKS = 18f;
 
+    /**
+     * How many queued build plans a client syncs to the server at most (the
+     * head of its queue; see TypeIO.getMaxPlans - possibly fewer when
+     * byte[]/String plan configs eat the 500-byte budget). Beyond this the
+     * server cannot know a player's full queue, so the pause plan guard must
+     * not scrub what it cannot enumerate.
+     */
+    private static final int PLAN_SYNC_CAP = 20;
+
     private final boolean active;
 
     private final ScheduledExecutorService scheduler =
@@ -166,6 +175,17 @@ public final class DuelWorker {
     private long pauseChargeStartMillis = 0L;
 
     /**
+     * Participants the match has already moved on without: their disconnect
+     * pause expired unreturned, or they left with no pause budget remaining.
+     * They stay rostered participants (they may still come back), but a later
+     * disconnect pause no longer waits for them - otherwise one permanent
+     * leaver would make every future pause run its full length even though
+     * everyone still competing is present. Rejoining removes the waiver.
+     * Cleared on /restart.
+     */
+    private final Set<String> waivedUuids = new HashSet<>();
+
+    /**
      * The build plans each player already had queued when the disconnect
      * pause began. While the guard is active, every update tick removes any
      * plan not in here from both the server-side queue and the placing
@@ -173,6 +193,15 @@ public final class DuelWorker {
      * time. Plans queued before the pause survive untouched.
      */
     private final Map<String, Set<String>> pausePlanKeysByUuid = new HashMap<>();
+
+    /**
+     * Players whose synced queue was already at the {@link #PLAN_SYNC_CAP}
+     * (or carried size-capped configs) when it was baselined: their full
+     * client-side queue is unknowable, so they are exempt from scrubbing -
+     * deleting blueprints they placed before the pause would be worse than
+     * missing a few queued during it.
+     */
+    private final Set<String> planGuardExemptUuids = new HashSet<>();
     private boolean planGuardActive = false;
 
     /**
@@ -610,6 +639,10 @@ public final class DuelWorker {
         }
 
         if (matchStarted) {
+            if (player != null) {
+                waivedUuids.remove(player.uuid());
+            }
+
             if (pausedForDisconnect && bothPlayersPresent()) {
                 endDisconnectPause();
             }
@@ -709,6 +742,14 @@ public final class DuelWorker {
                         || !duelMode.gated()
                         || player == null
         ) {
+            return;
+        }
+
+        // A dead connection can time out and fire its leave event *after* the
+        // same player already reconnected - both Player entities share one
+        // uuid until the ghost is gone. That stale leave must not freeze the
+        // match: the player is still here on the newer connection.
+        if (isOnlineElsewhere(player)) {
             return;
         }
 
@@ -1016,9 +1057,11 @@ public final class DuelWorker {
         // back, and a pause that was running is not charged to anyone. The
         // world regenerates, so the plan guard is dropped without a scrub.
         usedPauseMillisByUuid.clear();
+        waivedUuids.clear();
         pauseChargedUuid = null;
         planGuardActive = false;
         pausePlanKeysByUuid.clear();
+        planGuardExemptUuids.clear();
 
         hideHud();
         Call.sendMessage("[accent]The match was restarted by a commentator.[]");
@@ -1050,6 +1093,7 @@ public final class DuelWorker {
         int windowSeconds = remainingPauseSeconds(player.uuid());
 
         if (windowSeconds <= 0) {
+            waivedUuids.add(player.uuid());
             Call.sendMessage(
                     "[scarlet]" + PlayerNameFormatter.displayName(player)
                             + "[scarlet] left but has no rejoin time left this match. The match continues.[]"
@@ -1116,24 +1160,46 @@ public final class DuelWorker {
      */
     private void beginPlanGuard() {
         pausePlanKeysByUuid.clear();
+        planGuardExemptUuids.clear();
 
         Groups.player.each(player -> {
             Unit unit = player == null || player.dead() ? null : player.unit();
 
-            if (unit == null) {
-                return;
+            if (unit != null) {
+                baselinePausePlans(player, unit);
             }
-
-            Set<String> keys = new HashSet<>();
-
-            for (BuildPlan plan : unit.plans()) {
-                keys.add(planKey(plan));
-            }
-
-            pausePlanKeysByUuid.put(player.uuid(), keys);
         });
 
         planGuardActive = true;
+    }
+
+    /**
+     * Records this player's currently synced plans as their allowed set. If
+     * the synced head of the queue may be truncated (at the sync cap, or
+     * carrying the configs that shrink it), the full queue is unknowable and
+     * the player is exempted from scrubbing instead - see
+     * {@link #planGuardExemptUuids}.
+     */
+    private void baselinePausePlans(Player player, Unit unit) {
+        Set<String> keys = new HashSet<>();
+        boolean truncatable = unit.plans().size >= PLAN_SYNC_CAP;
+
+        for (BuildPlan plan : unit.plans()) {
+            if (
+                    plan.config instanceof byte[]
+                            || plan.config instanceof String
+            ) {
+                truncatable = true;
+            }
+
+            keys.add(planKey(plan));
+        }
+
+        if (truncatable) {
+            planGuardExemptUuids.add(player.uuid());
+        } else {
+            pausePlanKeysByUuid.put(player.uuid(), keys);
+        }
     }
 
     private void endPlanGuard() {
@@ -1144,6 +1210,7 @@ public final class DuelWorker {
         scrubPausePlans();
         planGuardActive = false;
         pausePlanKeysByUuid.clear();
+        planGuardExemptUuids.clear();
     }
 
     /**
@@ -1152,7 +1219,19 @@ public final class DuelWorker {
      * the still-syncing clients queue them.
      */
     public void update() {
-        if (!active || !planGuardActive) {
+        if (!active) {
+            return;
+        }
+
+        // The resume must not hinge on the PlayerJoin event alone: whatever
+        // order the engine delivers leave/join in, and whatever else runs in
+        // the join chain, the moment everyone required is connected again the
+        // pause ends. This trigger fires even while the game is paused.
+        if (pausedForDisconnect && bothPlayersPresent()) {
+            endDisconnectPause();
+        }
+
+        if (!planGuardActive) {
             return;
         }
 
@@ -1167,11 +1246,26 @@ public final class DuelWorker {
                 return;
             }
 
+            if (planGuardExemptUuids.contains(player.uuid())) {
+                return;
+            }
+
             Set<String> allowed = pausePlanKeysByUuid.get(player.uuid());
+
+            if (allowed == null) {
+                // First sight of this queue during the guard: the rejoiner
+                // whose client just re-sent its pre-disconnect plans, or a
+                // player who was dead when the pause began. Those are their
+                // existing blueprints, not ones drawn during the freeze -
+                // baseline them instead of wiping them.
+                baselinePausePlans(player, unit);
+                return;
+            }
+
             List<BuildPlan> added = new ArrayList<>();
 
             for (BuildPlan plan : unit.plans()) {
-                if (allowed == null || !allowed.contains(planKey(plan))) {
+                if (!allowed.contains(planKey(plan))) {
                     added.add(plan);
                 }
             }
@@ -1202,6 +1296,15 @@ public final class DuelWorker {
 
     private void showRejoinCountdown(int serial, int remaining) {
         if (serial != disconnectSerial || !pausedForDisconnect) {
+            return;
+        }
+
+        // The join event is not the only way everyone can be back: a ghost
+        // connection's stale leave may have started this pause after the real
+        // rejoin already happened. Re-check every countdown second so a pause
+        // nobody is missing from heals itself instead of running out.
+        if (bothPlayersPresent()) {
+            endDisconnectPause();
             return;
         }
 
@@ -1239,6 +1342,11 @@ public final class DuelWorker {
     private void expireDisconnectPause(int serial) {
         if (serial != disconnectSerial || !pausedForDisconnect) {
             return;
+        }
+
+        // The leaver never came back: stop requiring them for future pauses.
+        if (pauseChargedUuid != null && !isOnline(pauseChargedUuid)) {
+            waivedUuids.add(pauseChargedUuid);
         }
 
         pausedForDisconnect = false;
@@ -1372,12 +1480,25 @@ public final class DuelWorker {
         }
 
         for (String uuid : participantUuids) {
-            if (!isOnline(uuid)) {
+            if (!waivedUuids.contains(uuid) && !isOnline(uuid)) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    /**
+     * True when another Player entity with the same uuid is still connected -
+     * i.e. this leave belongs to a timed-out ghost connection of a player who
+     * has already reconnected, not to a real disconnect.
+     */
+    private boolean isOnlineElsewhere(Player leaving) {
+        return Groups.player.find(
+                player -> player != null
+                        && player != leaving
+                        && player.uuid().equals(leaving.uuid())
+        ) != null;
     }
 
     private boolean isOnline(String uuid) {
@@ -1477,28 +1598,8 @@ public final class DuelWorker {
             List<String> loserUuids,
             String reason
     ) {
-        Properties properties = new Properties();
-        properties.setProperty("mode", mode.id());
-        properties.setProperty(
-                "winner.uuid",
-                winnerUuids.isEmpty() ? "" : winnerUuids.get(0)
-        );
-        properties.setProperty(
-                "loser.uuid",
-                loserUuids.isEmpty() ? "" : loserUuids.get(0)
-        );
-        properties.setProperty("winner.uuids", String.join(",", winnerUuids));
-        properties.setProperty("loser.uuids", String.join(",", loserUuids));
-        properties.setProperty("reason", reason);
-
-        try (FileOutputStream output = new FileOutputStream(RESULT_FILE)) {
-            properties.store(output, "Evict duel result");
-        } catch (Exception exception) {
-            Log.err(
-                    "[EvictMapGenerator] Duel worker could not write the result file.",
-                    exception
-            );
-        }
+        new vini.evictmap.duel.ipc.DuelResult(mode.id(), winnerUuids, loserUuids, reason)
+                .write(RESULT_FILE);
     }
 
     private static int parsePort(String value, int fallback) {

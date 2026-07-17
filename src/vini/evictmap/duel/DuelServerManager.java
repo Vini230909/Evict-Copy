@@ -1,7 +1,9 @@
 package vini.evictmap.duel;
 
-import vini.evictmap.EvictSettings;
-import vini.evictmap.PlayerDataManager;
+import vini.evictmap.duel.ipc.DuelResult;
+
+import vini.evictmap.gen.EvictSettings;
+import vini.evictmap.data.PlayerDataManager;
 import vini.evictmap.PlayerNameFormatter;
 
 import java.io.File;
@@ -951,16 +953,12 @@ public final class DuelServerManager {
             return;
         }
 
-        Properties properties = new Properties();
+        DuelResult result = vini.evictmap.duel.ipc.DuelResult.read(resultFile);
 
-        try (FileInputStream input = new FileInputStream(resultFile)) {
-            properties.load(input);
-
-            String winnerUuid = properties.getProperty("winner.uuid", "").trim();
-            String loserUuid = properties.getProperty("loser.uuid", "").trim();
-            MatchMode mode = MatchMode.fromId(
-                    properties.getProperty("mode", handle.mode.id()).trim()
-            );
+        try {
+            String winnerUuid = result.firstWinner();
+            String loserUuid = result.firstLoser();
+            MatchMode mode = MatchMode.fromId(result.modeId(handle.mode.id()));
 
             Log.info(
                     "[EvictMapGenerator] @ result on port @: winner=@ loser=@ reason=@.",
@@ -968,7 +966,7 @@ public final class DuelServerManager {
                     port,
                     winnerUuid.isEmpty() ? "?" : winnerUuid,
                     loserUuid.isEmpty() ? "?" : loserUuid,
-                    properties.getProperty("reason", "?")
+                    result.reason()
             );
 
             // Credit the ranked record and match history on the hub's database;
@@ -1007,12 +1005,8 @@ public final class DuelServerManager {
                         participantNames
                 );
             } else if (mode == MatchMode.TEAMS && !winnerUuid.isEmpty()) {
-                List<String> winnerUuids = splitUuidList(
-                        properties.getProperty("winner.uuids", winnerUuid)
-                );
-                List<String> loserUuids = splitUuidList(
-                        properties.getProperty("loser.uuids", loserUuid)
-                );
+                List<String> winnerUuids = result.winnerUuids();
+                List<String> loserUuids = result.loserUuids();
 
                 playerDataManager.recordTeamsMatch(
                         winnerUuids,

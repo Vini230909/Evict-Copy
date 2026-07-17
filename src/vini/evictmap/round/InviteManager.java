@@ -1,4 +1,6 @@
-package vini.evictmap;
+package vini.evictmap.round;
+
+import vini.evictmap.PlayerNameFormatter;
 
 import arc.util.CommandHandler;
 import mindustry.game.Team;
@@ -39,11 +41,11 @@ public final class InviteManager {
     private boolean sandboxJoinMode = false;
     private Consumer<Player> sandboxPromotionHook;
 
-    InviteManager(TeamManager teamManager) {
+    public InviteManager(TeamManager teamManager) {
         this.teamManager = teamManager;
     }
 
-    void enableSandboxJoinMode(Consumer<Player> promotionHook) {
+    public void enableSandboxJoinMode(Consumer<Player> promotionHook) {
         this.sandboxJoinMode = true;
         this.sandboxPromotionHook = promotionHook;
     }
@@ -66,13 +68,13 @@ public final class InviteManager {
         );
     }
 
-    void beginRound() {
+    public void beginRound() {
         joinRequests.clear();
         claimedOrderByPlayerUuid.clear();
         sequence = 0L;
     }
 
-    void handlePlayerLeave(Player player) {
+    public void handlePlayerLeave(Player player) {
         if (player == null) {
             return;
         }

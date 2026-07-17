@@ -1,6 +1,11 @@
 package vini.evictmap.commands;
 
 import vini.evictmap.*;
+import vini.evictmap.gen.*;
+import vini.evictmap.data.*;
+import vini.evictmap.round.*;
+import vini.evictmap.core.cmd.Commands;
+import vini.evictmap.core.util.Players;
 import vini.evictmap.duel.DuelServerManager;
 
 import arc.util.CommandHandler;
@@ -8,14 +13,19 @@ import arc.util.Log;
 import mindustry.Vars;
 import mindustry.content.Blocks;
 import mindustry.game.Team;
-import mindustry.gen.Groups;
 import mindustry.gen.Player;
 
 import java.util.Map;
 import java.util.function.LongConsumer;
 
 /**
- * All dedicated-server console commands in one place.
+ * All dedicated-server console commands, declared on the shared command
+ * framework.
+ *
+ * <p>{@link #register} used to be one ~319-line method of inline lambdas; it is
+ * now a flat list of {@code command(...).run(...)} declarations, with each
+ * handler in its own method. The framework does registration, argument shaping
+ * and error catching centrally.
  */
 public final class ConsoleCommands {
 
@@ -26,6 +36,7 @@ public final class ConsoleCommands {
     private final PlayerDataManager playerDataManager;
     private final DuelServerManager duelServerManager;
     private final RankManager rankManager;
+    private final RestartManager restartManager;
     private final LongConsumer generate;
 
     private static final int MAX_CORECAP_INCREMENT = 10000;
@@ -40,6 +51,7 @@ public final class ConsoleCommands {
             PlayerDataManager playerDataManager,
             DuelServerManager duelServerManager,
             RankManager rankManager,
+            RestartManager restartManager,
             LongConsumer generate
     ) {
         this.runtime = runtime;
@@ -49,327 +61,259 @@ public final class ConsoleCommands {
         this.playerDataManager = playerDataManager;
         this.duelServerManager = duelServerManager;
         this.rankManager = rankManager;
+        this.restartManager = restartManager;
         this.generate = generate;
     }
 
     public void register(CommandHandler handler) {
-        handler.register(
-                "evictgen",
-                "[seed]",
-                "Generate Evict terrain immediately on the currently loaded map. Prefer evictauto before hosting a map.",
-                args -> {
-                    Long seed = runtime.parseSeedOrRandom(args);
+        Commands commands = new Commands();
 
-                    if (seed == null) {
-                        Log.err("[EvictMapGenerator] Seed must be a whole number or 'random'.");
-                        return;
-                    }
+        commands.command("evictgen").console()
+                .args("seed:string?")
+                .description("Generate Evict terrain immediately on the currently loaded map. Prefer evictauto before hosting a map.")
+                .run(ctx -> generateTerrain(ctx.raw()));
 
-                    if (!Groups.player.isEmpty()) {
-                        Log.warn(
-                                "[EvictMapGenerator] Players are connected. Immediate generation is intended for testing. Reconnect clients afterwards if terrain is not refreshed."
-                        );
-                    }
+        commands.command("evictauto").console()
+                .args("on/off:bool")
+                .description("Enable or disable terrain generation whenever a map is hosted or loaded. Defaults to ON.")
+                .run(ctx -> {
+                    runtime.autoGenerate = ctx.getBool("on/off", true);
+                    Log.info("[EvictMapGenerator] Automatic generation is now @.", runtime.autoGenerate ? "ON" : "OFF");
+                });
 
-                    try {
-                        generate.accept(seed);
-                    } catch (Exception exception) {
-                        Log.err("[EvictMapGenerator] Generation failed.", exception);
-                    }
-                }
-        );
+        commands.command("evictseed").console()
+                .args("seed:string?")
+                .description("Set the seed used for the next automatically generated map.")
+                .run(ctx -> setSeed(ctx.raw()));
 
-        handler.register(
-                "evictauto",
-                "<on/off>",
-                "Enable or disable terrain generation whenever a map is hosted or loaded. Defaults to ON.",
-                args -> {
-                    String value = args[0].trim().toLowerCase();
+        commands.command("evictstatus").console()
+                .description("Show generator settings and required base-map size.")
+                .run(ctx -> showStatus());
 
-                    if (
-                            value.equals("on")
-                                    || value.equals("true")
-                                    || value.equals("yes")
-                    ) {
-                        runtime.autoGenerate = true;
-                    } else if (
-                            value.equals("off")
-                                    || value.equals("false")
-                                    || value.equals("no")
-                    ) {
-                        runtime.autoGenerate = false;
-                    } else {
-                        Log.err("[EvictMapGenerator] Use: evictauto <on/off>");
-                        return;
-                    }
+        commands.command("evictteamstatus").console()
+                .description("Show Fallen-team spawn assignment status for the current round.")
+                .run(ctx -> teamManager.logStatus());
 
-                    Log.info(
-                            "[EvictMapGenerator] Automatic generation is now @.",
-                            runtime.autoGenerate ? "ON" : "OFF"
-                    );
-                }
-        );
+        commands.command("evictbuildspeed").console()
+                .args("multiplier:string?")
+                .description("Show or persist the unit factory build-speed multiplier applied each round. Defaults to 1.4 and is synced to spawned duel workers. Applies to the next generated match.")
+                .run(ctx -> setBuildSpeed(ctx.raw()));
 
-        handler.register(
-                "evictseed",
-                "[seed/random]",
-                "Set the seed used for the next automatically generated map.",
-                args -> {
-                    if (
-                            args.length == 0
-                                    || args[0].equalsIgnoreCase("random")
-                    ) {
-                        runtime.nextSeed = runtime.randomSeed();
-                        Log.info(
-                                "[EvictMapGenerator] Next seed: @",
-                                runtime.nextSeed
-                        );
-                        return;
-                    }
+        commands.command("evictwater").console()
+                .args("tries-per-hex:string?", "normal-patch-tiles:string?", "large-patch-percent:string?", "large-patch-tiles:string?")
+                .description("Show or persist water patch tries per hex, normal size and large-patch chance for the next generated match.")
+                .run(ctx -> configureWater(ctx.raw()));
 
-                    try {
-                        runtime.nextSeed = Long.parseLong(args[0]);
-                        Log.info(
-                                "[EvictMapGenerator] Next seed: @",
-                                runtime.nextSeed
-                        );
-                    } catch (NumberFormatException exception) {
-                        Log.err(
-                                "[EvictMapGenerator] Seed must be a whole number or 'random'."
-                        );
-                    }
-                }
-        );
+        registerOre(commands, "evictcopper", EvictSettings.OreKind.COPPER);
+        registerOre(commands, "evictlead", EvictSettings.OreKind.LEAD);
+        registerOre(commands, "evictcoal", EvictSettings.OreKind.COAL);
+        registerOre(commands, "evicttitanium", EvictSettings.OreKind.TITANIUM);
+        registerOre(commands, "evictthorium", EvictSettings.OreKind.THORIUM);
+        registerOre(commands, "evictscrap", EvictSettings.OreKind.SCRAP);
 
-        handler.register(
-                "evictstatus",
-                "Show generator settings and required base-map size.",
-                args -> {
-                    Log.info(
-                            "[EvictMapGenerator] autoGenerate: @",
-                            runtime.autoGenerate
-                    );
+        commands.command("evictorestatus").console()
+                .description("Show persistent ore settings used for the next generated match.")
+                .run(ctx -> Log.info("[EvictMapGenerator] ores: @", settings.compactOreSettings()));
 
-                    Log.info(
-                            "[EvictMapGenerator] nextSeed: @",
-                            runtime.nextSeed == null ? "random" : runtime.nextSeed
-                    );
+        commands.command("evictplayerinfo").console()
+                .args("query:text?")
+                .description("Search stored player data by partial name or UUID. With no argument, list all stored players.")
+                .run(ctx -> showStoredPlayerInfo(ctx.str("query", "").trim()));
 
-                    Log.info(
-                            "[EvictMapGenerator] lastSeed: @",
-                            runtime.lastSeed == null ? "none" : runtime.lastSeed
-                    );
+        commands.command("evictelo").console()
+                .args("name/uuid:string", "value:string")
+                .description("Set a stored player's ranked ELO. Matched like evictplayerinfo (partial latest name first, then UUID); pass a UUID if a name is ambiguous. Peak ELO only rises.")
+                .run(ctx -> handleEloCommand(ctx.raw()));
 
-                    Log.info(
-                            "[EvictMapGenerator] unit build speed: @",
-                            settings.compactUnitBuildSpeedSettings()
-                    );
+        commands.command("evictwall").console()
+                .args("full-wall:string?", "small-wall:string?", "open:string?", "passage:string?")
+                .description("Show or set persistent wall-template percentages")
+                .run(ctx -> configureWalls(ctx.raw()));
 
-                    Log.info(
-                            "[EvictMapGenerator] duel server: @",
-                            settings.compactDuelServerSettings()
-                    );
+        commands.command("evictcorecap").console()
+                .args("additional-per-core:int")
+                .description("Add unit-cap capacity to every core")
+                .run(ctx -> addCoreCap(ctx.raw()));
 
-                    terrain.logStatus();
-                }
-        );
+        commands.command("evictattritioncore").console()
+                .args("t1-3:string?", "t4:string?", "t5:string?")
+                .description("Show or set capture attrition percentages")
+                .run(ctx -> configureCoreAttrition(ctx.raw()));
 
-        handler.register(
-                "evictteamstatus",
-                "Show Fallen-team spawn assignment status for the current round.",
-                args -> teamManager.logStatus()
-        );
+        commands.command("evictattritionrange").console()
+                .args("percent:string?")
+                .description("Show or set the flat range attrition percentage")
+                .run(ctx -> configureRangeAttrition(ctx.raw()));
 
-        handler.register(
-                "evictbuildspeed",
-                "[multiplier]",
-                "Show or persist the unit factory build-speed multiplier applied each round. Defaults to 1.4 and is synced to spawned duel workers. Applies to the next generated match.",
-                args -> {
-                    if (args.length == 0) {
-                        Log.info(
-                                "[EvictMapGenerator] unit build speed: @",
-                                settings.compactUnitBuildSpeedSettings()
-                        );
+        commands.command("evictduelserver").console()
+                .args("ip:string?", "basePort:string?", "maxWorkers:string?", "map:string?")
+                .description("Show or set the on-demand worker pool that /play uses. ip is the address clients reach workers at; basePort the first worker port; maxWorkers how many duels run at once (1-10); map the map workers host. Omitted values keep current.")
+                .run(ctx -> configureDuelServer(ctx.raw()));
 
-                        return;
-                    }
+        commands.command("evictduelstatus").console()
+                .description("List the active worker servers and who is in them.")
+                .run(ctx -> duelServerManager.logStatus());
 
-                    if (args.length != 1) {
-                        Log.err(
-                                "[EvictMapGenerator] Use: evictbuildspeed <multiplier>"
-                        );
+        commands.command("evictrank").console()
+                .args("action:string?", "uuid:string?", "rank:string?")
+                .description("Manage tournament ranks by UUID. 'add <uuid> [commentator]' grants, 'remove <uuid>' revokes, no args lists. Commentators get a [C] tag and may /restart matches they spectate.")
+                .run(ctx -> handleRankCommand(ctx.raw()));
 
-                        return;
-                    }
+        commands.command("evicttime").console()
+                .args("time:string?")
+                .description("Set the elapsed in-game time to a given number of seconds, or show the elapsed time with no argument.")
+                .run(ctx -> handleSetTimeCommand(ctx.raw()));
 
-                    try {
-                        settings.setUnitBuildSpeedMultiplier(parseDecimal(args[0]));
+        commands.command("evictrestart").console()
+                .args("action:string?")
+                .description("Queue a graceful restart for updates (fires at the next safe moment). 'cancel' drops it; 'now' exits immediately. Needs the start-script loop - see docs/RESTART_LOOP.md.")
+                .run(ctx -> handleRestartCommand(ctx.str("action", "").trim().toLowerCase()));
 
-                        Log.info(
-                                "[EvictMapGenerator] Unit build speed saved as @. Applies to the next generated match and to spawned duel workers.",
-                                settings.compactUnitBuildSpeedSettings()
-                        );
-                    } catch (NumberFormatException exception) {
-                        Log.err(
-                                "[EvictMapGenerator] Build speed multiplier must be a number."
-                        );
-                    } catch (IllegalArgumentException exception) {
-                        Log.err(
-                                "[EvictMapGenerator] @",
-                                exception.getMessage()
-                        );
-                    }
-                }
-        );
+        commands.installConsole(handler);
+    }
 
-        registerWaterSettingsCommand(handler);
+    private void registerOre(Commands commands, String name, EvictSettings.OreKind oreKind) {
+        commands.command(name).console()
+                .args("scale:string?", "threshold:string?", "octaves:string?", "falloff:string?")
+                .description("Show or persist editor-style ore noise settings for the next generated match.")
+                .run(ctx -> configureOre(ctx.raw(), name, oreKind));
+    }
 
-        registerOrePresetCommand(
-                handler,
-                "evictcopper",
-                EvictSettings.OreKind.COPPER
-        );
+    private void handleRestartCommand(String action) {
+        switch (action) {
+            case "":
+                restartManager.requestRestart();
+                break;
+            case "cancel":
+                restartManager.cancelRestart();
+                break;
+            case "now":
+                restartManager.restartNow();
+                break;
+            default:
+                Log.err("[EvictMapGenerator] Use: evictrestart [cancel/now]");
+        }
+    }
 
-        registerOrePresetCommand(
-                handler,
-                "evictlead",
-                EvictSettings.OreKind.LEAD
-        );
+    private void generateTerrain(String[] args) {
+        Long seed = runtime.parseSeedOrRandom(args);
 
-        registerOrePresetCommand(
-                handler,
-                "evictcoal",
-                EvictSettings.OreKind.COAL
-        );
+        if (seed == null) {
+            Log.err("[EvictMapGenerator] Seed must be a whole number or 'random'.");
+            return;
+        }
 
-        registerOrePresetCommand(
-                handler,
-                "evicttitanium",
-                EvictSettings.OreKind.TITANIUM
-        );
+        if (!mindustry.gen.Groups.player.isEmpty()) {
+            Log.warn("[EvictMapGenerator] Players are connected. Immediate generation is intended for testing. Reconnect clients afterwards if terrain is not refreshed.");
+        }
 
-        registerOrePresetCommand(
-                handler,
-                "evictthorium",
-                EvictSettings.OreKind.THORIUM
-        );
+        try {
+            generate.accept(seed);
+        } catch (Exception exception) {
+            Log.err("[EvictMapGenerator] Generation failed.", exception);
+        }
+    }
 
-        registerOrePresetCommand(
-                handler,
-                "evictscrap",
-                EvictSettings.OreKind.SCRAP
-        );
+    private void setSeed(String[] args) {
+        if (args.length == 0 || args[0].equalsIgnoreCase("random")) {
+            runtime.nextSeed = runtime.randomSeed();
+            Log.info("[EvictMapGenerator] Next seed: @", runtime.nextSeed);
+            return;
+        }
 
-        handler.register(
-                "evictorestatus",
-                "Show persistent ore settings used for the next generated match.",
-                args -> Log.info(
-                        "[EvictMapGenerator] ores: @",
-                        settings.compactOreSettings()
-                )
-        );
+        try {
+            runtime.nextSeed = Long.parseLong(args[0]);
+            Log.info("[EvictMapGenerator] Next seed: @", runtime.nextSeed);
+        } catch (NumberFormatException exception) {
+            Log.err("[EvictMapGenerator] Seed must be a whole number or 'random'.");
+        }
+    }
 
-        handler.register(
-                "evictplayerinfo",
-                "[name/uuid]",
-                "Search stored player data by partial name or UUID. With no argument, list all stored players.",
-                args -> showStoredPlayerInfo(String.join(" ", args).trim())
-        );
+    private void showStatus() {
+        Log.info("[EvictMapGenerator] autoGenerate: @", runtime.autoGenerate);
+        Log.info("[EvictMapGenerator] nextSeed: @", runtime.nextSeed == null ? "random" : runtime.nextSeed);
+        Log.info("[EvictMapGenerator] lastSeed: @", runtime.lastSeed == null ? "none" : runtime.lastSeed);
+        Log.info("[EvictMapGenerator] unit build speed: @", settings.compactUnitBuildSpeedSettings());
+        Log.info("[EvictMapGenerator] duel server: @", settings.compactDuelServerSettings());
+        terrain.logStatus();
+    }
 
-        handler.register(
-                "evictelo",
-                "<name/uuid> <value>",
-                "Set a stored player's ranked ELO. The player is matched like evictplayerinfo (partial latest name first, then UUID); pass a UUID if a name is ambiguous. Peak ELO only rises, so a manual set never lowers it.",
-                this::handleEloCommand
-        );
+    private void setBuildSpeed(String[] args) {
+        if (args.length == 0) {
+            Log.info("[EvictMapGenerator] unit build speed: @", settings.compactUnitBuildSpeedSettings());
+            return;
+        }
 
-        handler.register(
-                "evictwall",
-                "[full-wall] [small-wall] [open] [passage]",
-                "Show or set persistent wall-template percentages",
-                this::configureWalls
-        );
+        try {
+            settings.setUnitBuildSpeedMultiplier(parseDecimal(args[0]));
+            Log.info("[EvictMapGenerator] Unit build speed saved as @. Applies to the next generated match and to spawned duel workers.", settings.compactUnitBuildSpeedSettings());
+        } catch (NumberFormatException exception) {
+            Log.err("[EvictMapGenerator] Build speed multiplier must be a number.");
+        } catch (IllegalArgumentException exception) {
+            Log.err("[EvictMapGenerator] @", exception.getMessage());
+        }
+    }
 
-        handler.register(
-                "evictcorecap",
-                "<additional-per-core>",
-                "Add unit-cap capacity to every core",
-                this::addCoreCap
-        );
+    private void configureWater(String[] args) {
+        if (args.length == 0) {
+            Log.info("[EvictMapGenerator] water: @", settings.compactWaterSettings());
+            return;
+        }
 
-        handler.register(
-                "evictattritioncore",
-                "[t1-3] [t4] [t5]",
-                "Show or set capture attrition percentages",
-                this::configureCoreAttrition
-        );
+        if (args.length != 4) {
+            Log.err("[EvictMapGenerator] Use: evictwater <tries-per-hex> <normal-patch-tiles> <large-patch-percent> <large-patch-tiles>");
+            return;
+        }
 
-        handler.register(
-                "evictattritionrange",
-                "[percent]",
-                "Show or set the flat range attrition percentage",
-                this::configureRangeAttrition
-        );
+        try {
+            settings.setWaterSettings(parseDecimal(args[0]), Integer.parseInt(args[1]), parseDecimal(args[2]), Integer.parseInt(args[3]));
+            Log.info("[EvictMapGenerator] Saved evictwater. Applies to the next generated match: @", settings.compactWaterSettings());
+        } catch (NumberFormatException exception) {
+            Log.err("[EvictMapGenerator] Water tries and percents must be numbers; tile counts must be whole numbers.");
+        } catch (IllegalArgumentException exception) {
+            Log.err("[EvictMapGenerator] @", exception.getMessage());
+        }
+    }
 
-        handler.register(
-                "evictduelserver",
-                "[ip] [basePort] [maxWorkers] [map]",
-                "Show or set the on-demand 1v1 worker pool that /play uses. ip is the address clients reach the workers at; basePort is the first worker port; maxWorkers is how many duels may run at once (1-10); map is the map workers host. Omitted values keep their current setting.",
-                args -> {
-                    if (args.length == 0) {
-                        Log.info(
-                                "[EvictMapGenerator] Duel server: @",
-                                settings.compactDuelServerSettings()
-                        );
-                        return;
-                    }
+    private void configureOre(String[] args, String command, EvictSettings.OreKind oreKind) {
+        if (args.length == 0) {
+            Log.info("[EvictMapGenerator] @: @", command, settings.compactOreSettings(oreKind));
+            return;
+        }
 
-                    try {
-                        int basePort = args.length >= 2
-                                ? Integer.parseInt(args[1])
-                                : settings.duelServerPort();
-                        int maxWorkers = args.length >= 3
-                                ? Integer.parseInt(args[2])
-                                : settings.duelMaxWorkers();
-                        String map = args.length >= 4
-                                ? args[3]
-                                : settings.duelWorkerMap();
+        if (args.length != 4) {
+            Log.err("[EvictMapGenerator] Use: @ <scale> <threshold> <octaves> <falloff>", command);
+            return;
+        }
 
-                        settings.setDuelServer(args[0], basePort, maxWorkers, map);
+        try {
+            settings.setOreSettings(oreKind, Double.parseDouble(args[0]), Double.parseDouble(args[1]), Double.parseDouble(args[2]), Double.parseDouble(args[3]));
+            Log.info("[EvictMapGenerator] Saved @. Applies to the next generated match: @", command, settings.compactOreSettings(oreKind));
+        } catch (NumberFormatException exception) {
+            Log.err("[EvictMapGenerator] Ore settings must be numbers.");
+        } catch (IllegalArgumentException exception) {
+            Log.err("[EvictMapGenerator] @", exception.getMessage());
+        }
+    }
 
-                        Log.info(
-                                "[EvictMapGenerator] Duel server saved as @. This applies immediately and after restart.",
-                                settings.compactDuelServerSettings()
-                        );
-                    } catch (NumberFormatException exception) {
-                        Log.err(
-                                "[EvictMapGenerator] basePort and maxWorkers must be whole numbers."
-                        );
-                    } catch (IllegalArgumentException exception) {
-                        Log.err("[EvictMapGenerator] @", exception.getMessage());
-                    }
-                }
-        );
+    private void configureDuelServer(String[] args) {
+        if (args.length == 0) {
+            Log.info("[EvictMapGenerator] Duel server: @", settings.compactDuelServerSettings());
+            return;
+        }
 
-        handler.register(
-                "evictduelstatus",
-                "List the active 1v1 worker servers and who is in them.",
-                args -> duelServerManager.logStatus()
-        );
+        try {
+            int basePort = args.length >= 2 ? Integer.parseInt(args[1]) : settings.duelServerPort();
+            int maxWorkers = args.length >= 3 ? Integer.parseInt(args[2]) : settings.duelMaxWorkers();
+            String map = args.length >= 4 ? args[3] : settings.duelWorkerMap();
 
-        handler.register(
-                "evictrank",
-                "[list/add/remove] [uuid] [rank]",
-                "Manage tournament ranks by UUID. 'add <uuid> [commentator]' grants (default commentator), 'remove <uuid>' revokes, no args lists. Commentators get a [C] tag and may /restart 1v1s they spectate.",
-                this::handleRankCommand
-        );
-
-        handler.register(
-                "evicttime",
-                "[time]",
-                "Set the elapsed in-game time to a given number of seconds, or shows the elapsed time if used without arguments",
-                this::handleSetTimeCommand
-        );
+            settings.setDuelServer(args[0], basePort, maxWorkers, map);
+            Log.info("[EvictMapGenerator] Duel server saved as @. This applies immediately and after restart.", settings.compactDuelServerSettings());
+        } catch (NumberFormatException exception) {
+            Log.err("[EvictMapGenerator] basePort and maxWorkers must be whole numbers.");
+        } catch (IllegalArgumentException exception) {
+            Log.err("[EvictMapGenerator] @", exception.getMessage());
+        }
     }
 
     private void handleSetTimeCommand(String[] args) {
@@ -387,7 +331,6 @@ public final class ConsoleCommands {
         }
 
         Log.info("[EvictMapGenerator] setting time to @", parsedTime);
-
         teamManager.setElapsedTimeMillis(parsedTime * 1000);
     }
 
@@ -404,18 +347,12 @@ public final class ConsoleCommands {
             return;
         }
 
-        if (
-                action.equals("remove")
-                        || action.equals("revoke")
-                        || action.equals("delete")
-        ) {
+        if (action.equals("remove") || action.equals("revoke") || action.equals("delete")) {
             removeRank(args);
             return;
         }
 
-        Log.err(
-                "[EvictMapGenerator] Use: evictrank [list/add/remove] [uuid] [rank]"
-        );
+        Log.err("[EvictMapGenerator] Use: evictrank [list/add/remove] [uuid] [rank]");
     }
 
     private void addRank(String[] args) {
@@ -425,32 +362,20 @@ public final class ConsoleCommands {
         }
 
         String uuid = args[1].trim();
-        RankManager.Rank rank = args.length >= 3
-                ? RankManager.Rank.parse(args[2])
-                : RankManager.Rank.COMMENTATOR;
+        RankManager.Rank rank = args.length >= 3 ? RankManager.Rank.parse(args[2]) : RankManager.Rank.COMMENTATOR;
 
         if (rank == null) {
-            Log.err(
-                    "[EvictMapGenerator] Unknown rank '@'. Known ranks: commentator.",
-                    args[2]
-            );
+            Log.err("[EvictMapGenerator] Unknown rank '@'. Known ranks: commentator.", args[2]);
             return;
         }
 
         if (!rankManager.grant(uuid, rank)) {
-            Log.err(
-                    "[EvictMapGenerator] Could not grant the rank; check the UUID."
-            );
+            Log.err("[EvictMapGenerator] Could not grant the rank; check the UUID.");
             return;
         }
 
         applyTagToOnline(uuid);
-
-        Log.info(
-                "[EvictMapGenerator] Granted @ to @. Applies to 1v1 matches started from now on.",
-                rank.title,
-                uuid
-        );
+        Log.info("[EvictMapGenerator] Granted @ to @. Applies to matches started from now on.", rank.title, uuid);
     }
 
     private void removeRank(String[] args) {
@@ -479,20 +404,13 @@ public final class ConsoleCommands {
         }
 
         Log.info("[EvictMapGenerator] Tournament ranks (@):", ranks.size());
-
         for (Map.Entry<String, RankManager.Rank> entry : ranks.entrySet()) {
-            Log.info(
-                    "[EvictMapGenerator]   @ = @",
-                    entry.getKey(),
-                    entry.getValue().title
-            );
+            Log.info("[EvictMapGenerator]   @ = @", entry.getKey(), entry.getValue().title);
         }
     }
 
     private void applyTagToOnline(String uuid) {
-        Player player =
-                Groups.player.find(target -> target != null && target.uuid().equals(uuid));
-
+        Player player = Players.byUuid(uuid);
         if (player != null) {
             rankManager.applyNameTag(player);
         }
@@ -515,20 +433,8 @@ public final class ConsoleCommands {
             double open = Double.parseDouble(args[2]);
             double passage = Double.parseDouble(args[3]);
 
-            // TODO: is this bugged? `evictwall 100 0 0 0`
-            //  doesn't seem to work as expected
-            settings.setWallPercentages(
-                    fullWall,
-                    smallWall,
-                    open,
-                    passage
-            );
-
-            Log.info(
-                    "Wall settings saved: "
-                            + settings.compactWallSettings()
-                            + ". Applies to the next generated map."
-            );
+            settings.setWallPercentages(fullWall, smallWall, open, passage);
+            Log.info("Wall settings saved: " + settings.compactWallSettings() + ". Applies to the next generated map.");
         } catch (NumberFormatException exception) {
             Log.err("Wall values must be numbers.");
         } catch (IllegalArgumentException exception) {
@@ -537,11 +443,6 @@ public final class ConsoleCommands {
     }
 
     private void addCoreCap(String[] args) {
-        if (args.length != 1) {
-            Log.err("Use: /corecap <additional-per-core>");
-            return;
-        }
-
         final int additional;
 
         try {
@@ -552,11 +453,7 @@ public final class ConsoleCommands {
         }
 
         if (additional <= 0 || additional > MAX_CORECAP_INCREMENT) {
-            Log.info(
-                    "Core-cap increment must be between 1 and "
-                            + MAX_CORECAP_INCREMENT
-                            + "."
-            );
+            Log.info("Core-cap increment must be between 1 and " + MAX_CORECAP_INCREMENT + ".");
             return;
         }
 
@@ -571,7 +468,6 @@ public final class ConsoleCommands {
 
         for (Team team : Team.all) {
             int existingCoreCount = team.data().cores.size;
-
             if (existingCoreCount > 0) {
                 team.data().unitCap += existingCoreCount * additional;
             }
@@ -580,29 +476,17 @@ public final class ConsoleCommands {
         Vars.state.rules.unitCapVariable = true;
         extraCoreCapPerCore += additional;
 
-        Log.info(
-                "Added "
-                        + additional
-                        + " unit cap per core. Total added bonus per core: "
-                        + extraCoreCapPerCore
-                        + "."
-        );
+        Log.info("Added " + additional + " unit cap per core. Total added bonus per core: " + extraCoreCapPerCore + ".");
     }
 
     private void configureCoreAttrition(String[] args) {
-
         if (args.length == 0) {
-            Log.info(
-                    "Core attrition: "
-                            + settings.compactCoreAttritionSettings()
-            );
+            Log.info("Core attrition: " + settings.compactCoreAttritionSettings());
             return;
         }
 
         if (args.length != 3) {
-            Log.err(
-                    "Use: /attritioncore <t1-3> <t4> <t5>"
-            );
+            Log.err("Use: /attritioncore <t1-3> <t4> <t5>");
             return;
         }
 
@@ -611,20 +495,10 @@ public final class ConsoleCommands {
             double tier4 = Double.parseDouble(args[1]);
             double tier5 = Double.parseDouble(args[2]);
 
-            settings.setCoreAttritionPercentages(
-                    tier1To3,
-                    tier4,
-                    tier5
-            );
-
-            Log.info(
-                    "Core attrition saved: "
-                            + settings.compactCoreAttritionSettings()
-            );
+            settings.setCoreAttritionPercentages(tier1To3, tier4, tier5);
+            Log.info("Core attrition saved: " + settings.compactCoreAttritionSettings());
         } catch (NumberFormatException exception) {
-            Log.err(
-                    "Core attrition values must be numbers."
-            );
+            Log.err("Core attrition values must be numbers.");
         } catch (IllegalArgumentException exception) {
             Log.err(exception.getMessage());
         }
@@ -632,33 +506,15 @@ public final class ConsoleCommands {
 
     private void configureRangeAttrition(String[] args) {
         if (args.length == 0) {
-            Log.info(
-                    "Range attrition: "
-                            + settings.compactRangeAttritionSettings()
-            );
-            return;
-        }
-
-        if (args.length != 1) {
-            Log.err(
-                    "Use: /attritionrange <percent>"
-            );
+            Log.info("Range attrition: " + settings.compactRangeAttritionSettings());
             return;
         }
 
         try {
-            settings.setRangeAttritionPercent(
-                    Double.parseDouble(args[0])
-            );
-
-            Log.info(
-                    "Range attrition saved: "
-                            + settings.compactRangeAttritionSettings()
-            );
+            settings.setRangeAttritionPercent(Double.parseDouble(args[0]));
+            Log.info("Range attrition saved: " + settings.compactRangeAttritionSettings());
         } catch (NumberFormatException exception) {
-            Log.err(
-                    "Range attrition value must be a number."
-            );
+            Log.err("Range attrition value must be a number.");
         } catch (IllegalArgumentException exception) {
             Log.err(exception.getMessage());
         }
@@ -671,7 +527,6 @@ public final class ConsoleCommands {
         }
 
         int newElo;
-
         try {
             newElo = Integer.parseInt(args[1].trim());
         } catch (NumberFormatException exception) {
@@ -688,24 +543,15 @@ public final class ConsoleCommands {
 
         playerDataManager.searchPlayerInfo(query, matches -> {
             if (matches.isEmpty()) {
-                Log.err(
-                        "[EvictMapGenerator] No stored players match '@'.",
-                        query
-                );
+                Log.err("[EvictMapGenerator] No stored players match '@'.", query);
                 return;
             }
 
             if (matches.size() > 1) {
-                Log.err(
-                        "[EvictMapGenerator] '@' matches @ players; be more specific or use a UUID:",
-                        query,
-                        matches.size()
-                );
-
+                Log.err("[EvictMapGenerator] '@' matches @ players; be more specific or use a UUID:", query, matches.size());
                 for (PlayerDataManager.PlayerInfo info : matches) {
                     Log.info("[EvictMapGenerator] @", compactPlayerInfo(info));
                 }
-
                 return;
             }
 
@@ -714,187 +560,53 @@ public final class ConsoleCommands {
 
             playerDataManager.setElo(target.uuid(), newElo, updated -> {
                 if (updated) {
-                    Log.info(
-                            "[EvictMapGenerator] Set @'s ELO to @ (was @).",
-                            target.lastName(),
-                            newElo,
-                            previousElo
-                    );
+                    Log.info("[EvictMapGenerator] Set @'s ELO to @ (was @).", target.lastName(), newElo, previousElo);
                 } else {
-                    Log.err(
-                            "[EvictMapGenerator] Could not update ELO for @.",
-                            target.lastName()
-                    );
+                    Log.err("[EvictMapGenerator] Could not update ELO for @.", target.lastName());
                 }
             });
         });
     }
 
     private void showStoredPlayerInfo(String query) {
-        playerDataManager.searchPlayerInfo(
-                query,
-                matches -> {
-                    if (matches.isEmpty()) {
-                        Log.err(
-                                "[EvictMapGenerator] No stored players match '@'.",
-                                query
-                        );
-                        return;
-                    }
+        playerDataManager.searchPlayerInfo(query, matches -> {
+            if (matches.isEmpty()) {
+                Log.err("[EvictMapGenerator] No stored players match '@'.", query);
+                return;
+            }
 
-                    if (matches.size() == 1) {
-                        Log.info(
-                                "[EvictMapGenerator] @",
-                                plainPlayerInfo(matches.get(0))
-                        );
-                        return;
-                    }
+            if (matches.size() == 1) {
+                Log.info("[EvictMapGenerator] @", plainPlayerInfo(matches.get(0)));
+                return;
+            }
 
-                    Log.info(
-                            "[EvictMapGenerator] Stored player matches (@):",
-                            matches.size()
-                    );
-
-                    for (PlayerDataManager.PlayerInfo info : matches) {
-                        Log.info(
-                                "[EvictMapGenerator] @",
-                                compactPlayerInfo(info)
-                        );
-                    }
-                }
-        );
+            Log.info("[EvictMapGenerator] Stored player matches (@):", matches.size());
+            for (PlayerDataManager.PlayerInfo info : matches) {
+                Log.info("[EvictMapGenerator] @", compactPlayerInfo(info));
+            }
+        });
     }
 
     private String compactPlayerInfo(PlayerDataManager.PlayerInfo info) {
         return info.lastName()
                 + " | uuid=" + info.uuid()
                 + " | names=" + String.join(", ", info.knownNames())
-                + " | FFA=" + info.ffaWon() + "/" + info.ffaPlayed()
-                + " | playtime="
-                + formatDuration(info.totalPlaytimeMillis());
+                + " | playtime=" + formatDuration(info.totalPlaytimeMillis());
     }
 
     private String plainPlayerInfo(PlayerDataManager.PlayerInfo info) {
         return info.lastName()
                 + " | uuid=" + info.uuid()
                 + " | names=" + String.join(", ", info.knownNames())
-                + " | totalPlaytime="
-                + formatDuration(info.totalPlaytimeMillis())
-                + " | ffaPlaytime="
-                + formatDuration(info.ffaPlaytimeMillis())
-                + " | ffaWon=" + info.ffaWon()
-                + " | ffaPlayed=" + info.ffaPlayed()
+                + " | totalPlaytime=" + formatDuration(info.totalPlaytimeMillis())
+                + " | normalWins=" + info.normalWins()
+                + " | normalLosses=" + info.normalLosses()
+                + " | normalPlayed=" + info.normalMatchesPlayed()
                 + " | rankedWins=" + info.rankedWins()
                 + " | rankedLosses=" + info.rankedLosses()
                 + " | rankedPlayed=" + info.rankedMatchesPlayed()
                 + " | elo=" + info.elo()
                 + " | peakElo=" + info.peakElo();
-    }
-
-    private void registerWaterSettingsCommand(CommandHandler handler) {
-        handler.register(
-                "evictwater",
-                "[tries-per-hex] [normal-patch-tiles] [large-patch-percent] [large-patch-tiles]",
-                "Show or persist water patch tries per hex, normal size and large-patch chance for the next generated match.",
-                args -> {
-                    if (args.length == 0) {
-                        Log.info(
-                                "[EvictMapGenerator] water: @",
-                                settings.compactWaterSettings()
-                        );
-
-                        return;
-                    }
-
-                    if (args.length != 4) {
-                        Log.err(
-                                "[EvictMapGenerator] Use: evictwater <tries-per-hex> <normal-patch-tiles> <large-patch-percent> <large-patch-tiles>"
-                        );
-
-                        return;
-                    }
-
-                    try {
-                        settings.setWaterSettings(
-                                parseDecimal(args[0]),
-                                Integer.parseInt(args[1]),
-                                parseDecimal(args[2]),
-                                Integer.parseInt(args[3])
-                        );
-
-                        Log.info(
-                                "[EvictMapGenerator] Saved evictwater. Applies to the next generated match: @",
-                                settings.compactWaterSettings()
-                        );
-                    } catch (NumberFormatException exception) {
-                        Log.err(
-                                "[EvictMapGenerator] Water tries and percents must be numbers; tile counts must be whole numbers."
-                        );
-                    } catch (IllegalArgumentException exception) {
-                        Log.err(
-                                "[EvictMapGenerator] @",
-                                exception.getMessage()
-                        );
-                    }
-                }
-        );
-    }
-
-    private void registerOrePresetCommand(
-            CommandHandler handler,
-            String command,
-            EvictSettings.OreKind oreKind
-    ) {
-        handler.register(
-                command,
-                "[scale] [threshold] [octaves] [falloff]",
-                "Show or persist editor-style ore noise settings for the next generated match.",
-                args -> {
-                    if (args.length == 0) {
-                        Log.info(
-                                "[EvictMapGenerator] @: @",
-                                command,
-                                settings.compactOreSettings(oreKind)
-                        );
-
-                        return;
-                    }
-
-                    if (args.length != 4) {
-                        Log.err(
-                                "[EvictMapGenerator] Use: @ <scale> <threshold> <octaves> <falloff>",
-                                command
-                        );
-
-                        return;
-                    }
-
-                    try {
-                        settings.setOreSettings(
-                                oreKind,
-                                Double.parseDouble(args[0]),
-                                Double.parseDouble(args[1]),
-                                Double.parseDouble(args[2]),
-                                Double.parseDouble(args[3])
-                        );
-
-                        Log.info(
-                                "[EvictMapGenerator] Saved @. Applies to the next generated match: @",
-                                command,
-                                settings.compactOreSettings(oreKind)
-                        );
-                    } catch (NumberFormatException exception) {
-                        Log.err(
-                                "[EvictMapGenerator] Ore settings must be numbers."
-                        );
-                    } catch (IllegalArgumentException exception) {
-                        Log.err(
-                                "[EvictMapGenerator] @",
-                                exception.getMessage()
-                        );
-                    }
-                }
-        );
     }
 
     private double parseDecimal(String value) {

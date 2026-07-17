@@ -1,4 +1,4 @@
-package vini.evictmap;
+package vini.evictmap.round;
 
 import arc.graphics.Color;
 import mindustry.game.Team;

@@ -1,6 +1,9 @@
 package vini.evictmap.commands;
 
 import vini.evictmap.*;
+import vini.evictmap.gen.*;
+import vini.evictmap.data.*;
+import vini.evictmap.round.*;
 
 import arc.util.CommandHandler;
 import mindustry.gen.Call;
@@ -210,12 +213,13 @@ public final class InfoCommands {
 
         message.append("\n[accent]Total playtime: [white]")
                 .append(ConsoleCommands.formatDuration(info.totalPlaytimeMillis()))
-                .append("[]\n[accent]FFA playtime: [white]")
-                .append(ConsoleCommands.formatDuration(info.ffaPlaytimeMillis()))
-                .append("[]\n[accent]FFA: [white]")
-                .append(info.ffaWon())
+                .append("[]")
+                .append("\n[accent]Normal: [white]")
+                .append(info.normalWins())
                 .append(" wins / ")
-                .append(info.ffaPlayed())
+                .append(info.normalLosses())
+                .append(" losses / ")
+                .append(info.normalMatchesPlayed())
                 .append(" played[]")
                 .append("\n[accent]Ranked: [white]")
                 .append(info.rankedWins())
