@@ -1,6 +1,6 @@
 # CLAUDE.md — EvictMapGenerator
 
-Server-side Mindustry plugin (game v157.4, Java 17 source) for Evict-style persistent PvP on a procedurally generated hex map. Runs on a dedicated server; clients install nothing. Current version **1.4.2** — `plugin.json` `version` and the startup revision string in `EvictMapPlugin` must always match.
+Server-side Mindustry plugin (game v157.4, Java 17 source) for Evict-style persistent PvP on a procedurally generated hex map. Runs on a dedicated server; clients install nothing. Current version **1.4.3** — `plugin.json` `version` and the startup revision string in `EvictMapPlugin` must always match.
 
 One jar, two roles:
 - **Hub** — the normal Evict FFA server players connect to.
@@ -167,7 +167,7 @@ Water: configured tries per hex (not per-core fallback); decimal tries give a fr
 - Build speed: `evictbuildspeed [multiplier]` — unit-factory build speed each round; no argument shows current; default `1.4`; stored as `rules.unitBuildSpeedMultiplier` and copied into every worker; applies next generated match.
 - Duel pool: `evictduelserver [ip] [basePort] [maxWorkers] [map]` — no argument shows config; omitted values keep current. `ip` is what clients reach workers at (blank = `/play` inert); workers use `basePort .. basePort+maxWorkers-1`. Defaults: ip unset, basePort `6568`, maxWorkers `4`, map `evict-map`, worker jar `server-release.jar`.
 - Player data: `evictplayerinfo [name/uuid]`, `evictelo <name/uuid> <value>` (see Player data above).
-- Restart: `evictrestart` queues a graceful update restart (fires when no worker runs and the round ends / hub is empty / round is < 10 min old after a 30 s on-screen countdown); `evictrestart cancel` drops it, also mid-countdown (hides the HUD, announces the cancel); `evictrestart now` shows a 10 s countdown, then exits. Countdowns tick per second in a HUD popup (3 s popup lifetime) and post milestone seconds to chat (every 10 s plus the last five). The exit closes the network first (mirrors vanilla `exit`) and a 10 s watchdog forces `System.exit(0)` if the clean teardown hangs; the external start-script loop relaunches the server.
+- Restart: `evictrestart` queues a graceful update restart (fires when no worker runs and the round ends / hub is empty / round is < 10 min old after a 30 s on-screen countdown); `evictrestart cancel` drops it, also mid-countdown (hides the HUD, announces the cancel); `evictrestart now` shows a 10 s countdown, then exits. Countdowns tick per second in a HUD popup (3 s popup lifetime) and post milestone seconds to chat (every 10 s plus the last five). The exit closes the network, then hard-exits via `System.exit(0)` (the duel-worker way; shutdown hooks still flush the player DB), with a 10 s `Runtime.halt(0)` guard should a shutdown hook ever wedge; the external start-script loop relaunches the server.
 
 ## Safety notes
 

@@ -49,10 +49,11 @@ public class EvictMapPlugin extends Plugin {
     private static final long ADVERTISED_COUNT_REFRESH_MILLIS = 2000L;
 
     /**
-     * How long the restart exit may take before the watchdog forces the JVM
-     * down. Generous: a clean teardown finishes in well under a second.
+     * How long the exit's shutdown hooks may take before the halt guard
+     * forces the JVM down. Generous: the hooks (worker cleanup, player-DB
+     * flush) are themselves capped well below this.
      */
-    private static final long EXIT_WATCHDOG_MILLIS = 10_000L;
+    private static final long EXIT_HALT_GUARD_MILLIS = 10_000L;
 
     private final EvictRuntimeState runtime = new EvictRuntimeState();
     private final EvictSettings settings = new EvictSettings();
@@ -381,39 +382,42 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.4.2. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.4.3. Use 'evictstatus' for commands and current settings."
         );
     }
 
     /**
-     * Exit path for {@link RestartManager}. Mirrors the vanilla {@code exit}
-     * console command: close the network first, then end the app loop. Only
-     * calling {@code Core.app.exit()} with clients still connected left the
-     * JVM alive after the loop ended - the process sat as a zombie until a
-     * console EOF killed it, so the start-script loop never relaunched. The
-     * daemon watchdog is the backstop: if the clean teardown ever wedges
-     * again, {@code System.exit(0)} still runs the shutdown hooks (worker
-     * cleanup, player-DB flush) and then takes every thread down with it.
+     * Exit path for {@link RestartManager}: the duel-worker way. Close the
+     * network so clients disconnect cleanly, then {@code System.exit(0)} -
+     * the same hard exit duel workers use to self-terminate. The cooperative
+     * {@code Core.app.exit()} teardown proved unreliable on the production
+     * host (the JVM lingered until console input killed it), and a restart
+     * must never depend on someone at the keyboard. {@code System.exit}
+     * still runs the shutdown hooks (worker cleanup, player-DB flush), and
+     * exit code 0 sends the start-script loop down its fast relaunch path.
+     * The halt guard is the final backstop: if a shutdown hook itself ever
+     * wedges, {@code Runtime.halt} takes the process down regardless; it
+     * logs on raw stderr because the normal logger may already be gone
+     * during shutdown.
      */
     private void exitHubProcess() {
-        Thread watchdog = new Thread(() -> {
+        Thread haltGuard = new Thread(() -> {
             try {
-                Thread.sleep(EXIT_WATCHDOG_MILLIS);
+                Thread.sleep(EXIT_HALT_GUARD_MILLIS);
             } catch (InterruptedException ignored) {
                 return;
             }
 
-            PluginLog.warn(
-                    "Clean exit did not finish within @ms; forcing System.exit(0).",
-                    EXIT_WATCHDOG_MILLIS
+            System.err.println(
+                    "[EvictMapGenerator] Shutdown hooks hung; halting the JVM."
             );
-            System.exit(0);
-        }, "evict-restart-watchdog");
-        watchdog.setDaemon(true);
-        watchdog.start();
+            Runtime.getRuntime().halt(0);
+        }, "evict-exit-halt-guard");
+        haltGuard.setDaemon(true);
+        haltGuard.start();
 
         Vars.net.dispose();
-        Core.app.exit();
+        System.exit(0);
     }
 
     /** Loads persisted state and applies the fixed round rules and team wiring. */
