@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +18,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
@@ -43,8 +45,10 @@ import mindustry.gen.Unit;
  * freezes the match (an instant freeze leaves the camera stuck at the map
  * origin until the first unpause, because the spawn resolves on a world tick).
  * - once both are present, runs a 5-second countdown (HUD text), then unfreezes,
- * - if a player disconnects mid-match, pauses and shows a "Xs to rejoin"
- * countdown; resumes when they return, or after the window if they do not
+ * - if players disconnect mid-match, pauses and shows everyone currently
+ * missing with a rejoin countdown; each participant has one per-match pause
+ * budget, and the match resumes once everyone still competing is back or
+ * every absentee has run out of budget
  * (Sandbox is exempt: it never freezes for a join, a countdown or a
  * disconnect - players drop in and out of the running world freely),
  * - on an Evict victory writes a result file, returns both players to the hub,
@@ -156,7 +160,6 @@ public final class DuelWorker {
     private int matchSerial = 0;
     private int settleSerial = 0;
     private boolean settlePending = false;
-    private String disconnectedName = "A player";
 
     /**
      * Disconnect-pause time each participant has already consumed this match,
@@ -168,11 +171,27 @@ public final class DuelWorker {
     private final Map<String, Long> usedPauseMillisByUuid = new HashMap<>();
 
     /**
-     * Whose budget the currently running disconnect pause is charged to, and
-     * since when. Null while no disconnect pause runs.
+     * The participants the current disconnect pause is waiting on: uuid ->
+     * when their absence started being charged against their budget. Players
+     * who leave while the match is already frozen join this map on their own
+     * remaining budget - previously such a leave was swallowed whole, so the
+     * HUD kept naming only the first leaver while the presence check silently
+     * waited on the newcomer too. Empty while no disconnect pause runs.
      */
-    private String pauseChargedUuid = null;
-    private long pauseChargeStartMillis = 0L;
+    private final Map<String, Long> pauseAbsenceStartMillis = new LinkedHashMap<>();
+
+    /**
+     * Last display name seen for each pause-relevant participant, captured on
+     * leave - the HUD must name players who no longer have a live Player
+     * entity to ask.
+     */
+    private final Map<String, String> lastKnownNameByUuid = new HashMap<>();
+
+    /**
+     * The per-second task driving a running disconnect pause (budget charging,
+     * expiry, HUD refresh). Cancelled when the pause ends.
+     */
+    private ScheduledFuture<?> pauseTicker = null;
 
     /**
      * Participants the match has already moved on without: their disconnect
@@ -641,10 +660,21 @@ public final class DuelWorker {
         if (matchStarted) {
             if (player != null) {
                 waivedUuids.remove(player.uuid());
+
+                // Their absence stops being charged the moment they are back.
+                if (pausedForDisconnect) {
+                    chargeAbsence(player.uuid());
+                }
             }
 
-            if (pausedForDisconnect && bothPlayersPresent()) {
-                endDisconnectPause();
+            if (pausedForDisconnect) {
+                if (bothPlayersPresent()) {
+                    endDisconnectPause();
+                } else {
+                    // Someone is still missing: refresh the HUD right away so
+                    // the rejoiner's line disappears without waiting a tick.
+                    showRejoinHud();
+                }
             }
             return;
         }
@@ -738,7 +768,6 @@ public final class DuelWorker {
         if (
                 !matchStarted
                         || resolved
-                        || pausedForDisconnect
                         || !duelMode.gated()
                         || player == null
         ) {
@@ -757,9 +786,15 @@ public final class DuelWorker {
         // already-eliminated player leaving must not freeze the match for
         // everyone else.
         if (
-                isParticipant(player.uuid())
-                        && (stillCompeting == null || stillCompeting.test(player))
+                !isParticipant(player.uuid())
+                        || (stillCompeting != null && !stillCompeting.test(player))
         ) {
+            return;
+        }
+
+        if (pausedForDisconnect) {
+            addLeaverToPause(player);
+        } else {
             beginDisconnectPause(player);
         }
     }
@@ -777,11 +812,7 @@ public final class DuelWorker {
 
         // The world must run for the return countdown to tick.
         if (pausedForDisconnect) {
-            pausedForDisconnect = false;
-            disconnectSerial++;
-            chargeDisconnectPause();
-            endPlanGuard();
-            resumeGame();
+            forceEndDisconnectPause();
         }
 
         hideHud();
@@ -908,11 +939,7 @@ public final class DuelWorker {
         resolved = true;
 
         if (pausedForDisconnect) {
-            pausedForDisconnect = false;
-            disconnectSerial++;
-            chargeDisconnectPause();
-            endPlanGuard();
-            resumeGame();
+            forceEndDisconnectPause();
         }
 
         hideHud();
@@ -1058,7 +1085,8 @@ public final class DuelWorker {
         // world regenerates, so the plan guard is dropped without a scrub.
         usedPauseMillisByUuid.clear();
         waivedUuids.clear();
-        pauseChargedUuid = null;
+        pauseAbsenceStartMillis.clear();
+        cancelPauseTicker();
         planGuardActive = false;
         pausePlanKeysByUuid.clear();
         planGuardExemptUuids.clear();
@@ -1090,9 +1118,9 @@ public final class DuelWorker {
     }
 
     private void beginDisconnectPause(Player player) {
-        int windowSeconds = remainingPauseSeconds(player.uuid());
+        rememberName(player);
 
-        if (windowSeconds <= 0) {
+        if (remainingPauseSeconds(player.uuid()) <= 0) {
             waivedUuids.add(player.uuid());
             Call.sendMessage(
                     "[scarlet]" + PlayerNameFormatter.displayName(player)
@@ -1102,56 +1130,83 @@ public final class DuelWorker {
         }
 
         pausedForDisconnect = true;
-        disconnectedName = PlayerNameFormatter.displayName(player);
-        pauseChargedUuid = player.uuid();
-        pauseChargeStartMillis = System.currentTimeMillis();
+        pauseAbsenceStartMillis.put(player.uuid(), System.currentTimeMillis());
         pauseGame();
         beginPlanGuard();
 
         int serial = ++disconnectSerial;
 
-        for (int second = windowSeconds; second >= 1; second--) {
-            int remaining = second;
-
-            scheduler.schedule(
-                    () -> Core.app.post(() -> showRejoinCountdown(serial, remaining)),
-                    windowSeconds - second,
-                    TimeUnit.SECONDS
-            );
-        }
-
-        scheduler.schedule(
-                () -> Core.app.post(() -> expireDisconnectPause(serial)),
-                windowSeconds,
+        pauseTicker = scheduler.scheduleAtFixedRate(
+                () -> Core.app.post(() -> tickDisconnectPause(serial)),
+                0,
+                1,
                 TimeUnit.SECONDS
         );
     }
 
     /**
-     * Seconds left of this participant's per-match disconnect-pause budget.
+     * A participant leaving while the match is already frozen joins the set
+     * the pause waits on, spending their own remaining budget.
+     */
+    private void addLeaverToPause(Player player) {
+        String uuid = player.uuid();
+
+        if (pauseAbsenceStartMillis.containsKey(uuid)) {
+            return;
+        }
+
+        rememberName(player);
+
+        if (remainingPauseSeconds(uuid) <= 0) {
+            waivedUuids.add(uuid);
+            Call.sendMessage(
+                    "[scarlet]" + PlayerNameFormatter.displayName(player)
+                            + "[scarlet] left but has no rejoin time left this match.[]"
+            );
+            return;
+        }
+
+        pauseAbsenceStartMillis.put(uuid, System.currentTimeMillis());
+    }
+
+    /**
+     * Seconds left of this participant's per-match disconnect-pause budget,
+     * counting any absence currently being charged.
      */
     private int remainingPauseSeconds(String uuid) {
         long usedMillis = usedPauseMillisByUuid.getOrDefault(uuid, 0L);
+        Long absenceStart = pauseAbsenceStartMillis.get(uuid);
+
+        if (absenceStart != null) {
+            usedMillis += Math.max(
+                    0L,
+                    System.currentTimeMillis() - absenceStart
+            );
+        }
 
         return (int) ((REJOIN_SECONDS * 1000L - usedMillis) / 1000L);
     }
 
     /**
-     * Charge the elapsed pause time to the leaver's per-match budget. Called
-     * whenever the disconnect pause ends, however it ends.
+     * Stops charging one absentee: their elapsed pause time is added to their
+     * per-match budget and they leave the waited-on set.
      */
-    private void chargeDisconnectPause() {
-        if (pauseChargedUuid == null) {
-            return;
+    private void chargeAbsence(String uuid) {
+        Long absenceStart = pauseAbsenceStartMillis.remove(uuid);
+
+        if (absenceStart != null) {
+            usedPauseMillisByUuid.merge(
+                    uuid,
+                    Math.max(0L, System.currentTimeMillis() - absenceStart),
+                    Long::sum
+            );
         }
+    }
 
-        long elapsedMillis = Math.max(
-                0L,
-                System.currentTimeMillis() - pauseChargeStartMillis
-        );
-
-        usedPauseMillisByUuid.merge(pauseChargedUuid, elapsedMillis, Long::sum);
-        pauseChargedUuid = null;
+    private void chargeAllAbsences() {
+        for (String uuid : new ArrayList<>(pauseAbsenceStartMillis.keySet())) {
+            chargeAbsence(uuid);
+        }
     }
 
     /**
@@ -1294,24 +1349,109 @@ public final class DuelWorker {
                 + (plan.block == null ? -1 : plan.block.id);
     }
 
-    private void showRejoinCountdown(int serial, int remaining) {
+    /**
+     * One second of a running disconnect pause: settle rejoins, expire spent
+     * budgets, end the pause once nobody is left to wait for, otherwise
+     * refresh the HUD. Runs on the main thread. Also the healer for the
+     * ghost-leave case where the pause began after the real rejoin already
+     * happened - a returned player just stops being charged here.
+     */
+    private void tickDisconnectPause(int serial) {
         if (serial != disconnectSerial || !pausedForDisconnect) {
             return;
         }
 
-        // The join event is not the only way everyone can be back: a ghost
-        // connection's stale leave may have started this pause after the real
-        // rejoin already happened. Re-check every countdown second so a pause
-        // nobody is missing from heals itself instead of running out.
-        if (bothPlayersPresent()) {
-            endDisconnectPause();
+        // Players who are back stop being charged.
+        for (String uuid : new ArrayList<>(pauseAbsenceStartMillis.keySet())) {
+            if (isOnline(uuid)) {
+                chargeAbsence(uuid);
+            }
+        }
+
+        // Absentees whose budget ran out are waived: the pause stops waiting
+        // for them, though rejoining later still lets them play on.
+        List<String> expiredNames = new ArrayList<>();
+
+        for (String uuid : new ArrayList<>(pauseAbsenceStartMillis.keySet())) {
+            if (remainingPauseSeconds(uuid) <= 0) {
+                chargeAbsence(uuid);
+                waivedUuids.add(uuid);
+                expiredNames.add(nameOf(uuid));
+            }
+        }
+
+        if (pauseAbsenceStartMillis.isEmpty()) {
+            // Nobody left to wait for. Waive any straggler the presence check
+            // still counts (an absent participant who never triggered a pause
+            // of their own) so the freeze cannot outlive its absentees.
+            for (String uuid : participantUuids) {
+                if (!isOnline(uuid)) {
+                    waivedUuids.add(uuid);
+                }
+            }
+
+            endDisconnectPause(
+                    expiredNames.isEmpty()
+                            ? "[accent]Everyone is back. Resuming the match![]"
+                            : "[scarlet]" + String.join("[scarlet], ", expiredNames)
+                            + "[scarlet] did not return. The match continues.[]"
+            );
             return;
         }
 
-        showHud(
-                "[scarlet]" + disconnectedName
-                        + "[scarlet] left  -  [accent]" + remaining
-                        + "s[scarlet] to rejoin, or the match continues[]"
+        for (String name : expiredNames) {
+            Call.sendMessage(
+                    "[scarlet]" + name
+                            + "[scarlet] did not return. The match still waits for the others.[]"
+            );
+        }
+
+        showRejoinHud();
+    }
+
+    /**
+     * The rejoin HUD: one line per missing player, each with their own
+     * remaining budget. A line disappears the moment its player is back;
+     * when the last line would vanish the pause ends instead.
+     */
+    private void showRejoinHud() {
+        StringBuilder lines = new StringBuilder();
+
+        for (String uuid : pauseAbsenceStartMillis.keySet()) {
+            if (!lines.isEmpty()) {
+                lines.append("\n");
+            }
+
+            lines.append("[scarlet]")
+                    .append(nameOf(uuid))
+                    .append("[scarlet] left  -  [accent]")
+                    .append(remainingPauseSeconds(uuid))
+                    .append("s[scarlet] to rejoin, or the match continues[]");
+        }
+
+        showHud(lines.toString());
+    }
+
+    /**
+     * Display name for a participant who may be offline: the live name when
+     * connected, otherwise the name captured when they left.
+     */
+    private String nameOf(String uuid) {
+        Player online = Groups.player.find(
+                player -> player != null && player.uuid().equals(uuid)
+        );
+
+        if (online != null) {
+            return PlayerNameFormatter.displayName(online);
+        }
+
+        return lastKnownNameByUuid.getOrDefault(uuid, "A player");
+    }
+
+    private void rememberName(Player player) {
+        lastKnownNameByUuid.put(
+                player.uuid(),
+                PlayerNameFormatter.displayName(player)
         );
     }
 
@@ -1339,35 +1479,39 @@ public final class DuelWorker {
         );
     }
 
-    private void expireDisconnectPause(int serial) {
-        if (serial != disconnectSerial || !pausedForDisconnect) {
-            return;
-        }
-
-        // The leaver never came back: stop requiring them for future pauses.
-        if (pauseChargedUuid != null && !isOnline(pauseChargedUuid)) {
-            waivedUuids.add(pauseChargedUuid);
-        }
-
-        pausedForDisconnect = false;
-        chargeDisconnectPause();
-        endPlanGuard();
-        resumeGame();
-        hideHud();
-        Call.sendMessage(
-                "[scarlet]" + disconnectedName
-                        + "[scarlet] did not return. The match continues.[]"
-        );
+    private void endDisconnectPause() {
+        endDisconnectPause("[accent]Everyone is back. Resuming the match![]");
     }
 
-    private void endDisconnectPause() {
+    private void endDisconnectPause(String announcement) {
         pausedForDisconnect = false;
         disconnectSerial++;
-        chargeDisconnectPause();
+        chargeAllAbsences();
+        cancelPauseTicker();
         endPlanGuard();
         resumeGame();
         hideHud();
-        Call.sendMessage("[accent]Everyone is back. Resuming the match![]");
+        Call.sendMessage(announcement);
+    }
+
+    /**
+     * Tears down a running disconnect pause without an announcement - the
+     * victory / session-end paths speak for themselves.
+     */
+    private void forceEndDisconnectPause() {
+        pausedForDisconnect = false;
+        disconnectSerial++;
+        chargeAllAbsences();
+        cancelPauseTicker();
+        endPlanGuard();
+        resumeGame();
+    }
+
+    private void cancelPauseTicker() {
+        if (pauseTicker != null) {
+            pauseTicker.cancel(false);
+            pauseTicker = null;
+        }
     }
 
     private void scheduleShutdownIfEmpty(int seconds) {
