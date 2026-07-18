@@ -48,6 +48,12 @@ public class EvictMapPlugin extends Plugin {
     private static final int CONNECTED_PLAYER_SCAN_ATTEMPTS = 120;
     private static final long ADVERTISED_COUNT_REFRESH_MILLIS = 2000L;
 
+    /**
+     * How long the restart exit may take before the watchdog forces the JVM
+     * down. Generous: a clean teardown finishes in well under a second.
+     */
+    private static final long EXIT_WATCHDOG_MILLIS = 10_000L;
+
     private final EvictRuntimeState runtime = new EvictRuntimeState();
     private final EvictSettings settings = new EvictSettings();
     private final PlayerDataManager playerDataManager =
@@ -133,7 +139,7 @@ public class EvictMapPlugin extends Plugin {
                     () -> duelServerManager.activeDuels().size(),
                     Groups.player::size,
                     teamManager::roundRuntimeMillis,
-                    () -> Core.app.exit()
+                    this::exitHubProcess
             );
 
     private final ConsoleCommands consoleCommands =
@@ -377,6 +383,37 @@ public class EvictMapPlugin extends Plugin {
         Log.info(
                 "[EvictMapGenerator] Loaded. Code revision 1.4.1. Use 'evictstatus' for commands and current settings."
         );
+    }
+
+    /**
+     * Exit path for {@link RestartManager}. Mirrors the vanilla {@code exit}
+     * console command: close the network first, then end the app loop. Only
+     * calling {@code Core.app.exit()} with clients still connected left the
+     * JVM alive after the loop ended - the process sat as a zombie until a
+     * console EOF killed it, so the start-script loop never relaunched. The
+     * daemon watchdog is the backstop: if the clean teardown ever wedges
+     * again, {@code System.exit(0)} still runs the shutdown hooks (worker
+     * cleanup, player-DB flush) and then takes every thread down with it.
+     */
+    private void exitHubProcess() {
+        Thread watchdog = new Thread(() -> {
+            try {
+                Thread.sleep(EXIT_WATCHDOG_MILLIS);
+            } catch (InterruptedException ignored) {
+                return;
+            }
+
+            PluginLog.warn(
+                    "Clean exit did not finish within @ms; forcing System.exit(0).",
+                    EXIT_WATCHDOG_MILLIS
+            );
+            System.exit(0);
+        }, "evict-restart-watchdog");
+        watchdog.setDaemon(true);
+        watchdog.start();
+
+        Vars.net.dispose();
+        Core.app.exit();
     }
 
     /** Loads persisted state and applies the fixed round rules and team wiring. */
