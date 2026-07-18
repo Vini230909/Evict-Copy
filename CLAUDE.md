@@ -1,6 +1,6 @@
 # CLAUDE.md — EvictMapGenerator
 
-Server-side Mindustry plugin (game v157.4, Java 17 source) for Evict-style persistent PvP on a procedurally generated hex map. Runs on a dedicated server; clients install nothing. Current version **1.4.1** — `plugin.json` `version` and the startup revision string in `EvictMapPlugin` must always match.
+Server-side Mindustry plugin (game v157.4, Java 17 source) for Evict-style persistent PvP on a procedurally generated hex map. Runs on a dedicated server; clients install nothing. Current version **1.4.2** — `plugin.json` `version` and the startup revision string in `EvictMapPlugin` must always match.
 
 One jar, two roles:
 - **Hub** — the normal Evict FFA server players connect to.
