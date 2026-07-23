@@ -6,8 +6,8 @@ import vini.evictmap.duel.MatchMode;
  * Ranked 1v1: the same two-duelist gated match as {@link OneVsOne}, but its
  * result is the only thing that moves a player's ELO (see
  * {@code vini.evictmap.EloCalculator}) and it is stored as a ranked /history
- * entry. Behaviourally identical to a casual 1v1 on the worker; only the hub
- * treats the result differently, keyed off {@link #ranked()}.
+ * entry. On the worker it differs from a casual 1v1 only in chat: it is the one
+ * mode that {@link #restrictsSpectatorChat() restricts spectator chat}.
  */
 public final class Ranked implements DuelMode {
 
@@ -18,6 +18,11 @@ public final class Ranked implements DuelMode {
 
     @Override
     public boolean ranked() {
+        return true;
+    }
+
+    @Override
+    public boolean restrictsSpectatorChat() {
         return true;
     }
 }

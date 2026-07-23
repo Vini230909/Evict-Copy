@@ -163,7 +163,7 @@ public final class DuelCommands {
     void registerClientCommands(CommandHandler handler) {
         handler.<Player>register(
                 "play",
-                "Start a match: 1v1, Ranked, Teams, Random Teams, FFA, Training or Sandbox.",
+                "Start a match: Unranked, 1v1, Teams, Random Teams, FFA, Training or Sandbox.",
                 (args, player) -> openModeMenu(player)
         );
 
@@ -242,7 +242,7 @@ public final class DuelCommands {
                 "[accent]Play",
                 "Select a game mode.",
                 new String[][]{
-                        {"1v1", "Ranked"},
+                        {"Unranked", "1v1"},
                         {"Teams", "Random Teams"},
                         {"FFA", "Training"},
                         {"Sandbox"},

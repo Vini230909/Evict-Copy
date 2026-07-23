@@ -81,4 +81,15 @@ public interface DuelMode {
     default boolean eliminatesWipedTeams() {
         return false;
     }
+
+    /**
+     * Global chat is limited to the two duelists (Ranked): viewers and casting
+     * admins have their normal chat routed to the spectators' chat so they can
+     * never leak information to the players, and only a casting admin reaches
+     * global - through an inverted /t. Every other mode leaves chat untouched.
+     * See {@code vini.evictmap.duel.DuelChat}.
+     */
+    default boolean restrictsSpectatorChat() {
+        return false;
+    }
 }

@@ -28,18 +28,18 @@ public final class LeaderboardCommands {
 
         commands.command("leaderboard").aliases("top", "lb").client()
                 .args("count:int?")
-                .description("Show the top ranked players by ELO.")
+                .description("Show the top 1v1 players by ELO.")
                 .run(ctx -> {
                     int requested = ctx.has("count") ? ctx.getInt("count", DEFAULT_COUNT) : DEFAULT_COUNT;
                     int limit = Math.max(1, Math.min(requested, MAX_COUNT));
 
                     playerData.topRankedByElo(limit, rows -> {
                         if (rows.isEmpty()) {
-                            ctx.reply(Text.of().accent("No ranked matches have been played yet."));
+                            ctx.reply(Text.of().accent("No 1v1 matches have been played yet."));
                             return;
                         }
 
-                        Text out = Text.of().gold("=== Ranked Leaderboard (Top " + rows.size() + ") ===");
+                        Text out = Text.of().gold("=== 1v1 Leaderboard (Top " + rows.size() + ") ===");
                         int rank = 1;
                         for (PlayerDataManager.PlayerInfo info : rows) {
                             out.add("\n")

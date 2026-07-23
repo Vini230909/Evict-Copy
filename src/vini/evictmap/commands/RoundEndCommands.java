@@ -123,7 +123,7 @@ public final class RoundEndCommands {
 
         if (duelWorker) {
             player.sendMessage(
-                    "[scarlet]/over is not available in 1v1 duels.[]"
+                    "[scarlet]/over is not available in duels.[]"
             );
             return;
         }

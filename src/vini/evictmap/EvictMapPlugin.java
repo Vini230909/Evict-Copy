@@ -27,6 +27,7 @@ import vini.evictmap.gameplay.AttritionManager;
 import vini.evictmap.gameplay.RulesApplier;
 import vini.evictmap.gameplay.ExtinctionManager;
 import vini.evictmap.gameplay.AttackManager;
+import vini.evictmap.duel.DuelChat;
 import vini.evictmap.duel.DuelServerManager;
 import vini.evictmap.duel.DuelWorker;
 import vini.evictmap.duel.modes.DuelMode;
@@ -65,6 +66,9 @@ public class EvictMapPlugin extends Plugin {
             new TeamManager(this::handleVictory);
 
     private final DuelWorker duelWorkerReferee = new DuelWorker();
+
+    private final DuelChat duelChat =
+            new DuelChat(duelWorkerReferee, rankManager);
 
     private final AttritionManager attritionManager =
             new AttritionManager(teamManager, settings);
@@ -434,7 +438,7 @@ public class EvictMapPlugin extends Plugin {
                     new java.io.File("../../config/evict-players.db")
             );
 
-            installDuelChatFilter();
+            duelChat.installChatFilter();
         }
 
         RulesApplier.applyRules();
@@ -526,6 +530,13 @@ public class EvictMapPlugin extends Plugin {
     @Override
     public void registerClientCommands(CommandHandler handler) {
         clientCommands.register(handler);
+
+        // On a duel worker, replace vanilla /t so a ranked match can invert it
+        // for casting admins. The hub keeps vanilla /t untouched. Registering
+        // last wins: CommandHandler.register replaces any earlier command.
+        if (duelWorker) {
+            duelChat.registerTeamChatCommand(handler);
+        }
     }
 
     @Override
@@ -646,51 +657,6 @@ public class EvictMapPlugin extends Plugin {
     private void assignConnectedPlayersAndRecordStats() {
         roundTimeCommands.rememberConnectedPlayers();
         teamManager.assignConnectedPlayers(this::isDuelSpectator);
-    }
-
-    /**
-     * On a duel worker, global chat is for the two players plus commentators and
-     * admins (the casters). Viewers have their normal messages routed to their
-     * own team chat instead, so they never need to type /t.
-     */
-    private void installDuelChatFilter() {
-        if (Vars.netServer == null) {
-            return;
-        }
-
-        Vars.netServer.admins.addChatFilter((player, message) -> {
-            if (player == null || message == null) {
-                return message;
-            }
-
-            // Training and Sandbox are casual sessions: the players and the
-            // viewers share one global chat instead of viewers being routed
-            // to their own team chat.
-            if (duelWorkerReferee.duelMode().solo()) {
-                return message;
-            }
-
-            if (
-                    duelWorkerReferee.isParticipant(player.uuid())
-                            || rankManager.canRestartMatches(player)
-            ) {
-                return message;
-            }
-
-            sendDuelTeamChat(player, message);
-            return null;
-        });
-    }
-
-    private void sendDuelTeamChat(Player sender, String message) {
-        String line = "[#" + sender.team().color + "]<T>[] "
-                + sender.name + "[white]: " + message;
-
-        Groups.player.each(target -> {
-            if (target != null && target.team() == sender.team()) {
-                target.sendMessage(line);
-            }
-        });
     }
 
     /**

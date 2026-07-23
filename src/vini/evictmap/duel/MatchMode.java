@@ -13,14 +13,14 @@ import vini.evictmap.duel.modes.DuelModes;
  */
 public enum MatchMode {
 
-    ONE_VS_ONE("1v1", "1v1"),
+    ONE_VS_ONE("1v1", "Unranked"),
 
     /**
      * The same two-duelist gated match as {@link #ONE_VS_ONE}, but rated: its
      * result is the only thing that moves a player's ELO and it is stored as a
      * ranked /history entry. The only ranked mode.
      */
-    RANKED("ranked", "Ranked"),
+    RANKED("ranked", "1v1"),
 
     TEAMS("teams", "Teams"),
 

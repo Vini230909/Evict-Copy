@@ -69,6 +69,7 @@ Round systems:
 Matches:
 - `duel/DuelServerManager` — hub-side worker pool: reserves ports, provisions worker folders, spawns worker processes, redirects rostered players, frees slots on exit.
 - `duel/DuelWorker` — worker-side referee: handshake, start gate, countdown, disconnect pauses, result file, periodic status file.
+- `duel/DuelChat` — worker-side chat routing for modes that `restrictsSpectatorChat()` (Ranked): the chat filter + inverted `/t` override.
 - `duel/MatchMode`, `duel/modes/` — mode ids and per-mode rules (1v1, Ranked, Teams, FFA, Training, Sandbox).
 
 Commands (`commands/`):
@@ -138,6 +139,8 @@ Game-mode menu: `1v1`, `Ranked`, `Teams`, `Random Teams`, `FFA`, `Training`, `Sa
 - **Sandbox** — Training + infinite resources; `/view` spectators may `/invite` to request joining and the owner accepts with the normal leader `/invite` flow (spectator promoted to participant).
 
 All modes run the same generated Evict map and worker rules: wait-for-everyone start gate, 5 s countdown, disconnect pause with rejoin window.
+
+Chat routing (workers only): every mode except **Ranked** uses normal global chat for everyone. In a **Ranked** match only the two duelists chat on global; viewers and casting admins have their normal chat routed to the spectators' chat instead (so nobody can leak information to the players). A casting admin (`RankManager.canRestartMatches` — server admin or ranked commentator) reaches global with an inverted `/t`: their normal chat goes to spectators, and `/t` broadcasts to everyone. Plain viewers have no path to global. The hub's `/t` is left vanilla; the worker overrides `/t` for this.
 
 Worker infrastructure:
 - One Mindustry process hosts one game, so each match gets its own worker process — spawned on demand, never idle.

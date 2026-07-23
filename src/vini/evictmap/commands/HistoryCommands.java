@@ -67,7 +67,7 @@ public final class HistoryCommands {
     void registerClientCommands(CommandHandler handler) {
         handler.<Player>register(
                 "history",
-                "Pick a player and view their 1v1, Teams and FFA match history.",
+                "Pick a player and view their Unranked, 1v1, Teams and FFA match history.",
                 (args, player) -> openPicker(player)
         );
 
@@ -270,12 +270,12 @@ public final class HistoryCommands {
                     ? match.winnerEloAfter() - match.winnerEloBefore()
                     : match.loserEloAfter() - match.loserEloBefore();
 
-            return "[lightgray]Ranked[]\n"
+            return "[lightgray]1v1[]\n"
                     + winLose(won) + "\n" + subject + " [white]vs[] " + opponent
                     + "\n[gray]elo: []" + formatEloDelta(eloDelta);
         }
 
-        return "[lightgray]1v1[]\n"
+        return "[lightgray]Unranked[]\n"
                 + winLose(won) + "\n" + subject + " [white]vs[] " + opponent;
     }
 
