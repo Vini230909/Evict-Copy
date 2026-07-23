@@ -447,6 +447,54 @@ public final class DuelServerManager {
     }
 
     /**
+     * Snapshot of the running matches for outside reporting (the Discord status
+     * message). Main-thread only, and in-memory only: it reads the worker table
+     * and nothing from disk, so it is cheap enough to call on a timer.
+     *
+     * <p>Identifies a match by pool slot rather than port. Slots are what the
+     * pool is configured in ({@code maxWorkers} of them), and a port is an
+     * internal detail that has no business being published.
+     *
+     * <p>Names come from the roster snapshot taken at spawn, so a match still
+     * lists everyone after someone disconnects, and they are plain names - any
+     * formatting for the destination is that destination's job.
+     */
+    public List<MatchStatus> matchStatuses() {
+        List<MatchStatus> statuses = new ArrayList<>();
+        long now = System.currentTimeMillis();
+
+        for (WorkerHandle handle : workers.values()) {
+            if (!isOngoing(handle)) {
+                continue;
+            }
+
+            statuses.add(new MatchStatus(
+                    handle.port - settings.duelServerPort() + 1,
+                    handle.mode.label(),
+                    rosterNames(handle),
+                    (now - handle.spawnedAtMillis) / 1000L
+            ));
+        }
+
+        statuses.sort(Comparator.comparingInt(MatchStatus::slot));
+        return statuses;
+    }
+
+    /** The handle's participants grouped into their teams, in team order. */
+    private static List<List<String>> rosterNames(WorkerHandle handle) {
+        Map<Integer, List<String>> byTeam = new TreeMap<>();
+
+        for (Participant participant : handle.participants) {
+            byTeam.computeIfAbsent(
+                    participant.teamIndex(),
+                    index -> new ArrayList<>()
+            ).add(participant.plainName());
+        }
+
+        return new ArrayList<>(byTeam.values());
+    }
+
+    /**
      * Players currently connected across all duel workers (duelists plus /view
      * spectators), read from each worker's status.properties. Lets the hub fold
      * duel players into its advertised player count. Main-thread only.
@@ -1287,6 +1335,22 @@ public final class DuelServerManager {
     public record ActiveDuel(
             int port,
             String label
+    ) {
+    }
+
+    /**
+     * One running match, described for reporting outside the server.
+     *
+     * @param slot      1-based pool slot, not the worker port
+     * @param modeLabel the match mode's display label
+     * @param teamNames plain player names grouped by team, in team order
+     * @param seconds   how long the worker has been up
+     */
+    public record MatchStatus(
+            int slot,
+            String modeLabel,
+            List<List<String>> teamNames,
+            long seconds
     ) {
     }
 

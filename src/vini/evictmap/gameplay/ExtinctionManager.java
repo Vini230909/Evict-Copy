@@ -28,6 +28,13 @@ import java.util.List;
  * </p>
  */
 public final class ExtinctionManager implements GameplayManagerInterface {
+
+    /**
+     * Round time, in seconds, at which the first ring starts collapsing. The
+     * warnings before it are offsets from this moment.
+     */
+    public static final float EXTINCTION_BEGINS_SECONDS = 90 * 60;
+
     /**
      * State machine used to implement the Extinction event.
      * Various states represent the different stages of progression through the event.
@@ -53,7 +60,7 @@ public final class ExtinctionManager implements GameplayManagerInterface {
                 case NO_WARNING_SENT -> 80 * 60;
                 case TEN_MINUTES_WARNING_SENT -> 85 * 60;
                 case FIVE_MINUTES_WARNING_SENT -> 89 * 60;
-                case ONE_MINUTE_WARNING_SENT -> 90 * 60;
+                case ONE_MINUTE_WARNING_SENT -> EXTINCTION_BEGINS_SECONDS;
                 case FIFTH_RING_COLLAPSED -> 92f * 60;
                 case FOURTH_RING_COLLAPSED -> 94 * 60;
                 case THIRD_RING_COLLAPSED -> 96f * 60;
@@ -209,6 +216,22 @@ public final class ExtinctionManager implements GameplayManagerInterface {
 
     @Override
     public void endRound() {
+    }
+
+    /**
+     * Seconds left before the ring collapse starts, 0 once it has. Derived from
+     * the round clock rather than the state machine, whose state wraps back
+     * round after the final ring.
+     */
+    public float secondsUntilExtinction() {
+        float elapsedSeconds = teamManager.roundRuntimeMillis() / 1000f;
+
+        return Math.max(0f, EXTINCTION_BEGINS_SECONDS - elapsedSeconds);
+    }
+
+    /** Whether the round has reached Extinction. */
+    public boolean hasBegun() {
+        return secondsUntilExtinction() <= 0f;
     }
 
     /**

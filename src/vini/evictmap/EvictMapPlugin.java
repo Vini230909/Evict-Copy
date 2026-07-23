@@ -27,6 +27,7 @@ import vini.evictmap.gameplay.AttritionManager;
 import vini.evictmap.gameplay.RulesApplier;
 import vini.evictmap.gameplay.ExtinctionManager;
 import vini.evictmap.gameplay.AttackManager;
+import vini.evictmap.discord.DiscordStatusReporter;
 import vini.evictmap.duel.DuelChat;
 import vini.evictmap.duel.DuelServerManager;
 import vini.evictmap.duel.DuelWorker;
@@ -55,6 +56,17 @@ public class EvictMapPlugin extends Plugin {
      * flush) are themselves capped well below this.
      */
     private static final long EXIT_HALT_GUARD_MILLIS = 10_000L;
+
+    /**
+     * When launched with -Devict.duelWorker=true this process is a spawned 1v1
+     * worker. It runs Evict normally but shuts itself down once the match is
+     * empty so the hub can free the slot.
+     *
+     * <p>Declared first: several managers below are wired differently on a
+     * worker, and a field initialiser can only read fields declared above it.
+     */
+    private final boolean duelWorker =
+            "true".equals(System.getProperty("evict.duelWorker"));
 
     private final EvictRuntimeState runtime = new EvictRuntimeState();
     private final EvictSettings settings = new EvictSettings();
@@ -147,6 +159,22 @@ public class EvictMapPlugin extends Plugin {
                     this::exitHubProcess
             );
 
+    /**
+     * Hub-only live status message in Discord. Constructed on a worker too (it
+     * is a plain object with no side effects until started), but only the hub
+     * ever calls start()/update() - four workers editing the same message would
+     * fight over it.
+     */
+    private final DiscordStatusReporter discordStatusReporter =
+            new DiscordStatusReporter(
+                    settings,
+                    playerDataManager,
+                    teamManager,
+                    extinctionManager,
+                    duelServerManager,
+                    restartManager
+            );
+
     private final ConsoleCommands consoleCommands =
             new ConsoleCommands(
                     runtime,
@@ -157,6 +185,7 @@ public class EvictMapPlugin extends Plugin {
                     duelServerManager,
                     rankManager,
                     restartManager,
+                    duelWorker ? null : discordStatusReporter,
                     // evictgen regenerates the live map in place with no fresh snapshot,
                     // so connected clients only see the new terrain via the per-tile sync.
                     seed -> generate(seed, true)
@@ -166,14 +195,6 @@ public class EvictMapPlugin extends Plugin {
     private long connectedPlayerScanSerial = 0L;
     private int advertisedPlayerCount = -1;
     private long advertisedPlayerCountRefreshedAtMillis = 0L;
-
-    /**
-     * When launched with -Devict.duelWorker=true this process is a spawned 1v1
-     * worker. It runs Evict normally but shuts itself down once the match is
-     * empty so the hub can free the slot.
-     */
-    private final boolean duelWorker =
-            "true".equals(System.getProperty("evict.duelWorker"));
 
     // pre-changing detector
     private final HashMap<Integer, CoreBlock.CoreBuild> prechanged =
@@ -191,6 +212,10 @@ public class EvictMapPlugin extends Plugin {
             // jar. This keeps idle workers off a version-mismatched server
             // without deleting the folders and losing their logs.
             duelServerManager.refreshWorkerJars();
+
+            // Hub only: one live status message in Discord. Workers must stay
+            // out of it - they would all edit the same message.
+            discordStatusReporter.start();
         }
 
         Events.on(WorldLoadEvent.class, event -> {
@@ -382,11 +407,12 @@ public class EvictMapPlugin extends Plugin {
             if (!duelWorker) {
                 refreshAdvertisedPlayerCount();
                 metricsReporter.update();
+                discordStatusReporter.update();
             }
         });
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.4.3. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.4.4. Use 'evictstatus' for commands and current settings."
         );
     }
 

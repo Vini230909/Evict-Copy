@@ -124,6 +124,16 @@ public final class EvictSettings {
     private String duelWorkerMap = DEFAULT_DUEL_WORKER_MAP;
 
     /**
+     * Discord webhook the hub keeps a live status message on. A blank URL means
+     * the feature is off. The message id is stored alongside it so a restart
+     * keeps editing the same message instead of posting a new one every time
+     * the server comes up; it is cleared whenever the URL changes, because an
+     * id only means anything in the channel it was created in.
+     */
+    private String discordWebhookUrl = "";
+    private String discordMessageId = "";
+
+    /**
      * Internal block ids players may not build (e.g. {@code router}). Stored as
      * names rather than {@code Block} objects so this class stays free of
      * Mindustry content; {@link EvictRules} resolves them at round start. Carried
@@ -307,6 +317,11 @@ public final class EvictSettings {
             duelWorkerJarName =
                     readString(properties, "duel.worker.jar", duelWorkerJarName);
 
+            discordWebhookUrl =
+                    readString(properties, "discord.webhook.url", discordWebhookUrl).trim();
+            discordMessageId =
+                    readString(properties, "discord.message.id", discordMessageId).trim();
+
             setBannedBlockNamesWithoutSaving(
                     splitBannedBlockNames(
                             readString(properties, "rules.bannedBlocks", "")
@@ -434,6 +449,41 @@ public final class EvictSettings {
         return duelServerIp
                 + " ports " + duelServerPort + "-" + lastPort
                 + " (" + duelMaxWorkers + " workers, map=" + duelWorkerMap + ")";
+    }
+
+    public String discordWebhookUrl() {
+        return discordWebhookUrl;
+    }
+
+    public String discordMessageId() {
+        return discordMessageId;
+    }
+
+    public boolean discordConfigured() {
+        return !discordWebhookUrl.isBlank();
+    }
+
+    /**
+     * Points the status reporter at a webhook. Pass a blank URL to turn the
+     * feature off; pass a blank message id to make the next update post a new
+     * message rather than edit an old one.
+     */
+    public void setDiscordWebhook(String url, String messageId) {
+        discordWebhookUrl = url == null ? "" : url.trim();
+        discordMessageId = messageId == null ? "" : messageId.trim();
+        save();
+    }
+
+    /** Remembers the message the reporter is editing, across restarts. */
+    public void setDiscordMessageId(String messageId) {
+        String cleaned = messageId == null ? "" : messageId.trim();
+
+        if (cleaned.equals(discordMessageId)) {
+            return;
+        }
+
+        discordMessageId = cleaned;
+        save();
     }
 
     private void setDuelServerWithoutSaving(
@@ -981,6 +1031,8 @@ public final class EvictSettings {
         );
         properties.setProperty("duel.worker.map", duelWorkerMap);
         properties.setProperty("duel.worker.jar", duelWorkerJarName);
+        properties.setProperty("discord.webhook.url", discordWebhookUrl);
+        properties.setProperty("discord.message.id", discordMessageId);
         properties.setProperty(
                 "rules.bannedBlocks",
                 String.join(",", bannedBlockNames)

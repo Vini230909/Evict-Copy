@@ -6,6 +6,7 @@ import vini.evictmap.data.*;
 import vini.evictmap.round.*;
 import vini.evictmap.core.cmd.Commands;
 import vini.evictmap.core.util.Players;
+import vini.evictmap.discord.DiscordStatusReporter;
 import vini.evictmap.duel.DuelServerManager;
 
 import arc.util.CommandHandler;
@@ -37,6 +38,10 @@ public final class ConsoleCommands {
     private final DuelServerManager duelServerManager;
     private final RankManager rankManager;
     private final RestartManager restartManager;
+
+    /** Null on a duel worker, which never reports to Discord. */
+    private final DiscordStatusReporter discordStatusReporter;
+
     private final LongConsumer generate;
 
     private static final int MAX_CORECAP_INCREMENT = 10000;
@@ -52,6 +57,7 @@ public final class ConsoleCommands {
             DuelServerManager duelServerManager,
             RankManager rankManager,
             RestartManager restartManager,
+            DiscordStatusReporter discordStatusReporter,
             LongConsumer generate
     ) {
         this.runtime = runtime;
@@ -62,6 +68,7 @@ public final class ConsoleCommands {
         this.duelServerManager = duelServerManager;
         this.rankManager = rankManager;
         this.restartManager = restartManager;
+        this.discordStatusReporter = discordStatusReporter;
         this.generate = generate;
     }
 
@@ -150,6 +157,11 @@ public final class ConsoleCommands {
                 .description("Show or set the on-demand worker pool that /play uses. ip is the address clients reach workers at; basePort the first worker port; maxWorkers how many duels run at once (1-10); map the map workers host. Omitted values keep current.")
                 .run(ctx -> configureDuelServer(ctx.raw()));
 
+        commands.command("evictdiscord").console()
+                .args("url/off/test:string?")
+                .description("Show or set the Discord webhook the live status message is posted to. Pass a webhook URL to (re)post the message there, 'off' to stop updating, 'test' to refresh right now.")
+                .run(ctx -> handleDiscordCommand(ctx.str("url/off/test", "").trim()));
+
         commands.command("evictduelstatus").console()
                 .description("List the active worker servers and who is in them.")
                 .run(ctx -> duelServerManager.logStatus());
@@ -177,6 +189,40 @@ public final class ConsoleCommands {
                 .args("scale:string?", "threshold:string?", "octaves:string?", "falloff:string?")
                 .description("Show or persist editor-style ore noise settings for the next generated match.")
                 .run(ctx -> configureOre(ctx.raw(), name, oreKind));
+    }
+
+    /**
+     * evictdiscord: no argument reports the current wiring, a URL adopts a new
+     * webhook, 'off' takes the message offline and stops, 'test' forces an
+     * immediate refresh.
+     */
+    private void handleDiscordCommand(String argument) {
+        if (discordStatusReporter == null) {
+            Log.err("[EvictMapGenerator] Discord status reporting only runs on the hub.");
+            return;
+        }
+
+        switch (argument.toLowerCase()) {
+            case "" -> Log.info(
+                    "[EvictMapGenerator] Discord status: @",
+                    discordStatusReporter.statusLine()
+            );
+            case "off" -> {
+                discordStatusReporter.disable();
+                Log.info("[EvictMapGenerator] Discord status reporting is off; the message now reads Offline.");
+            }
+            case "test" -> {
+                discordStatusReporter.publishNow();
+                Log.info("[EvictMapGenerator] Discord status update requested.");
+            }
+            default -> {
+                if (discordStatusReporter.configure(argument)) {
+                    Log.info("[EvictMapGenerator] Discord webhook set. A fresh status message is being posted.");
+                } else {
+                    Log.err("[EvictMapGenerator] That is not a Discord webhook URL. Copy it from Channel Settings > Integrations > Webhooks.");
+                }
+            }
+        }
     }
 
     private void handleRestartCommand(String action) {

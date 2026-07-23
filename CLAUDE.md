@@ -1,6 +1,6 @@
 # CLAUDE.md — EvictMapGenerator
 
-Server-side Mindustry plugin (game v157.4, Java 17 source) for Evict-style persistent PvP on a procedurally generated hex map. Runs on a dedicated server; clients install nothing. Current version **1.4.3** — `plugin.json` `version` and the startup revision string in `EvictMapPlugin` must always match.
+Server-side Mindustry plugin (game v157.4, Java 17 source) for Evict-style persistent PvP on a procedurally generated hex map. Runs on a dedicated server; clients install nothing. Current version **1.4.4** — `plugin.json` `version` and the startup revision string in `EvictMapPlugin` must always match.
 
 One jar, two roles:
 - **Hub** — the normal Evict FFA server players connect to.
@@ -27,7 +27,7 @@ Deploy: copy the jar into the server's `config/mods/` and restart — nothing el
 
 Package layout (reorganised in 1.4.0): `core/` shared infrastructure, `gen/`
 generation + settings, `round/` team/round systems, `data/` persistence, `gameplay/`,
-`duel/`, `commands/`, `metrics/`. `EvictMapPlugin`, `RestartManager` and
+`duel/`, `commands/`, `metrics/`, `discord/`. `EvictMapPlugin`, `RestartManager` and
 `PlayerNameFormatter` stay at the package root.
 
 Core infrastructure (`core/`) — reusable, gameplay-agnostic:
@@ -42,6 +42,7 @@ Lifecycle:
 - `gen/EvictSettings` — loads/persists `config/evict-map-generator.properties`.
 - `RestartManager` — implemented `evictrestart` graceful-restart flow (queue / `cancel` / `now`); the plugin only exits cleanly, an external start-script loop relaunches it — see `docs/RESTART_LOOP.md`.
 - `metrics/MetricsReporter` — throttled hub metrics log line (players, duel players, active matches).
+- `discord/` — hub-only live status message in a Discord channel (see Discord status below): `DiscordStatusReporter` (30 s loop, ladder cache, offline notice), `DiscordWebhook` (create/edit transport), `StatusMessage` + `StatusSnapshot` + `DiscordJson` (payload), `DiscordFormat` (name cleaning, durations).
 - `gameplay/RulesApplier` — fixed PvP rules, banned blocks, building-vs-building bullet damage scaling, disables Alpha/Beta/Gamma core-unit combat damage while keeping their building/mining.
 
 Generation:
@@ -157,6 +158,16 @@ Worker infrastructure:
 - Final phase: the center hex + its six neighbours are protected from procedural filling. When only those 7 hexes remain, a 4-minute center-core phase begins; whoever owns the middle core after 4 minutes wins — including Fallen (then the round resets normally).
 - Terrain streaming: `extinction.terrainChangesPerTick` in the properties file — Space-floor conversions per tick, default 120, range 1..4096.
 
+### Discord status
+Hub-only. One webhook message in a Discord channel (`#serverstatus`), edited in place every **30 s** — never a new message, and an edit notifies nobody. Two embeds: server status (player count vs. the server's slot cap, lobby/match split only while a match runs, round runtime + Extinction countdown, running matches, and a `⚠️ Restart queued` field that appears only while a restart is queued) and the top-10 ranked ELO ladder.
+- Refresh is unconditional, not change-detected. The closing `Updated <t:…:R>` line is a Discord relative timestamp that counts up client-side, so a healthy server always reads "seconds ago" and a stuck one is visible by the number growing.
+- Matches are identified by **pool slot** (1..`maxWorkers`), never by port, with mode label, rosters and worker uptime. Names come from the spawn-time roster (`DuelServerManager.matchStatuses()`), so a match still lists everyone after a disconnect.
+- The ladder is re-queried only every 5 min (it can only move when a ranked match ends); the message still redraws every 30 s from the cache.
+- Player names are user-controlled, so every name passes `DiscordFormat.playerName`: strip Mindustry colour tags → strip control chars → collapse whitespace → truncate to 24 → backslash-escape `\ * _ ~ ` |` (escape last, so a cut never splits an escape pair). Independently, every payload sets `allowed_mentions: {"parse": []}` — that, not the escaping, is what stops a player named `@everyone` from pinging the whole Discord server twice a minute.
+- Message id is persisted (`discord.message.id`) so restarts keep editing the same message. A 404 while editing means someone deleted it → post a fresh one; a 404 while creating means the webhook is gone → stop and log. 401/403 disables; 429 backs off for `retry_after`; transient failures are logged on the 1st and then every 20th.
+- Clean shutdown posts `🔴 Offline` from a JVM shutdown hook (blocking send, 3 s budget), so `evictrestart` and normal stops are covered. A hard crash cannot reach it — that is what the counting timestamp is for.
+- Transport is the JDK `java.net.http.HttpClient`: Arc's `Http` (and `HttpURLConnection` under it) has no PATCH, which Discord's message edit requires.
+
 ### Generation
 Filled hexes: min 6, max 12, center bonus up to 12%; the final-seven Extinction hexes must never be filled. Chances: border 11%, second ring 3.5%, inner 1%; chain start 22%, chain continue 48%, max chain length 3.
 
@@ -169,6 +180,7 @@ Water: configured tries per hex (not per-core fallback); decimal tries give a fr
 - Walls: `evictwall [full-wall] [small-wall] [open] [passage]`
 - Build speed: `evictbuildspeed [multiplier]` — unit-factory build speed each round; no argument shows current; default `1.4`; stored as `rules.unitBuildSpeedMultiplier` and copied into every worker; applies next generated match.
 - Duel pool: `evictduelserver [ip] [basePort] [maxWorkers] [map]` — no argument shows config; omitted values keep current. `ip` is what clients reach workers at (blank = `/play` inert); workers use `basePort .. basePort+maxWorkers-1`. Defaults: ip unset, basePort `6568`, maxWorkers `4`, map `evict-map`, worker jar `server-release.jar`.
+- Discord status: `evictdiscord [url/off/test]` — no argument reports the current wiring (message id, last success, last error); a webhook URL adopts it and posts a fresh message; `off` posts Offline and stops; `test` refreshes immediately. Stored as `discord.webhook.url` + `discord.message.id`; changing the URL clears the id. Setup is Discord-side: create the channel, Integrations → Create Webhook, paste the URL.
 - Player data: `evictplayerinfo [name/uuid]` (single match also prints lastIP + all known IPs from Mindustry's admin store, for `ban ip`), `evictelo <name/uuid> <value>` (see Player data above).
 - Restart: `evictrestart` queues a graceful update restart (fires when no worker runs and the round ends / hub is empty / round is < 10 min old after a 30 s on-screen countdown); `evictrestart cancel` drops it, also mid-countdown (hides the HUD, announces the cancel); `evictrestart now` shows a 10 s countdown, then exits. Countdowns tick per second in a HUD popup (3 s popup lifetime) and post milestone seconds to chat (every 10 s plus the last five). The exit closes the network, then hard-exits via `System.exit(0)` (the duel-worker way; shutdown hooks still flush the player DB), with a 10 s `Runtime.halt(0)` guard should a shutdown hook ever wedge; the external start-script loop relaunches the server.
 
