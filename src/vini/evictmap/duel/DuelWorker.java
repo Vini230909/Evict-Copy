@@ -74,6 +74,14 @@ public final class DuelWorker {
     private static final int RESOLVED_GRACE_SECONDS = 5;
     private static final int STATUS_INTERVAL_SECONDS = 2;
     private static final float RETURN_DELAY_TICKS = 5f * 60f;
+    // An abandoned worker still being watched counts down out loud before it
+    // closes: a visible 5 s ticking countdown, then a 3 s hold at zero, then it
+    // stops the usual way. The HUD mirrors the restart countdown's style.
+    private static final int WORKER_CLOSE_COUNTDOWN_SECONDS = 5;
+    private static final int WORKER_CLOSE_HOLD_SECONDS = 3;
+    private static final float WORKER_CLOSE_HUD_SECONDS = 3f;
+    private static final int WORKER_CLOSE_HUD_RAISE = 220;
+    private static final String WORKER_CLOSE_HUD_ID = "evict-worker-close";
     /**
      * How long the world keeps ticking after a duelist joins before the match is
      * (re-)frozen. The client camera follows its unit even while paused, but on a
@@ -154,6 +162,7 @@ public final class DuelWorker {
     private boolean matchStarted = false;
     private boolean pausedForDisconnect = false;
     private boolean resolved = false;
+    private boolean shutdownStarted = false;
 
     private long matchStartMillis = 0L;
     private int disconnectSerial = 0;
@@ -1518,14 +1527,84 @@ public final class DuelWorker {
         scheduler.schedule(
                 () -> Core.app.post(() -> {
                     if (isEmptyOfParticipants()) {
-                        Log.info(
-                                "[EvictMapGenerator] Duel worker has no participants left; shutting down to free the slot."
-                        );
-                        System.exit(0);
+                        beginWorkerShutdown();
                     }
                 }),
                 seconds,
                 TimeUnit.SECONDS
+        );
+    }
+
+    /**
+     * Closes the worker once it has no participants left, freeing the hub slot.
+     * A match decided by a win/lose or ended by a solo /die already told everyone
+     * and sent them back to the hub (resolved), so it closes straight away. An
+     * abandoned match still being watched instead counts down out loud - a 5 s
+     * ticking HUD, then a 3 s hold at zero - so the spectators are not dropped
+     * without warning. Guarded so the repeated empty checks only start one
+     * shutdown. The stop itself is unchanged: a plain System.exit(0).
+     */
+    private void beginWorkerShutdown() {
+        if (shutdownStarted) {
+            return;
+        }
+        shutdownStarted = true;
+
+        if (resolved || Groups.player.isEmpty()) {
+            Log.info(
+                    "[EvictMapGenerator] Duel worker has no participants left; shutting down to free the slot."
+            );
+            System.exit(0);
+            return;
+        }
+
+        Log.info(
+                "[EvictMapGenerator] Duel worker abandoned with watchers connected; closing in @ s (+@ s hold).",
+                WORKER_CLOSE_COUNTDOWN_SECONDS,
+                WORKER_CLOSE_HOLD_SECONDS
+        );
+
+        // Real-time ticks, not Time.run: an abandoned match can still be paused
+        // (a disconnect pause nobody resumed), where the game clock - and any
+        // Time.run task - would never advance to drive the countdown or fire the
+        // close.
+        for (int second = WORKER_CLOSE_COUNTDOWN_SECONDS; second >= 1; second--) {
+            int remaining = second;
+            scheduler.schedule(
+                    () -> Core.app.post(() -> showCloseCountdownHud(
+                            "[accent]Match server closing in [scarlet]" + remaining + "s[]"
+                    )),
+                    WORKER_CLOSE_COUNTDOWN_SECONDS - second,
+                    TimeUnit.SECONDS
+            );
+        }
+
+        // Zero reached: hold on a "closing" HUD through the extra wait.
+        scheduler.schedule(
+                () -> Core.app.post(() -> showCloseCountdownHud(
+                        "[scarlet]Match server closing...[]"
+                )),
+                WORKER_CLOSE_COUNTDOWN_SECONDS,
+                TimeUnit.SECONDS
+        );
+
+        scheduler.schedule(
+                () -> Core.app.post(() -> System.exit(0)),
+                WORKER_CLOSE_COUNTDOWN_SECONDS + WORKER_CLOSE_HOLD_SECONDS,
+                TimeUnit.SECONDS
+        );
+    }
+
+    private void showCloseCountdownHud(String message) {
+        Call.infoPopup(
+                message,
+                WORKER_CLOSE_HUD_ID,
+                WORKER_CLOSE_HUD_SECONDS,
+                Align.center,
+                0,
+                0,
+                WORKER_CLOSE_HUD_RAISE,
+                0
         );
     }
 

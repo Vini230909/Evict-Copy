@@ -136,7 +136,10 @@ public final class InviteManager {
             return;
         }
 
-        if (!teamManager.isLeader(player)) {
+        // In a Sandbox everyone already in the match can accept newcomers, not
+        // just the owner: a promoted player manages invites too. Spectators
+        // never reach here - they took the requester branch above.
+        if (!teamManager.isLeader(player) && !sandboxJoinMode) {
             player.sendMessage(
                     "[scarlet]Only your team's original leader can manage invites.[]"
             );

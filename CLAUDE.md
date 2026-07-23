@@ -136,7 +136,7 @@ Game-mode menu: `1v1`, `Ranked`, `Teams`, `Random Teams`, `FFA`, `Training`, `Sa
 - **Random Teams** — challenger picks team count (2-8), then picks a single player pool like FFA (≥ team-count players incl. challenger). After all accept, the pool shuffles into balanced teams (first teams get the extra player; sizes differ ≤ 1). Rosters not announced. Hub-only: launches as a regular `teams` match.
 - **FFA** — pick any number of players (Done button), same invite flow, everyone on their own team. Knocked-out players become spectators: the match no longer waits for them, `/v` returns them to the lobby, and the hub lets them join the normal round (worker publishes an `out` list in `status.properties`). Stored unranked in `/history` (all participants, win/lose).
 - **Training** — solo on a worker; nothing won/lost; `/die` ends it (no ELO) and returns to hub.
-- **Sandbox** — Training + infinite resources; `/view` spectators may `/invite` to request joining and the owner accepts with the normal leader `/invite` flow (spectator promoted to participant).
+- **Sandbox** — Training + infinite resources; `/view` spectators may `/invite` to request joining, and anyone already in the match (owner or a previously promoted player) accepts with the normal leader `/invite` flow (spectator promoted to participant) — not just the original owner.
 
 All modes run the same generated Evict map and worker rules: wait-for-everyone start gate, 5 s countdown, disconnect pause with rejoin window.
 
@@ -146,7 +146,7 @@ Worker infrastructure:
 - One Mindustry process hosts one game, so each match gets its own worker process — spawned on demand, never idle.
 - Handshake `duel.properties` (hub → worker): `mode`, `team.count`, `team.N` UUID lists. Result `result.properties` (worker → hub): `mode`, `winner.uuid(s)`, `loser.uuid(s)`, `reason`. Only `ranked` results record as ranked; `1v1`/`teams`/`ffa` become unranked `/history` entries; Training/Sandbox are never recorded.
 - On accept, `DuelServerManager` reserves a free port, provisions `duel-workers/duel-<port>/` from the hub's jar + `config/mods` + `config/maps` if missing, launches `java -Devict.duelWorker=true -jar <jar>`, injects `config port` and `host` over stdin, polls the port, then redirects players with `Call.connect`. Spawning/readiness wait run on a background thread; redirects and slot bookkeeping on the main thread.
-- Worker self-exits when empty (frees the hub slot); backstops: startup grace (no player ever arrived), 110-min max lifetime, JVM shutdown hook.
+- Worker self-exits when empty (frees the hub slot) via a plain `System.exit(0)`; backstops: startup grace (no player ever arrived), 110-min max lifetime, JVM shutdown hook. A close from a decided match (win/lose or solo `/die`, which already sent everyone back with their own 5 s message) exits straight away. An abandoned worker still being watched instead counts down out loud first: a per-second ticking HUD popup (restart-countdown style) for 5 s, then a 3 s hold at zero, then it exits. The countdown ticks on the real-time scheduler (not `Time.run`) so it still runs when the match sits in an unresumed disconnect pause.
 - Up to `maxWorkers` matches at once (1-10); all busy → `/play` says try again shortly. A blank duel-server IP leaves `/play` inert. Closing menus / losing the opponent cancels cleanly; stale challenges drop on leave.
 - Remote players need the whole worker port range forwarded.
 
