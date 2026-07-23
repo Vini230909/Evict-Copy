@@ -412,7 +412,7 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.4.4. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.4.5. Use 'evictstatus' for commands and current settings."
         );
     }
 
@@ -454,17 +454,34 @@ public class EvictMapPlugin extends Plugin {
     private void bootstrap() {
         settings.load();
         rankManager.load();
+
+        // A duel worker has no player database of its own: it reads the hub's
+        // (it runs in duel-workers/duel-<port>/, so the hub config is two levels
+        // up) so /info, /leaderboard and /history show real numbers on a match
+        // server, and it never writes - the hub stays the single writer. Set
+        // before start(), which would otherwise create a throwaway local DB.
+        if (duelWorker) {
+            playerDataManager.useHubDatabase(
+                    new java.io.File("../../config/evict-players.db")
+            );
+        }
+
         playerDataManager.start();
 
-        // A duel worker's own DB has no real matches; point /history at the hub
-        // DB (the worker runs in duel-workers/duel-<port>/, so the hub config is
-        // two levels up) so spectators and players still see real history.
         if (duelWorker) {
-            playerDataManager.useHistoryDatabase(
-                    new java.io.File("../../config/evict-players.db")
+            // The worker's session bookkeeping is published in status.properties
+            // for the hub to credit, so match time counts as playtime.
+            duelWorkerReferee.setPlaytimeSource(
+                    playerDataManager::sessionPlaytimeSnapshot
             );
 
             duelChat.installChatFilter();
+        } else {
+            // A finished ranked match must show up on the Discord ladder now,
+            // not whenever its slow refresh comes round.
+            playerDataManager.setEloChangeListener(
+                    discordStatusReporter::markLadderStale
+            );
         }
 
         RulesApplier.applyRules();

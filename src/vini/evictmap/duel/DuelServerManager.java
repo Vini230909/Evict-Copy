@@ -96,6 +96,14 @@ public final class DuelServerManager {
     private final AtomicBoolean duelPlayerCountRefreshRunning =
             new AtomicBoolean(false);
 
+    /**
+     * Port -> the per-UUID playtime already credited from that worker's status
+     * file. Workers publish a running total, so the hub credits the difference
+     * and stays correct across missed and repeated polls. Main-thread only.
+     */
+    private final Map<Integer, Map<String, Long>> creditedPlaytimeByPort =
+            new HashMap<>();
+
     public DuelServerManager(
             EvictSettings settings,
             PlayerDataManager playerDataManager
@@ -154,6 +162,14 @@ public final class DuelServerManager {
         handle.label = matchLabel(mode, rosterTeams);
         handle.adminUuids = snapshotAdminUuids();
         handle.bannedBlocks = snapshotBannedBlockNames();
+
+        // A reused folder still holds the previous match's status file, whose
+        // playtime totals were already credited. Drop it here rather than on the
+        // spawn thread: the slot goes live on this line, and a status poll in
+        // between would credit those totals a second time.
+        //noinspection ResultOfMethodCallIgnored
+        new File(workerDir(port), "status.properties").delete();
+
         workers.put(port, handle);
 
         announceMatchStart(mode, handle.label);
@@ -255,6 +271,7 @@ public final class DuelServerManager {
             process.onExit().thenRun(
                     () -> Core.app.post(() -> {
                         logResult(handle);
+                        creditFinalPlaytime(handle);
                         releaseSlot(handle);
                     })
             );
@@ -519,11 +536,13 @@ public final class DuelServerManager {
             spawnExecutor.submit(() -> {
                 try {
                     int total = 0;
+                    Map<Integer, Properties> statuses = new LinkedHashMap<>();
 
                     for (int port : ports) {
                         Properties status = readStatus(port);
 
                         if (status != null) {
+                            statuses.put(port, status);
                             total += countPlayers(
                                     status.getProperty("players", "")
                             );
@@ -531,6 +550,10 @@ public final class DuelServerManager {
                     }
 
                     cachedConnectedDuelPlayers = total;
+
+                    // The same files already carry the workers' playtime; fold
+                    // it into the hub database while it is in hand.
+                    Core.app.post(() -> creditPlaytime(statuses));
                 } finally {
                     duelPlayerCountRefreshRunning.set(false);
                 }
@@ -538,6 +561,114 @@ public final class DuelServerManager {
         }
 
         return cachedConnectedDuelPlayers;
+    }
+
+    /**
+     * Credits the playtime the workers report in their status files. Each entry
+     * is a running per-UUID total for that worker process, so only its growth
+     * since the last poll is added - a repeated or missed poll cannot double
+     * count or lose time. Main thread: it touches the worker table.
+     */
+    private void creditPlaytime(Map<Integer, Properties> statuses) {
+        for (Map.Entry<Integer, Properties> entry : statuses.entrySet()) {
+            int port = entry.getKey();
+
+            if (!workers.containsKey(port)) {
+                // Slot already released; its final total was credited on exit.
+                continue;
+            }
+
+            creditPlaytime(
+                    port,
+                    entry.getValue().getProperty("playtime", ""),
+                    entry.getValue().getProperty("players", "")
+            );
+        }
+    }
+
+    private void creditPlaytime(int port, String packed, String packedPlayers) {
+        if (packed == null || packed.isBlank()) {
+            return;
+        }
+
+        Map<String, Long> credited =
+                creditedPlaytimeByPort.computeIfAbsent(port, key -> new HashMap<>());
+
+        for (String entry : packed.split(",")) {
+            String[] parts = entry.split(":", 2);
+
+            if (parts.length != 2) {
+                continue;
+            }
+
+            String uuid = parts[0].trim();
+            long reported = parseLong(parts[1]);
+
+            if (uuid.isEmpty() || reported <= 0L) {
+                continue;
+            }
+
+            long delta = reported - credited.getOrDefault(uuid, 0L);
+
+            if (delta <= 0L) {
+                continue;
+            }
+
+            credited.put(uuid, reported);
+            playerDataManager.addExternalPlaytime(
+                    uuid,
+                    playtimeName(port, uuid, packedPlayers),
+                    delta
+            );
+        }
+    }
+
+    /**
+     * The name to store alongside credited worker playtime: the match roster
+     * first, then whoever the worker currently lists as connected. Null when
+     * neither knows them, which leaves the stored name untouched.
+     */
+    private String playtimeName(int port, String uuid, String packedPlayers) {
+        WorkerHandle handle = workers.get(port);
+
+        if (handle != null) {
+            for (Participant participant : handle.participants) {
+                if (participant.uuid().equals(uuid)) {
+                    return participant.plainName();
+                }
+            }
+        }
+
+        if (packedPlayers == null || packedPlayers.isBlank()) {
+            return null;
+        }
+
+        for (String entry : packedPlayers.split(",")) {
+            String[] parts = entry.split("\\|", 2);
+
+            if (parts.length == 2 && parts[1].trim().equals(uuid)) {
+                return parts[0];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Last chance to credit a closing worker's playtime: it writes its status
+     * one final time on the way out, and after this the slot (and its credited
+     * totals) is dropped.
+     */
+    private void creditFinalPlaytime(WorkerHandle handle) {
+        Properties status = readStatus(handle.port);
+
+        if (status != null) {
+            creditPlaytime(
+                    handle.port,
+                    status.getProperty("playtime", ""),
+                    status.getProperty("players", "")
+            );
+        }
     }
 
     private static int countPlayers(String packed) {
@@ -1233,6 +1364,7 @@ public final class DuelServerManager {
     private void releaseSlot(WorkerHandle handle) {
         if (workers.get(handle.port) == handle) {
             workers.remove(handle.port);
+            creditedPlaytimeByPort.remove(handle.port);
             activeDuelByUuid.values().removeIf(port -> port == handle.port);
             Log.info(
                     "[EvictMapGenerator] 1v1: duel worker on port @ ended; slot is free again.",

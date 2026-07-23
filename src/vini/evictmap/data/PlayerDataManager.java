@@ -32,11 +32,23 @@ public final class PlayerDataManager {
     private static final int DEFAULT_ELO = EloCalculator.STARTING_ELO;
 
     /**
-     * Database that /history reads from. Defaults to this server's own DB. A duel
-     * worker points this at the hub DB (the worker's own DB has no real matches),
-     * so spectators and players can see real history on a duel server.
+     * Database every read goes to. Defaults to this server's own DB. A duel
+     * worker points this at the hub DB (the worker's own DB is empty - it never
+     * writes one), so /info, /leaderboard and /history on a match server show
+     * the same numbers as the hub instead of blank profiles.
      */
-    private volatile File historyDatabaseFile = DATABASE_FILE;
+    private volatile File readDatabaseFile = DATABASE_FILE;
+
+    /**
+     * True on a duel worker: the hub is the single DB writer, so the worker
+     * keeps its session bookkeeping in memory, reports it to the hub through
+     * status.properties and never opens a database for writing.
+     */
+    private volatile boolean readOnly;
+
+    /** Fired on the caller's thread whenever a stored rating changes. */
+    private volatile Runnable eloChangeListener = () -> {
+    };
 
     private final ExecutorService databaseExecutor =
             Executors.newSingleThreadExecutor(task -> {
@@ -48,8 +60,17 @@ public final class PlayerDataManager {
     private final Map<String, ActiveSession> activeSessionsByUuid =
             new HashMap<>();
 
+    /**
+     * Playtime this process has already closed off, per UUID. Only a read-only
+     * worker keeps it: the hub persists every finished session immediately,
+     * while the worker has to report a running total the hub can diff.
+     */
+    private final Map<String, Long> processPlaytimeByUuid = new HashMap<>();
+
     public void start() {
-        enqueue(this::createSchema);
+        if (!readOnly) {
+            enqueue(this::createSchema);
+        }
 
         Runtime.getRuntime().addShutdownHook(
                 new Thread(this::shutdown, "EvictPlayerDataShutdown")
@@ -85,6 +106,10 @@ public final class PlayerDataManager {
                     uuid,
                     new ActiveSession(name, now)
             );
+        }
+
+        if (readOnly) {
+            return;
         }
 
         enqueue(() -> upsertPlayer(uuid, name, now));
@@ -142,6 +167,8 @@ public final class PlayerDataManager {
                 safeName(loserName),
                 playedAtMillis
         ));
+
+        eloChangeListener.run();
     }
 
     /**
@@ -293,7 +320,7 @@ public final class PlayerDataManager {
      * means no player with that exact UUID exists yet.
      */
     public void setElo(String uuid, int newElo, Consumer<Boolean> callback) {
-        if (uuid == null || uuid.isBlank()) {
+        if (readOnly || uuid == null || uuid.isBlank()) {
             deliver(callback, false);
             return;
         }
@@ -306,6 +333,8 @@ public final class PlayerDataManager {
                 deliver(callback, writeElo(connection, trimmedUuid, clampedElo) > 0);
             }
         });
+
+        eloChangeListener.run();
     }
 
     private void shutdown() {
@@ -343,6 +372,13 @@ public final class PlayerDataManager {
         String name = session.lastName;
 
         session.startedAtMillis = finishedAtMillis;
+
+        if (readOnly) {
+            // A worker has no database of its own; the closed-off time stays in
+            // memory until the hub has read it out of status.properties.
+            processPlaytimeByUuid.merge(uuid, playedMillis, Long::sum);
+            return;
+        }
 
         enqueue(
                 () -> addPlaytime(
@@ -816,6 +852,32 @@ public final class PlayerDataManager {
         }
     }
 
+    /**
+     * Adds playtime to an already stored profile without touching its name.
+     * Never inserts: a player the hub has no row for cannot have reached a
+     * duel worker in the first place.
+     */
+    private void addPlaytimeOnly(
+            String uuid,
+            long seenAtMillis,
+            long totalMillis
+    ) throws SQLException {
+        try (
+                Connection connection = connect();
+                PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE players SET "
+                                + "last_seen_ms = ?, "
+                                + "total_playtime_ms = total_playtime_ms + ? "
+                                + "WHERE uuid = ?"
+                )
+        ) {
+            statement.setLong(1, seenAtMillis);
+            statement.setLong(2, totalMillis);
+            statement.setString(3, uuid);
+            statement.executeUpdate();
+        }
+    }
+
     private void applyRankedResult(
             String winnerUuid,
             String winnerName,
@@ -1108,7 +1170,7 @@ public final class PlayerDataManager {
           the comma-joined participant list is always an exact element match.
          */
         try (
-                Connection connection = connect(historyDatabaseFile);
+                Connection connection = connect(readDatabaseFile);
                 PreparedStatement statement = connection.prepareStatement(
                         "SELECT played_at_ms, winner_uuid, winner_name, "
                                 + "loser_uuid, loser_name, mode, "
@@ -1399,22 +1461,92 @@ public final class PlayerDataManager {
         return names;
     }
 
-    public void useHistoryDatabase(File file) {
+    /**
+     * Duel-worker setup: read everything from the hub's database and never
+     * write. Must be called before {@link #start()}, which would otherwise
+     * create a throwaway local database. The worker's own playtime is handed
+     * back to the hub through {@link #sessionPlaytimeSnapshot()}.
+     */
+    public void useHubDatabase(File file) {
         if (file != null) {
-            historyDatabaseFile = file;
+            readDatabaseFile = file;
+            readOnly = true;
         }
     }
 
+    /**
+     * Worker-side running playtime totals per UUID for this process - closed
+     * sessions plus the live one - for status.properties. The hub diffs
+     * successive snapshots and credits the growth, so a match server's time
+     * lands in the same total playtime as lobby time.
+     */
+    public synchronized Map<String, Long> sessionPlaytimeSnapshot() {
+        long now = System.currentTimeMillis();
+        Map<String, Long> snapshot = new HashMap<>(processPlaytimeByUuid);
+
+        for (Map.Entry<String, ActiveSession> entry
+                : activeSessionsByUuid.entrySet()) {
+            snapshot.merge(
+                    entry.getKey(),
+                    Math.max(0L, now - entry.getValue().startedAtMillis),
+                    Long::sum
+            );
+        }
+
+        return snapshot;
+    }
+
+    /**
+     * Hub-side: credits playtime a player spent somewhere this process cannot
+     * see - i.e. inside a duel worker, reported through its status file. The
+     * caller is responsible for only passing the growth since its last credit.
+     */
+    public void addExternalPlaytime(String uuid, String name, long millis) {
+        if (readOnly || uuid == null || uuid.isBlank() || millis <= 0L) {
+            return;
+        }
+
+        long seenAtMillis = System.currentTimeMillis();
+
+        if (name == null || name.isBlank()) {
+            // No name to go with it (a spectator who has already left the
+            // worker). Credit the time without overwriting the stored name.
+            enqueue(() -> addPlaytimeOnly(uuid, seenAtMillis, millis));
+            return;
+        }
+
+        enqueue(() -> addPlaytime(uuid, name, seenAtMillis, millis));
+    }
+
+    /**
+     * Registers a callback for every stored rating change (a ranked result or a
+     * manual {@code evictelo}). The Discord ladder uses it to drop its cache
+     * instead of showing pre-match ratings until its slow refresh comes round.
+     */
+    public void setEloChangeListener(Runnable listener) {
+        eloChangeListener = listener == null ? () -> {
+        } : listener;
+    }
+
     private Connection connect() throws SQLException {
-        return connect(DATABASE_FILE);
+        return connect(readOnly ? readDatabaseFile : DATABASE_FILE);
     }
 
     private Connection connect(File file) throws SQLException {
         ensureSqliteDriver();
 
-        return DriverManager.getConnection(
+        Connection connection = DriverManager.getConnection(
                 "jdbc:sqlite:" + file.getPath()
         );
+
+        // Workers read the hub's live database while the hub writes it. A short
+        // wait turns the occasional SQLITE_BUSY into a slightly slower /info
+        // instead of a failed one.
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("PRAGMA busy_timeout = 3000");
+        }
+
+        return connection;
     }
 
     private void ensureSqliteDriver() throws SQLException {

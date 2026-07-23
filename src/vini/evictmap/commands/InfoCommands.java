@@ -264,7 +264,7 @@ public final class InfoCommands {
                 .append(" losses / ")
                 .append(info.normalMatchesPlayed())
                 .append(" played[]")
-                .append("\n[accent]1v1: [white]")
+                .append("\n[accent]Ranked: [white]")
                 .append(info.rankedWins())
                 .append(" wins / ")
                 .append(info.rankedLosses())

@@ -134,6 +134,16 @@ public final class DiscordStatusReporter {
     }
 
     /**
+     * Drops the cached ladder so the next update re-queries it. Wired to every
+     * rating change: without it a finished ranked match would keep showing the
+     * pre-match ratings for up to {@link #LADDER_REFRESH_MILLIS}, disagreeing
+     * with /info and /leaderboard the whole time.
+     */
+    public void markLadderStale() {
+        lastLadderRefreshMillis = 0L;
+    }
+
+    /**
      * Points the reporter at a new webhook. The stored message id is dropped
      * with it - the old id belongs to the old channel - so the next send posts
      * a fresh message and stores its id.

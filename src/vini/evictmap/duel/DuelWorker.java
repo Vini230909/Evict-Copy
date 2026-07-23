@@ -21,6 +21,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 import arc.Core;
 import arc.util.Align;
@@ -154,6 +155,16 @@ public final class DuelWorker {
 
     public void setStillCompeting(Predicate<Player> predicate) {
         this.stillCompeting = predicate;
+    }
+
+    /**
+     * Source of the per-UUID playtime this worker publishes for the hub to
+     * credit; the worker itself never writes to the player database.
+     */
+    private Supplier<Map<String, Long>> playtimeSource = Map::of;
+
+    public void setPlaytimeSource(Supplier<Map<String, Long>> source) {
+        this.playtimeSource = source == null ? Map::of : source;
     }
 
     private boolean handshakeLoaded = false;
@@ -1550,6 +1561,10 @@ public final class DuelWorker {
         }
         shutdownStarted = true;
 
+        // Final status write, so the hub credits the last seconds of playtime
+        // before this process disappears.
+        writeStatus();
+
         if (resolved || Groups.player.isEmpty()) {
             Log.info(
                     "[EvictMapGenerator] Duel worker has no participants left; shutting down to free the slot."
@@ -1665,12 +1680,36 @@ public final class DuelWorker {
         // and /v'd-out players to the lobby.
         properties.setProperty("participants", String.join(",", participantUuids));
         properties.setProperty("owner", ownerUuid);
+        // Running per-UUID playtime on this worker. The hub is the only process
+        // that writes the player database, so it diffs these totals every poll
+        // and credits the growth - otherwise a whole match would be missing
+        // from a player's total playtime.
+        properties.setProperty("playtime", packPlaytime());
 
         try (FileOutputStream output = new FileOutputStream(STATUS_FILE)) {
             properties.store(output, "Evict duel status");
         } catch (Exception ignored) {
             // Status is best-effort; a missed write just shows stale data.
         }
+    }
+
+    /** {@code uuid:millis} pairs, comma separated; empty when nobody has played. */
+    private String packPlaytime() {
+        StringBuilder packed = new StringBuilder();
+
+        for (Map.Entry<String, Long> entry : playtimeSource.get().entrySet()) {
+            if (entry.getKey().isBlank() || entry.getValue() == null) {
+                continue;
+            }
+
+            if (!packed.isEmpty()) {
+                packed.append(",");
+            }
+
+            packed.append(entry.getKey()).append(":").append(entry.getValue());
+        }
+
+        return packed.toString();
     }
 
     private String currentStateName() {
