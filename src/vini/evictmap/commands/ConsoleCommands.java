@@ -598,6 +598,7 @@ public final class ConsoleCommands {
         return info.lastName()
                 + " | uuid=" + info.uuid()
                 + " | names=" + String.join(", ", info.knownNames())
+                + ipInfo(info.uuid())
                 + " | totalPlaytime=" + formatDuration(info.totalPlaytimeMillis())
                 + " | normalWins=" + info.normalWins()
                 + " | normalLosses=" + info.normalLosses()
@@ -607,6 +608,28 @@ public final class ConsoleCommands {
                 + " | rankedPlayed=" + info.rankedMatchesPlayed()
                 + " | elo=" + info.elo()
                 + " | peakElo=" + info.peakElo();
+    }
+
+    /**
+     * The player's last and all known IPs for the console only (to feed
+     * {@code ban ip <ip>}). Nothing IP-related lives in the plugin's own DB -
+     * this reads Mindustry's built-in admin store, which already tracks every
+     * IP a UUID ever connected with.
+     */
+    private String ipInfo(String uuid) {
+        if (Vars.netServer == null) {
+            return "";
+        }
+
+        mindustry.net.Administration.PlayerInfo vanilla =
+                Vars.netServer.admins.getInfoOptional(uuid);
+
+        if (vanilla == null) {
+            return " | lastIP=never connected here";
+        }
+
+        return " | lastIP=" + vanilla.lastIP
+                + " | knownIPs=" + vanilla.ips.toString(", ");
     }
 
     private double parseDecimal(String value) {

@@ -107,7 +107,7 @@ Commands (`commands/`):
 - Both attrition settings persist across restarts.
 
 ### Player data (`config/evict-players.db`)
-- Async writes on one background thread; profiles keyed by UUID; no IP addresses stored.
+- Async writes on one background thread; profiles keyed by UUID; no IP addresses stored. IP lookup for bans doesn't need them: console `evictplayerinfo` resolves name/UUID via the plugin DB and prints last + all known IPs from Mindustry's built-in admin store (which already tracks every IP per UUID) — feed those to `ban ip`.
 - Stored: last name, first/last seen, one total playtime, normal + ranked match counters, ELO/peak ELO; all observed names per UUID in `player_names`. Match stats exist only for normal and ranked matches — the main-lobby FFA round has no stats (legacy `ffa_*` / `ranked_playtime_ms` columns in old databases are ignored).
 - Ranked wins/losses/played, ELO and peak ELO update only after a **Ranked** match (casual 1v1 never touches them); match rows store both players' before/after ELO.
 - Normal wins/losses/played count every competitive `/play` match: casual 1v1, Teams and `/play` FFA (Random Teams records as Teams; Training/Sandbox never record). Ranked matches count only in the ranked counters. `/info` shows Total playtime, Normal, Ranked and ELO.
@@ -116,7 +116,7 @@ Commands (`commands/`):
 - New players start at ELO 1000; peak ELO only ever rises (manual `evictelo` sets never lower it).
 - Playtime flushes at round start, on leave and on shutdown; `/info` and `evictplayerinfo` add live unpersisted session time.
 - Lookup order for `/info [name]`, `evictplayerinfo`, `evictelo`: partial latest-name match first; old names and UUIDs only if no latest-name match. Ambiguous `evictelo` names list candidates and change nothing.
-- `/info` is public, never shows UUIDs; with no argument it opens a clickable online-player picker.
+- `/info` is public, never shows UUIDs to normal players — a server admin viewer additionally gets the subject's UUID (IPs stay console-only). No argument opens a clickable online-player picker; a name that matches exactly one stored player prints their stats, and a name matching several opens the same picker built from the matches (newest-seen first, capped, refine for the rest) instead of a text list.
 
 ### Commands
 - `/fullassault` (`/fa`) — team-scoped toggle (never global), updates every 5 s, sends eligible unattended combat units to the nearest enemy core; ignores player-controlled units and units on mine/assist/rebuild/repair.
@@ -169,7 +169,7 @@ Water: configured tries per hex (not per-core fallback); decimal tries give a fr
 - Walls: `evictwall [full-wall] [small-wall] [open] [passage]`
 - Build speed: `evictbuildspeed [multiplier]` — unit-factory build speed each round; no argument shows current; default `1.4`; stored as `rules.unitBuildSpeedMultiplier` and copied into every worker; applies next generated match.
 - Duel pool: `evictduelserver [ip] [basePort] [maxWorkers] [map]` — no argument shows config; omitted values keep current. `ip` is what clients reach workers at (blank = `/play` inert); workers use `basePort .. basePort+maxWorkers-1`. Defaults: ip unset, basePort `6568`, maxWorkers `4`, map `evict-map`, worker jar `server-release.jar`.
-- Player data: `evictplayerinfo [name/uuid]`, `evictelo <name/uuid> <value>` (see Player data above).
+- Player data: `evictplayerinfo [name/uuid]` (single match also prints lastIP + all known IPs from Mindustry's admin store, for `ban ip`), `evictelo <name/uuid> <value>` (see Player data above).
 - Restart: `evictrestart` queues a graceful update restart (fires when no worker runs and the round ends / hub is empty / round is < 10 min old after a 30 s on-screen countdown); `evictrestart cancel` drops it, also mid-countdown (hides the HUD, announces the cancel); `evictrestart now` shows a 10 s countdown, then exits. Countdowns tick per second in a HUD popup (3 s popup lifetime) and post milestone seconds to chat (every 10 s plus the last five). The exit closes the network, then hard-exits via `System.exit(0)` (the duel-worker way; shutdown hooks still flush the player DB), with a 10 s `Runtime.halt(0)` guard should a shutdown hook ever wedge; the external start-script loop relaunches the server.
 
 ## Safety notes

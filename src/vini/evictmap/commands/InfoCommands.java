@@ -20,18 +20,20 @@ import java.util.Map;
 /**
  * /info: view a player's stored stats and playtime. Available to every player.
  * With no argument it opens a picker of the online players; with a name it
- * searches the stored players by name. UUIDs are never shown - unlike the old
- * admin-only /info, this is public, so it exposes stats but not identifiers.
+ * searches the stored players by name. UUIDs are never shown to normal players
+ * - unlike the old admin-only /info, this is public, so it exposes stats but
+ * not identifiers. A server admin additionally sees the subject's UUID (never
+ * the IP - that stays console-only via evictplayerinfo).
  */
 public final class InfoCommands {
 
     private static final int PICKER_MENU_COLUMNS = 2;
 
     /**
-     * Caps how many matching names /info spells out when a name search returns
-     * more than one stored player, before asking the caller to be specific.
+     * Caps how many matching players a name search offers in the picker before
+     * asking the caller to refine; the rest stay reachable by a tighter name.
      */
-    private static final int MAX_LISTED_MATCHES = 8;
+    private static final int MAX_PICKER_MATCHES = 20;
 
     private final PlayerDataManager playerDataManager;
     private final int pickerMenuId;
@@ -83,11 +85,16 @@ public final class InfoCommands {
             }
 
             if (matches.size() == 1) {
-                player.sendMessage(formatPlayerInfo(matches.get(0)));
+                player.sendMessage(
+                        formatPlayerInfo(matches.get(0), player.admin)
+                );
                 return;
             }
 
-            player.sendMessage(multipleMatchesMessage(query, matches));
+            // More than one stored player matched: same picker as the no-arg
+            // /info, but built from the search results so the caller taps the
+            // one they meant instead of retyping an exact name.
+            openMatchesPicker(player, query, matches);
         });
     }
 
@@ -100,12 +107,67 @@ public final class InfoCommands {
         }
 
         List<String> targetUuids = new ArrayList<>();
-        List<String[]> rows = new ArrayList<>();
-        List<String> currentRow = new ArrayList<>();
+        List<String> labels = new ArrayList<>();
 
         for (Player target : players) {
             targetUuids.add(target.uuid());
-            currentRow.add(PlayerNameFormatter.displayName(target));
+            labels.add(PlayerNameFormatter.displayName(target));
+        }
+
+        showPickerMenu(
+                player,
+                targetUuids,
+                labels,
+                "Select a player to view their stats."
+        );
+    }
+
+    /**
+     * A name search that hit more than one stored player: offer them in the
+     * same picker as the no-arg /info so the caller taps the right one. Capped
+     * at {@link #MAX_PICKER_MATCHES} (newest-seen first); a tighter name reaches
+     * anyone past the cap.
+     */
+    private void openMatchesPicker(
+            Player viewer,
+            String query,
+            List<PlayerDataManager.PlayerInfo> matches
+    ) {
+        int shown = Math.min(matches.size(), MAX_PICKER_MATCHES);
+
+        List<String> targetUuids = new ArrayList<>();
+        List<String> labels = new ArrayList<>();
+
+        for (int index = 0; index < shown; index++) {
+            targetUuids.add(matches.get(index).uuid());
+            labels.add(matches.get(index).lastName());
+        }
+
+        String description = matches.size() > shown
+                ? "[lightgray]" + matches.size() + " players match '" + query
+                        + "'. Showing the " + shown
+                        + " most recent - refine the name for the rest.[]"
+                : "Select a player to view their stats.";
+
+        showPickerMenu(viewer, targetUuids, labels, description);
+    }
+
+    /**
+     * Renders the shared picker: {@code labels} laid out in rows plus a Cancel
+     * button, with {@code targetUuids} (index-aligned to labels) remembered so
+     * {@link #handlePicker} can resolve the tapped option to a player.
+     */
+    private void showPickerMenu(
+            Player viewer,
+            List<String> targetUuids,
+            List<String> labels,
+            String description
+    ) {
+        List<String[]> rows = new ArrayList<>();
+        List<String> currentRow = new ArrayList<>();
+
+        for (String label : labels) {
+            currentRow.add(label);
 
             if (currentRow.size() == PICKER_MENU_COLUMNS) {
                 rows.add(currentRow.toArray(new String[0]));
@@ -118,13 +180,13 @@ public final class InfoCommands {
         }
 
         rows.add(new String[]{"[red]Cancel"});
-        pickerTargetsByViewerUuid.put(player.uuid(), targetUuids);
+        pickerTargetsByViewerUuid.put(viewer.uuid(), targetUuids);
 
         Call.menu(
-                player.con,
+                viewer.con,
                 pickerMenuId,
                 "[accent]Player info",
-                "Select a player to view their stats.",
+                description,
                 rows.toArray(new String[0][])
         );
     }
@@ -161,49 +223,30 @@ public final class InfoCommands {
                 return;
             }
 
-            player.sendMessage(formatPlayerInfo(info));
+            player.sendMessage(formatPlayerInfo(info, player.admin));
         });
     }
 
-    private static String multipleMatchesMessage(
-            String query,
-            List<PlayerDataManager.PlayerInfo> matches
+    /**
+     * @param showUuid whether the viewer is a server admin; only then is the
+     *                 subject's UUID included (IPs are never shown here - the
+     *                 console's evictplayerinfo is the only place for those).
+     */
+    private static String formatPlayerInfo(
+            PlayerDataManager.PlayerInfo info,
+            boolean showUuid
     ) {
-        StringBuilder message = new StringBuilder(
-                "[scarlet]Multiple players match '" + query + "': []"
-        );
-
-        int shown = Math.min(matches.size(), MAX_LISTED_MATCHES);
-
-        for (int index = 0; index < shown; index++) {
-            if (index > 0) {
-                message.append("[lightgray], []");
-            }
-
-            message.append("[white]")
-                    .append(matches.get(index).lastName())
-                    .append("[]");
-        }
-
-        if (matches.size() > shown) {
-            message.append("[lightgray] (+")
-                    .append(matches.size() - shown)
-                    .append(" more)[]");
-        }
-
-        message.append(
-                "\n[lightgray]Use [orange]/info <exact name>[] to pick one.[]"
-        );
-
-        return message.toString();
-    }
-
-    private static String formatPlayerInfo(PlayerDataManager.PlayerInfo info) {
         StringBuilder message = new StringBuilder();
 
         message.append("[accent]Player: [white]")
                 .append(info.lastName())
                 .append("[]");
+
+        if (showUuid) {
+            message.append("\n[accent]UUID: [white]")
+                    .append(info.uuid())
+                    .append("[]");
+        }
 
         if (!info.knownNames().isEmpty()) {
             message.append("\n[accent]Known names: [white]")
