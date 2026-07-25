@@ -1316,6 +1316,11 @@ public final class DuelServerManager {
 
         OutputStream stdin = process.getOutputStream();
         writeCommand(stdin, "config port " + port);
+        // Mirror the hub's votekick setting: it lives in Mindustry's settings.bin,
+        // which is not part of the copied worker config, so the worker would
+        // otherwise default to votekick ON.
+        writeCommand(stdin,
+                "config enableVotekick " + Administration.Config.enableVotekick.bool());
         writeCommand(stdin, "host " + settings.duelWorkerMap() + " pvp");
 
         return process;
