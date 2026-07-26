@@ -263,6 +263,29 @@ public final class BanManager {
             return;
         }
 
+        runImport();
+    }
+
+    /**
+     * Runs the import again on demand, whether or not it has run before.
+     *
+     * <p>The automatic one fires on the first start after the upgrade, which is
+     * necessarily before anyone could have configured the log webhook - so the
+     * bans get widened, but nothing is written up. This is how an admin gets
+     * the write-up: every ban currently on the server, pulled through the
+     * cascade and posted, one entry per cluster.
+     *
+     * @return how many entries were reported
+     */
+    public int importNow() {
+        if (Vars.netServer == null) {
+            return 0;
+        }
+
+        return runImport();
+    }
+
+    private int runImport() {
         Administration admins = Vars.netServer.admins;
 
         // Snapshotted first: applying the cascade adds to both of these.
@@ -284,7 +307,7 @@ public final class BanManager {
         settings.markBanBackfillDone();
 
         if (seedUuids.isEmpty() && seedIps.isEmpty()) {
-            return;
+            return 0;
         }
 
         List<BanReport> reports = new ArrayList<>();
@@ -307,12 +330,14 @@ public final class BanManager {
         }
 
         PluginLog.info(
-                "Imported @ existing ban(s); the cascade now covers @ entries.",
+                "Imported @ existing ban(s) as @ entries; the cascade now covers @ accounts and addresses.",
                 seedUuids.size() + seedIps.size(),
+                reports.size(),
                 covered.size()
         );
 
         importSink.accept(reports);
+        return reports.size();
     }
 
     private void collectImport(

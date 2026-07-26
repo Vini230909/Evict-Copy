@@ -7,6 +7,7 @@ import vini.evictmap.round.*;
 import vini.evictmap.core.cmd.Commands;
 import vini.evictmap.core.util.Players;
 import vini.evictmap.discord.BanLogReporter;
+import vini.evictmap.moderation.BanManager;
 import vini.evictmap.discord.DiscordStatusReporter;
 import vini.evictmap.duel.DuelServerManager;
 
@@ -46,6 +47,9 @@ public final class ConsoleCommands {
     /** Null on a duel worker: the hub owns the ban log. */
     private final BanLogReporter banLogReporter;
 
+    /** Null on a duel worker: only the hub decides who is banned. */
+    private final BanManager banManager;
+
     private final LongConsumer generate;
 
     private static final int MAX_CORECAP_INCREMENT = 10000;
@@ -63,6 +67,7 @@ public final class ConsoleCommands {
             RestartManager restartManager,
             DiscordStatusReporter discordStatusReporter,
             BanLogReporter banLogReporter,
+            BanManager banManager,
             LongConsumer generate
     ) {
         this.runtime = runtime;
@@ -75,6 +80,7 @@ public final class ConsoleCommands {
         this.restartManager = restartManager;
         this.discordStatusReporter = discordStatusReporter;
         this.banLogReporter = banLogReporter;
+        this.banManager = banManager;
         this.generate = generate;
     }
 
@@ -173,6 +179,11 @@ public final class ConsoleCommands {
                 .description("Show or set the Discord webhook bans are logged to. Every ban posts a new message there with all names, UUIDs and IPs it covered, so point it at a staff-only channel. 'off' stops logging, 'test' posts a sample entry.")
                 .run(ctx -> handleBanLogCommand(ctx.str("url/off/test", "").trim()));
 
+        commands.command("evictbanimport").console()
+                .args("force:string?")
+                .description("Once after setting evictbanlog: run every ban currently on the server through the cascade and post each one to the ban log. Refuses to run a second time (it would repost the whole back catalogue) unless called as 'evictbanimport force'.")
+                .run(ctx -> handleBanImportCommand(ctx.str("force", "").trim()));
+
         commands.command("evictduelstatus").console()
                 .description("List the active worker servers and who is in them.")
                 .run(ctx -> duelServerManager.logStatus());
@@ -270,6 +281,41 @@ public final class ConsoleCommands {
                 }
             }
         }
+    }
+
+    /**
+     * evictbanimport: re-runs the import of existing bans. The automatic one
+     * fires on the first start after the upgrade, necessarily before a log
+     * webhook could have been configured, so this is how those bans get their
+     * write-up.
+     */
+    private void handleBanImportCommand(String argument) {
+        if (banManager == null) {
+            Log.err("[EvictMapGenerator] Bans are managed on the hub, not on a match server.");
+            return;
+        }
+
+        boolean forced = "force".equalsIgnoreCase(argument);
+
+        if (settings.banImportLogged() && !forced) {
+            Log.err("[EvictMapGenerator] The existing bans have already been written up. Running this again would post the whole back catalogue a second time; use 'evictbanimport force' if that is really what you want.");
+            return;
+        }
+
+        if (banLogReporter != null && !settings.discordBanLogWebhookUrl().isBlank()) {
+            Log.info("[EvictMapGenerator] Importing existing bans; entries are posted to the ban log at about one every 1.5s.");
+        } else {
+            Log.info("[EvictMapGenerator] Importing existing bans. No ban-log webhook is set, so nothing will be posted to Discord - set one with 'evictbanlog <url>' first if you want the write-up.");
+        }
+
+        int entries = banManager.importNow();
+        settings.markBanImportLogged();
+
+        Log.info(
+                "[EvictMapGenerator] Import finished: @ entr@ reported. See the lines above for the totals.",
+                entries,
+                entries == 1 ? "y" : "ies"
+        );
     }
 
     private void handleRestartCommand(String action) {

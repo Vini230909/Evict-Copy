@@ -148,6 +148,14 @@ public final class EvictSettings {
     private boolean banBackfillDone = false;
 
     /**
+     * Set once an admin has had the existing bans written up in the ban log.
+     * That write-up is a one-off by nature - running it twice posts the whole
+     * back catalogue a second time - so the command refuses to repeat itself
+     * unless it is explicitly forced.
+     */
+    private boolean banImportLogged = false;
+
+    /**
      * Internal block ids players may not build (e.g. {@code router}). Stored as
      * names rather than {@code Block} objects so this class stays free of
      * Mindustry content; {@link EvictRules} resolves them at round start. Carried
@@ -346,6 +354,11 @@ public final class EvictSettings {
                     "moderation.banBackfillDone",
                     banBackfillDone
             );
+            banImportLogged = readBoolean(
+                    properties,
+                    "moderation.banImportLogged",
+                    banImportLogged
+            );
 
             setBannedBlockNamesWithoutSaving(
                     splitBannedBlockNames(
@@ -527,6 +540,20 @@ public final class EvictSettings {
      */
     public boolean banBackfillDone() {
         return banBackfillDone;
+    }
+
+    /** True once the existing bans have been written up in the ban log. */
+    public boolean banImportLogged() {
+        return banImportLogged;
+    }
+
+    public void markBanImportLogged() {
+        if (banImportLogged) {
+            return;
+        }
+
+        banImportLogged = true;
+        save();
     }
 
     public void markBanBackfillDone() {
@@ -1106,6 +1133,10 @@ public final class EvictSettings {
         properties.setProperty(
                 "moderation.banBackfillDone",
                 Boolean.toString(banBackfillDone)
+        );
+        properties.setProperty(
+                "moderation.banImportLogged",
+                Boolean.toString(banImportLogged)
         );
         properties.setProperty(
                 "rules.bannedBlocks",

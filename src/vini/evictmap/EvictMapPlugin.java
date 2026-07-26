@@ -210,6 +210,7 @@ public class EvictMapPlugin extends Plugin {
                     restartManager,
                     duelWorker ? null : discordStatusReporter,
                     duelWorker ? null : banLogReporter,
+                    duelWorker ? null : banManager,
                     // evictgen regenerates the live map in place with no fresh snapshot,
                     // so connected clients only see the new terrain via the per-tile sync.
                     seed -> generate(seed, true)
