@@ -130,7 +130,7 @@ public final class DiscordStatusReporter {
         }
 
         lastUpdateMillis = Time.millis();
-        webhook.publish(capture(true));
+        webhook.publish(StatusMessage.payload(capture(true)));
     }
 
     /**
@@ -178,7 +178,7 @@ public final class DiscordStatusReporter {
         }
 
         lastUpdateMillis = Time.millis();
-        webhook.publish(capture(true));
+        webhook.publish(StatusMessage.payload(capture(true)));
     }
 
     /** One line describing the current wiring, for the console command. */
@@ -215,7 +215,10 @@ public final class DiscordStatusReporter {
      * which is exactly what the counting "Updated ..." line is there for.
      */
     private void publishOffline() {
-        webhook.publishBlocking(capture(false), OFFLINE_SEND_TIMEOUT);
+        webhook.publishBlocking(
+                StatusMessage.payload(capture(false)),
+                OFFLINE_SEND_TIMEOUT
+        );
     }
 
     /**

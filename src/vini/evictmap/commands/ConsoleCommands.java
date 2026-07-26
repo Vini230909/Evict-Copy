@@ -6,6 +6,7 @@ import vini.evictmap.data.*;
 import vini.evictmap.round.*;
 import vini.evictmap.core.cmd.Commands;
 import vini.evictmap.core.util.Players;
+import vini.evictmap.discord.BanLogReporter;
 import vini.evictmap.discord.DiscordStatusReporter;
 import vini.evictmap.duel.DuelServerManager;
 
@@ -42,6 +43,9 @@ public final class ConsoleCommands {
     /** Null on a duel worker, which never reports to Discord. */
     private final DiscordStatusReporter discordStatusReporter;
 
+    /** Null on a duel worker: the hub owns the ban log. */
+    private final BanLogReporter banLogReporter;
+
     private final LongConsumer generate;
 
     private static final int MAX_CORECAP_INCREMENT = 10000;
@@ -58,6 +62,7 @@ public final class ConsoleCommands {
             RankManager rankManager,
             RestartManager restartManager,
             DiscordStatusReporter discordStatusReporter,
+            BanLogReporter banLogReporter,
             LongConsumer generate
     ) {
         this.runtime = runtime;
@@ -69,6 +74,7 @@ public final class ConsoleCommands {
         this.rankManager = rankManager;
         this.restartManager = restartManager;
         this.discordStatusReporter = discordStatusReporter;
+        this.banLogReporter = banLogReporter;
         this.generate = generate;
     }
 
@@ -162,6 +168,11 @@ public final class ConsoleCommands {
                 .description("Show or set the Discord webhook the live status message is posted to. Pass a webhook URL to (re)post the message there, 'off' to stop updating, 'test' to refresh right now.")
                 .run(ctx -> handleDiscordCommand(ctx.str("url/off/test", "").trim()));
 
+        commands.command("evictbanlog").console()
+                .args("url/off/test:string?")
+                .description("Show or set the Discord webhook bans are logged to. Every ban posts a new message there with all names, UUIDs and IPs it covered, so point it at a staff-only channel. 'off' stops logging, 'test' posts a sample entry.")
+                .run(ctx -> handleBanLogCommand(ctx.str("url/off/test", "").trim()));
+
         commands.command("evictduelstatus").console()
                 .description("List the active worker servers and who is in them.")
                 .run(ctx -> duelServerManager.logStatus());
@@ -218,6 +229,42 @@ public final class ConsoleCommands {
             default -> {
                 if (discordStatusReporter.configure(argument)) {
                     Log.info("[EvictMapGenerator] Discord webhook set. A fresh status message is being posted.");
+                } else {
+                    Log.err("[EvictMapGenerator] That is not a Discord webhook URL. Copy it from Channel Settings > Integrations > Webhooks.");
+                }
+            }
+        }
+    }
+
+    /**
+     * evictbanlog: no argument reports the current wiring, a URL adopts a new
+     * webhook, 'off' stops logging, 'test' posts a sample entry.
+     */
+    private void handleBanLogCommand(String argument) {
+        if (banLogReporter == null) {
+            Log.err("[EvictMapGenerator] The ban log only runs on the hub.");
+            return;
+        }
+
+        switch (argument.toLowerCase()) {
+            case "" -> Log.info(
+                    "[EvictMapGenerator] Discord ban log: @",
+                    banLogReporter.statusLine()
+            );
+            case "off" -> {
+                banLogReporter.disable();
+                Log.info("[EvictMapGenerator] Discord ban logging is off.");
+            }
+            case "test" -> {
+                if (banLogReporter.publishTest()) {
+                    Log.info("[EvictMapGenerator] Test entry queued.");
+                } else {
+                    Log.err("[EvictMapGenerator] No ban-log webhook is set.");
+                }
+            }
+            default -> {
+                if (banLogReporter.configure(argument)) {
+                    Log.info("[EvictMapGenerator] Ban-log webhook set. Bans will be posted there from now on.");
                 } else {
                     Log.err("[EvictMapGenerator] That is not a Discord webhook URL. Copy it from Channel Settings > Integrations > Webhooks.");
                 }

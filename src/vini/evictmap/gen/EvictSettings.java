@@ -134,6 +134,20 @@ public final class EvictSettings {
     private String discordMessageId = "";
 
     /**
+     * Discord webhook the ban log is posted to. A separate channel from the
+     * status message: every ban posts a new message there, and it carries the
+     * account's addresses, so it belongs somewhere only staff can read.
+     */
+    private String discordBanLogWebhookUrl = "";
+
+    /**
+     * Set once the bans that existed before this feature have been run through
+     * the cascade. Without it every restart would re-import and re-post the
+     * whole back catalogue.
+     */
+    private boolean banBackfillDone = false;
+
+    /**
      * Internal block ids players may not build (e.g. {@code router}). Stored as
      * names rather than {@code Block} objects so this class stays free of
      * Mindustry content; {@link EvictRules} resolves them at round start. Carried
@@ -321,6 +335,17 @@ public final class EvictSettings {
                     readString(properties, "discord.webhook.url", discordWebhookUrl).trim();
             discordMessageId =
                     readString(properties, "discord.message.id", discordMessageId).trim();
+            discordBanLogWebhookUrl =
+                    readString(
+                            properties,
+                            "discord.banlog.webhook.url",
+                            discordBanLogWebhookUrl
+                    ).trim();
+            banBackfillDone = readBoolean(
+                    properties,
+                    "moderation.banBackfillDone",
+                    banBackfillDone
+            );
 
             setBannedBlockNamesWithoutSaving(
                     splitBannedBlockNames(
@@ -483,6 +508,33 @@ public final class EvictSettings {
         }
 
         discordMessageId = cleaned;
+        save();
+    }
+
+    public String discordBanLogWebhookUrl() {
+        return discordBanLogWebhookUrl;
+    }
+
+    /** Points the ban log at a webhook; a blank URL turns it off. */
+    public void setDiscordBanLogWebhook(String url) {
+        discordBanLogWebhookUrl = url == null ? "" : url.trim();
+        save();
+    }
+
+    /**
+     * True once the bans that predate the cascade have been imported. Checked
+     * on hub startup so the import runs exactly once, ever.
+     */
+    public boolean banBackfillDone() {
+        return banBackfillDone;
+    }
+
+    public void markBanBackfillDone() {
+        if (banBackfillDone) {
+            return;
+        }
+
+        banBackfillDone = true;
         save();
     }
 
@@ -912,6 +964,20 @@ public final class EvictSettings {
         return Integer.parseInt(value.trim());
     }
 
+    private boolean readBoolean(
+            Properties properties,
+            String key,
+            boolean fallback
+    ) {
+        String value = properties.getProperty(key);
+
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+
+        return Boolean.parseBoolean(value.trim());
+    }
+
     private String readString(
             Properties properties,
             String key,
@@ -1033,6 +1099,14 @@ public final class EvictSettings {
         properties.setProperty("duel.worker.jar", duelWorkerJarName);
         properties.setProperty("discord.webhook.url", discordWebhookUrl);
         properties.setProperty("discord.message.id", discordMessageId);
+        properties.setProperty(
+                "discord.banlog.webhook.url",
+                discordBanLogWebhookUrl
+        );
+        properties.setProperty(
+                "moderation.banBackfillDone",
+                Boolean.toString(banBackfillDone)
+        );
         properties.setProperty(
                 "rules.bannedBlocks",
                 String.join(",", bannedBlockNames)

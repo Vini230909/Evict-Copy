@@ -1,6 +1,6 @@
 # CLAUDE.md — EvictMapGenerator
 
-Server-side Mindustry plugin (game v157.4, Java 17 source) for Evict-style persistent PvP on a procedurally generated hex map. Runs on a dedicated server; clients install nothing. Current version **1.4.5** — `plugin.json` `version` and the startup revision string in `EvictMapPlugin` must always match.
+Server-side Mindustry plugin (game v157.4, Java 17 source) for Evict-style persistent PvP on a procedurally generated hex map. Runs on a dedicated server; clients install nothing. Current version **1.5.0** — `plugin.json` `version` and the startup revision string in `EvictMapPlugin` must always match.
 
 One jar, two roles:
 - **Hub** — the normal Evict FFA server players connect to.
@@ -42,7 +42,8 @@ Lifecycle:
 - `gen/EvictSettings` — loads/persists `config/evict-map-generator.properties`.
 - `RestartManager` — implemented `evictrestart` graceful-restart flow (queue / `cancel` / `now`); the plugin only exits cleanly, an external start-script loop relaunches it — see `docs/RESTART_LOOP.md`.
 - `metrics/MetricsReporter` — throttled hub metrics log line (players, duel players, active matches).
-- `discord/` — hub-only live status message in a Discord channel (see Discord status below): `DiscordStatusReporter` (30 s loop, ladder cache, offline notice), `DiscordWebhook` (create/edit transport), `StatusMessage` + `StatusSnapshot` + `DiscordJson` (payload), `DiscordFormat` (name cleaning, durations).
+- `discord/` — hub-only Discord output (see Discord status and Bans below): `DiscordStatusReporter` (30 s loop, ladder cache, offline notice), `BanLogReporter` (paced queue, one new message per ban), `DiscordWebhook` (shared transport: create/edit for the status message, plain post for the log), `StatusMessage` + `StatusSnapshot` + `BanLogMessage` + `DiscordJson` (payloads), `DiscordFormat` (name cleaning, durations).
+- `moderation/` — ban widening and propagation (see Bans): `BanCascade` (pure UUID↔IP expansion), `BanManager` (hub: event hooks, applying, kicks, one-off import), `BanList` (the file workers read), `BanSync` (worker: applies the hub's list), `BanReport` (what one action hit).
 - `gameplay/RulesApplier` — fixed PvP rules, banned blocks, building-vs-building bullet damage scaling, disables Alpha/Beta/Gamma core-unit combat damage while keeping their building/mining.
 
 Generation:
@@ -108,7 +109,7 @@ Commands (`commands/`):
 - Both attrition settings persist across restarts.
 
 ### Player data (`config/evict-players.db`)
-- Async writes on one background thread; profiles keyed by UUID; no IP addresses stored. IP lookup for bans doesn't need them: console `evictplayerinfo` resolves name/UUID via the plugin DB and prints last + all known IPs from Mindustry's built-in admin store (which already tracks every IP per UUID) — feed those to `ban ip`.
+- Async writes on one background thread; profiles keyed by UUID; no IP addresses stored (the ban system reads Mindustry's admin store instead, which already keeps every IP per UUID). IP lookup for bans doesn't need them: console `evictplayerinfo` resolves name/UUID via the plugin DB and prints last + all known IPs from Mindustry's built-in admin store (which already tracks every IP per UUID) — feed those to `ban ip`.
 - Stored: last name, first/last seen, one total playtime, normal + ranked match counters, ELO/peak ELO; all observed names per UUID in `player_names`. Match stats exist only for normal and ranked matches — the main-lobby FFA round has no stats (legacy `ffa_*` / `ranked_playtime_ms` columns in old databases are ignored).
 - Ranked wins/losses/played, ELO and peak ELO update only after a **Ranked** match (casual 1v1 never touches them); match rows store both players' before/after ELO.
 - Normal wins/losses/played count every competitive `/play` match: casual 1v1, Teams and `/play` FFA (Random Teams records as Teams; Training/Sandbox never record). Ranked matches count only in the ranked counters. `/info` shows Total playtime, Normal, Ranked and ELO.
@@ -159,6 +160,16 @@ Worker infrastructure:
 - Final phase: the center hex + its six neighbours are protected from procedural filling. When only those 7 hexes remain, a 4-minute center-core phase begins; whoever owns the middle core after 4 minutes wins — including Fallen (then the round resets normally).
 - Terrain streaming: `extinction.terrainChangesPerTick` in the properties file — Space-floor conversions per tick, default 120, range 1..4096.
 
+### Bans
+Hub-only decision making; workers apply what the hub decided.
+- Every ban path is widened, and admins keep using the ones they know: `ban id`, `ban name`, `ban ip` and the in-game hammer all fire Mindustry's own `PlayerBanEvent`/`PlayerIpBanEvent`, which `BanManager` hooks. Vanilla alone is much narrower — `ban id` never touches the address, `ban name` short-circuits before it, `ban ip` misses the accounts' other addresses.
+- The cascade is two steps deep and then stops. Seeded with a UUID: that account's IPs, then every account that used them. Seeded with an IP: every account that used it, then all of their IPs. **Deliberately not run to exhaustion** — one shared carrier address would otherwise chain into unrelated players. Mindustry's `banPlayerIP` additionally flips every account that has used an address, so the applied result can be slightly wider than the plan; the log is rebuilt from what actually happened, not from the plan.
+- Everything the cascade catches is banned, and every affected player online is kicked immediately, on the hub and inside running matches.
+- Unbans are **not** cascaded — `unban` behaves exactly as Mindustry applies it (which does drop the account's IPs from the ban list). They are logged, nothing more.
+- `config/evict-bans.txt` is rewritten from the live admin store on every change (`uuid <id>` / `ip <addr>` lines, written via a temp file + move so a worker never reads a half-written list). Workers read it from `../../config/`, hand it to their own admin store every 5 s and kick anyone it now covers — without this a banned player could join a match server directly on its port. A worker never bans anything of its own accord; entries the hub has dropped are lifted again, except where an account is banned through an address the hub still bans.
+- Pre-existing bans are pulled through the cascade **once ever**, on the first hub start after upgrading (`moderation.banBackfillDone`); seeds already covered by an earlier cascade in the same run are skipped.
+- Ban log: `evictbanlog <url>` posts a new message per action into its own channel — never an edit, a log is a sequence. One embed with all names, all UUIDs, all IPs the action covered. **Staff-only channel**: it publishes addresses. Messages are queued and released one per 1.5 s (Discord rate limits a webhook at a handful of requests a second); an import of more than 25 old bans collapses into summary embeds of 20 instead of flooding the channel.
+
 ### Discord status
 Hub-only. One webhook message in a Discord channel (`#serverstatus`), edited in place every **30 s** — never a new message, and an edit notifies nobody. Two embeds: server status (player count vs. the server's slot cap, lobby/match split only while a match runs, round runtime + Extinction countdown, running matches, and a `⚠️ Restart queued` field that appears only while a restart is queued) and the top-10 ranked ELO ladder.
 - Refresh is unconditional, not change-detected. The closing `Updated <t:…:R>` line is a Discord relative timestamp that counts up client-side, so a healthy server always reads "seconds ago" and a stuck one is visible by the number growing.
@@ -181,6 +192,7 @@ Water: configured tries per hex (not per-core fallback); decimal tries give a fr
 - Walls: `evictwall [full-wall] [small-wall] [open] [passage]`
 - Build speed: `evictbuildspeed [multiplier]` — unit-factory build speed each round; no argument shows current; default `1.4`; stored as `rules.unitBuildSpeedMultiplier` and copied into every worker; applies next generated match.
 - Duel pool: `evictduelserver [ip] [basePort] [maxWorkers] [map]` — no argument shows config; omitted values keep current. `ip` is what clients reach workers at (blank = `/play` inert); workers use `basePort .. basePort+maxWorkers-1`. Defaults: ip unset, basePort `6568`, maxWorkers `4`, map `evict-map`, worker jar `server-release.jar`.
+- Ban log: `evictbanlog [url/off/test]` — no argument reports the wiring (queue length, last success/error); a webhook URL adopts it; `off` stops logging; `test` posts a sample entry. Stored as `discord.banlog.webhook.url`. Point it at a staff-only channel — entries contain IPs.
 - Discord status: `evictdiscord [url/off/test]` — no argument reports the current wiring (message id, last success, last error); a webhook URL adopts it and posts a fresh message; `off` posts Offline and stops; `test` refreshes immediately. Stored as `discord.webhook.url` + `discord.message.id`; changing the URL clears the id. Setup is Discord-side: create the channel, Integrations → Create Webhook, paste the URL.
 - Player data: `evictplayerinfo [name/uuid]` (single match also prints lastIP + all known IPs from Mindustry's admin store, for `ban ip`), `evictelo <name/uuid> <value>` (see Player data above).
 - Restart: `evictrestart` queues a graceful update restart (fires when no worker runs and the round ends / hub is empty / round is < 10 min old after a 30 s on-screen countdown); `evictrestart cancel` drops it, also mid-countdown (hides the HUD, announces the cancel); `evictrestart now` shows a 10 s countdown, then exits. Countdowns tick per second in a HUD popup (3 s popup lifetime) and post milestone seconds to chat (every 10 s plus the last five). The exit closes the network, then hard-exits via `System.exit(0)` (the duel-worker way; shutdown hooks still flush the player DB), with a 10 s `Runtime.halt(0)` guard should a shutdown hook ever wedge; the external start-script loop relaunches the server.

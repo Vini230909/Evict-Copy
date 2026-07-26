@@ -5,5 +5,8 @@ gradle.properties
 config/*.db
 config/*.db-shm
 config/*.db-wal
+
+config/*.properties
+config/evict-bans.txt
 duel-workers/
 bin/

@@ -175,6 +175,29 @@ public class EvictMapPlugin extends Plugin {
                     restartManager
             );
 
+    /**
+     * Hub-only ban log. Constructed on a worker too (inert until started), but
+     * only the hub ever starts it - each worker would report the same ban.
+     */
+    private final vini.evictmap.discord.BanLogReporter banLogReporter =
+            new vini.evictmap.discord.BanLogReporter(settings);
+
+    /**
+     * Widens every ban to the accounts and addresses linked to it, and writes
+     * the result where the duel workers can see it. Hub only: the hub decides
+     * who is banned, the workers apply it.
+     */
+    private final vini.evictmap.moderation.BanManager banManager =
+            new vini.evictmap.moderation.BanManager(
+                    settings,
+                    banLogReporter::log,
+                    banLogReporter::logImport
+            );
+
+    /** Worker only: applies the hub's ban list to this match server. */
+    private final vini.evictmap.moderation.BanSync banSync =
+            new vini.evictmap.moderation.BanSync();
+
     private final ConsoleCommands consoleCommands =
             new ConsoleCommands(
                     runtime,
@@ -186,6 +209,7 @@ public class EvictMapPlugin extends Plugin {
                     rankManager,
                     restartManager,
                     duelWorker ? null : discordStatusReporter,
+                    duelWorker ? null : banLogReporter,
                     // evictgen regenerates the live map in place with no fresh snapshot,
                     // so connected clients only see the new terrain via the per-tile sync.
                     seed -> generate(seed, true)
@@ -216,6 +240,11 @@ public class EvictMapPlugin extends Plugin {
             // Hub only: one live status message in Discord. Workers must stay
             // out of it - they would all edit the same message.
             discordStatusReporter.start();
+
+            // Hub only: the hub is the single source of truth for bans. It
+            // widens them, writes the list the workers read, and logs them.
+            banLogReporter.start();
+            banManager.install();
         }
 
         Events.on(WorldLoadEvent.class, event -> {
@@ -404,15 +433,23 @@ public class EvictMapPlugin extends Plugin {
 
             // Only the hub is listed in the multiplayer browser; keep its
             // advertised count folded with the players inside the duel workers.
-            if (!duelWorker) {
+            if (duelWorker) {
+                // Picks up bans made on the hub, including mid-match ones.
+                banSync.update();
+            } else {
                 refreshAdvertisedPlayerCount();
                 metricsReporter.update();
                 discordStatusReporter.update();
+
+                // Runs the one-off import of pre-existing bans once the admin
+                // store exists, then paces the ban log's queue.
+                banManager.update();
+                banLogReporter.update();
             }
         });
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.4.5. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.5.0. Use 'evictstatus' for commands and current settings."
         );
     }
 

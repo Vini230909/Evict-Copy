@@ -100,11 +100,36 @@ final class DiscordWebhook {
     }
 
     /**
-     * Fires the snapshot at Discord on a background thread. Returns quietly
-     * when a send is already running, when the webhook has been rejected, or
-     * while a rate-limit backoff is in effect.
+     * True when a send would actually go out right now. Callers that queue
+     * their messages (the ban log) check this before handing one over, so a
+     * message is held rather than dropped while Discord is busy or backing off.
      */
-    void publish(StatusSnapshot snapshot) {
+    boolean canSend() {
+        return isConfigured()
+                && !broken
+                && System.currentTimeMillis() >= backoffUntilMillis
+                && !sending.get();
+    }
+
+    /**
+     * Fires a payload at Discord on a background thread, editing the tracked
+     * message. Returns quietly when a send is already running, when the webhook
+     * has been rejected, or while a rate-limit backoff is in effect.
+     */
+    void publish(String body) {
+        send(body, true);
+    }
+
+    /**
+     * Posts a payload as a new message and leaves the tracked message alone.
+     * This is what a log wants: a record per event, in order, never overwriting
+     * the one before it.
+     */
+    void post(String body) {
+        send(body, false);
+    }
+
+    private void send(String body, boolean edit) {
         if (!isConfigured() || broken) {
             return;
         }
@@ -117,10 +142,8 @@ final class DiscordWebhook {
             return;
         }
 
-        String body = StatusMessage.payload(snapshot);
-
         client.sendAsync(
-                        buildRequest(body, REQUEST_TIMEOUT),
+                        buildRequest(body, REQUEST_TIMEOUT, edit),
                         HttpResponse.BodyHandlers.ofString()
                 )
                 .whenComplete((response, error) -> {
@@ -128,7 +151,7 @@ final class DiscordWebhook {
                         if (error != null) {
                             recordFailure(rootMessage(error));
                         } else {
-                            handleResponse(response.statusCode(), response.body());
+                            handleResponse(response.statusCode(), response.body(), edit);
                         }
                     } finally {
                         sending.set(false);
@@ -142,18 +165,18 @@ final class DiscordWebhook {
      * Failure here is not worth reporting loudly - the server is stopping
      * either way.
      */
-    void publishBlocking(StatusSnapshot snapshot, Duration timeout) {
+    void publishBlocking(String body, Duration timeout) {
         if (!isConfigured() || broken) {
             return;
         }
 
         try {
             HttpResponse<String> response = client.send(
-                    buildRequest(StatusMessage.payload(snapshot), timeout),
+                    buildRequest(body, timeout, true),
                     HttpResponse.BodyHandlers.ofString()
             );
 
-            handleResponse(response.statusCode(), response.body());
+            handleResponse(response.statusCode(), response.body(), true);
         } catch (Exception exception) {
             PluginLog.info(
                     "Discord offline notice could not be sent: @",
@@ -167,8 +190,8 @@ final class DiscordWebhook {
      * create; {@code wait=true} makes Discord respond with the created message
      * so {@link #handleResponse} can capture and persist its id.
      */
-    private HttpRequest buildRequest(String body, Duration timeout) {
-        boolean editing = !messageId.isEmpty();
+    private HttpRequest buildRequest(String body, Duration timeout, boolean edit) {
+        boolean editing = edit && !messageId.isEmpty();
         String target = editing
                 ? url + "/messages/" + messageId
                 : url + "?wait=true";
@@ -184,9 +207,12 @@ final class DiscordWebhook {
                 : request.POST(HttpRequest.BodyPublishers.ofString(body)).build();
     }
 
-    private void handleResponse(int status, String body) {
+    private void handleResponse(int status, String body, boolean edit) {
         if (status >= 200 && status < 300) {
-            captureMessageId(body);
+            if (edit) {
+                captureMessageId(body);
+            }
+
             lastSuccessMillis = System.currentTimeMillis();
             consecutiveFailures = 0;
             lastError = "";
@@ -198,7 +224,7 @@ final class DiscordWebhook {
                     "Discord rejected the webhook (HTTP " + status
                             + "). Set a new one with 'evictdiscord <url>'."
             );
-            case 404 -> handleNotFound();
+            case 404 -> handleNotFound(edit);
             case 429 -> applyRateLimit(body);
             default -> recordFailure("HTTP " + status);
         }
@@ -210,8 +236,8 @@ final class DiscordWebhook {
      * means the webhook itself is gone, and retrying that forever would be
      * pointless noise.
      */
-    private void handleNotFound() {
-        if (messageId.isEmpty()) {
+    private void handleNotFound(boolean edit) {
+        if (!edit || messageId.isEmpty()) {
             breakWebhook(
                     "The Discord webhook no longer exists (HTTP 404). "
                             + "Create a new one and set it with 'evictdiscord <url>'."
