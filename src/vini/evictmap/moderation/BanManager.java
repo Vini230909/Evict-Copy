@@ -126,11 +126,22 @@ public final class BanManager {
         reportSink.accept(report);
     }
 
+    /**
+     * Reports what an unban actually freed.
+     *
+     * <p>Mindustry's unban is wider than the identifier it is given, in both
+     * directions: lifting an account also drops every address that account has
+     * used, and lifting an address also lifts every account seen there. The
+     * event fires after all of that has happened, so the report is read back
+     * off the live state rather than assumed - an admin has to be able to see
+     * what a single command let back in.
+     */
     private void handleUnban(String uuid, String ip) {
         if (applying) {
             return;
         }
 
+        Administration admins = Vars.netServer.admins;
         Set<String> uuids = new LinkedHashSet<>();
         Set<String> ips = new LinkedHashSet<>();
         String label;
@@ -138,12 +149,35 @@ public final class BanManager {
         if (uuid != null && !uuid.isBlank()) {
             uuids.add(uuid);
             label = nameOf(uuid);
+
+            // The addresses vanilla just removed from the ban list along with
+            // the account.
+            for (String freed : BanCascade.ipsOf(uuid)) {
+                if (!admins.bannedIPs.contains(freed, false)) {
+                    ips.add(freed);
+                }
+            }
         } else if (BanCascade.usableIp(ip)) {
             ips.add(ip);
             label = ip;
+
+            // Every account that was banned through this address and is not
+            // banned any more.
+            for (String freed : BanCascade.accountsUsing(ips)) {
+                if (!admins.isIDBanned(freed)) {
+                    uuids.add(freed);
+                }
+            }
         } else {
             return;
         }
+
+        PluginLog.info(
+                "Unban on @ freed @ account(s) and @ address(es).",
+                label,
+                uuids.size(),
+                ips.size()
+        );
 
         publishList();
 

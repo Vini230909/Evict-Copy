@@ -125,6 +125,13 @@ final class BanCascade {
         return collectNames(uuids);
     }
 
+    /** Every address this account has ever connected from. */
+    static Set<String> ipsOf(String uuid) {
+        Set<String> ips = new LinkedHashSet<>();
+        collectIps(info(uuid), ips);
+        return ips;
+    }
+
     /** Adds every account that has ever connected from one of {@code ips}. */
     private static void addAccountsUsing(Set<String> ips, Set<String> uuids) {
         if (ips.isEmpty() || Vars.netServer == null) {
