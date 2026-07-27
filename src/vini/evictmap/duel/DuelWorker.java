@@ -1483,18 +1483,24 @@ public final class DuelWorker {
     private void showWaitingHud() {
         StringBuilder names = new StringBuilder();
 
-        Groups.player.each(connected -> {
-            if (connected != null) {
-                if (!names.isEmpty()) {
-                    names.append("[white], ");
-                }
-                names.append(PlayerNameFormatter.displayName(connected));
+        // The players still missing - never the ones already here. Naming the
+        // present players told the first arrival the match was waiting for
+        // themselves instead of for their opponent.
+        for (String uuid : participantUuids) {
+            if (isOnline(uuid) || waivedUuids.contains(uuid)) {
+                continue;
             }
-        });
+
+            if (!names.isEmpty()) {
+                names.append("[white], ");
+            }
+
+            names.append(nameOf(uuid));
+        }
 
         showHud(
                 !names.isEmpty()
-                        ? "[accent]Waiting for players\n[white]" + names + "[]"
+                        ? "[accent]Waiting for\n[white]" + names + "[]"
                         : "[accent]Waiting for players...[]"
         );
     }
@@ -1828,6 +1834,15 @@ public final class DuelWorker {
                         roster.add(uuid);
                         rosterTeams.add(roster);
                     }
+                }
+            }
+
+            // Seed the names the waiting HUD needs before anyone has arrived.
+            for (String uuid : participantUuids) {
+                String name = properties.getProperty("name." + uuid, "").trim();
+
+                if (!name.isEmpty()) {
+                    lastKnownNameByUuid.put(uuid, name);
                 }
             }
 

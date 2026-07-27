@@ -263,7 +263,7 @@ public final class DuelServerManager {
         try {
             File workerDir = provisionWorkerDir(handle);
 
-            writeHandshake(workerDir, handle.mode, handle.label, rosterUuids);
+            writeHandshake(workerDir, handle, rosterUuids);
 
             Process process = launchWorker(workerDir, handle.port);
             handle.process = process;
@@ -1064,15 +1064,14 @@ public final class DuelServerManager {
 
     private void writeHandshake(
             File workerDir,
-            MatchMode mode,
-            String label,
+            WorkerHandle handle,
             List<List<String>> rosterUuids
     ) throws IOException {
         Properties properties = new Properties();
-        properties.setProperty("mode", mode.id());
+        properties.setProperty("mode", handle.mode.id());
         // The display label ("A vs B (Teams)") is repeated in the handshake so
         // sibling workers can list this match in their own /v hop menu.
-        properties.setProperty("label", label);
+        properties.setProperty("label", handle.label);
         properties.setProperty(
                 "team.count",
                 Integer.toString(rosterUuids.size())
@@ -1082,6 +1081,16 @@ public final class DuelServerManager {
             properties.setProperty(
                     "team." + (index + 1),
                     String.join(",", rosterUuids.get(index))
+            );
+        }
+
+        // Roster names, so the worker's "waiting for ..." HUD can name a
+        // player who has not connected to it yet - the worker only ever sees
+        // the names of players who actually arrived.
+        for (Participant participant : handle.participants) {
+            properties.setProperty(
+                    "name." + participant.uuid(),
+                    participant.display()
             );
         }
 
