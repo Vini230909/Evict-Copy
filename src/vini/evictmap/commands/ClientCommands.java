@@ -20,6 +20,7 @@ public final class ClientCommands {
     private final DuelCommands duels;
     private final HistoryCommands history;
     private final InfoCommands info;
+    private final BanCommands bans;
     private final LeaderboardCommands leaderboard;
     private final HelpCommands help;
 
@@ -31,6 +32,7 @@ public final class ClientCommands {
             DuelCommands duels,
             HistoryCommands history,
             InfoCommands info,
+            BanCommands bans,
             LeaderboardCommands leaderboard,
             HelpCommands help
     ) {
@@ -41,6 +43,7 @@ public final class ClientCommands {
         this.duels = duels;
         this.history = history;
         this.info = info;
+        this.bans = bans;
         this.leaderboard = leaderboard;
         this.help = help;
     }
@@ -53,6 +56,7 @@ public final class ClientCommands {
         duels.registerClientCommands(handler);
         history.registerClientCommands(handler);
         info.registerClientCommands(handler);
+        bans.registerClientCommands(handler);
         leaderboard.registerClientCommands(handler);
 
         // Register last so the filtered menu replaces vanilla /help.

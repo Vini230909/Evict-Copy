@@ -139,6 +139,11 @@ public final class ConsoleCommands {
                 .description("Search stored player data by partial name or UUID. With no argument, list all stored players.")
                 .run(ctx -> showStoredPlayerInfo(ctx.str("query", "").trim()));
 
+        commands.command("evictban").console()
+                .args("name/uuid:text")
+                .description("Ban a stored player by name or UUID, online or not - for an offender found in the chat log after the fact. Matched like evictplayerinfo; an ambiguous name lists the candidates and bans nobody. Widened to the account's known addresses and logged like every other ban.")
+                .run(ctx -> handleBanCommand(ctx.str("name/uuid", "").trim()));
+
         commands.command("evictelo").console()
                 .args("name/uuid:string", "value:string")
                 .description("Set a stored player's ranked ELO. Matched like evictplayerinfo (partial latest name first, then UUID); pass a UUID if a name is ambiguous. Peak ELO only rises.")
@@ -316,6 +321,48 @@ public final class ConsoleCommands {
                 entries,
                 entries == 1 ? "y" : "ies"
         );
+    }
+
+    /**
+     * evictban: ban a stored player whether or not they are online - the path
+     * for harassment found in the chat log after the offender left. Resolves
+     * the name against the plugin's player DB (vanilla 'ban name' only works
+     * on connected players), then seeds a normal ban through banPlayerID, so
+     * BanManager widens, kicks, syncs and logs it like any other.
+     */
+    private void handleBanCommand(String query) {
+        if (banManager == null) {
+            Log.err("[EvictMapGenerator] Bans are managed on the hub, not on a match server.");
+            return;
+        }
+
+        if (query.isEmpty()) {
+            Log.err("[EvictMapGenerator] Use: evictban <name/uuid>");
+            return;
+        }
+
+        playerDataManager.searchPlayerInfo(query, matches -> {
+            if (matches.isEmpty()) {
+                Log.err("[EvictMapGenerator] No stored players match '@'.", query);
+                return;
+            }
+
+            if (matches.size() > 1) {
+                Log.err("[EvictMapGenerator] '@' matches @ players; be more specific or use a UUID:", query, matches.size());
+                for (PlayerDataManager.PlayerInfo info : matches) {
+                    Log.info("[EvictMapGenerator] @", compactPlayerInfo(info));
+                }
+                return;
+            }
+
+            PlayerDataManager.PlayerInfo target = matches.get(0);
+
+            if (Vars.netServer.admins.banPlayerID(target.uuid())) {
+                Log.info("[EvictMapGenerator] Banned @ (@). The line above shows everything the ban covered.", target.lastName(), target.uuid());
+            } else {
+                Log.info("[EvictMapGenerator] @ (@) is already banned.", target.lastName(), target.uuid());
+            }
+        });
     }
 
     private void handleRestartCommand(String action) {

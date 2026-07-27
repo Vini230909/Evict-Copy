@@ -125,6 +125,10 @@ public class EvictMapPlugin extends Plugin {
     private final InfoCommands infoCommands =
             new InfoCommands(playerDataManager);
 
+    /** /ban seeds bans on the hub only; on a worker it refuses. */
+    private final BanCommands banCommands =
+            new BanCommands(playerDataManager, !duelWorker);
+
     private final LeaderboardCommands leaderboardCommands =
             new LeaderboardCommands(playerDataManager);
 
@@ -140,6 +144,7 @@ public class EvictMapPlugin extends Plugin {
                     duelCommands,
                     historyCommands,
                     infoCommands,
+                    banCommands,
                     leaderboardCommands,
                     helpCommands
             );
@@ -397,6 +402,7 @@ public class EvictMapPlugin extends Plugin {
             guarded("duelCommands leave", () -> duelCommands.handlePlayerLeave(event.player));
             guarded("history leave", () -> historyCommands.handlePlayerLeave(event.player));
             guarded("info leave", () -> infoCommands.handlePlayerLeave(event.player));
+            guarded("ban leave", () -> banCommands.handlePlayerLeave(event.player));
             guarded("duelWorker leave", () -> duelWorkerReferee.handlePlayerLeave(event.player));
         });
 
@@ -450,7 +456,7 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.5.0. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.6.0. Use 'evictstatus' for commands and current settings."
         );
     }
 

@@ -15,26 +15,26 @@ import java.util.Set;
  * <p>A banned player comes back under a new name, and often enough under a new
  * account entirely - Mindustry UUIDs are handed out by the client, so a fresh
  * install is a fresh identity. What does not change nearly as often is the
- * connection. So a ban is not applied to the one identifier an admin happened
- * to type: it is expanded across the links Mindustry already records in its
- * admin store, where every {@code PlayerInfo} carries every IP that account has
- * ever connected from.
+ * connection. So a UUID ban is not applied to the one identifier an admin
+ * happened to type: it also covers every address Mindustry's admin store has
+ * recorded for that account.
  *
- * <p>The expansion is deliberately two steps deep and then stops:
+ * <p>That is the whole expansion - one step, never through an address to other
+ * accounts:
  *
  * <ul>
- *   <li>seeded with a UUID: that account's IPs, then every account that has
- *       used one of those IPs;</li>
- *   <li>seeded with an IP: every account that has used it, then all of those
- *       accounts' IPs.</li>
+ *   <li>seeded with a UUID: that account plus its own recorded IPs;</li>
+ *   <li>seeded with an IP: that address plus the accounts seen there (which is
+ *       exactly what vanilla's {@code banPlayerIP} flips anyway), and nothing
+ *       beyond them.</li>
  * </ul>
  *
- * <p>Running it to exhaustion instead was considered and rejected: one shared
- * mobile-carrier address anywhere in the chain links two strangers, and from
- * there the closure grows through their addresses into accounts that have
- * nothing to do with each other. Two steps catches the alt accounts of one
- * person - which is the point - without the chain ever escaping into the rest
- * of the player base.
+ * <p>Anything deeper was tried and reverted: a single shared address - CGNAT,
+ * a VPN endpoint, a university network - links dozens of strangers, and one
+ * more hop through their dynamic IPs turns one ban into hundreds of banned
+ * addresses that mostly belong to innocent players. The one step catches the
+ * offender's own connections - which is the point - without the chain ever
+ * escaping into the rest of the player base.
  *
  * <p>Pure computation over an in-memory snapshot: it changes nothing and is
  * safe to run for a preview. {@link BanManager} applies the result.
@@ -65,8 +65,8 @@ final class BanCascade {
     }
 
     /**
-     * Expands a UUID ban: the account's own addresses, then every account
-     * reachable through them.
+     * Expands a UUID ban: the account plus its own recorded addresses. Never
+     * follows those addresses to other accounts.
      */
     static Result fromUuid(String uuid) {
         Set<String> uuids = new LinkedHashSet<>();
@@ -78,14 +78,15 @@ final class BanCascade {
 
         uuids.add(uuid);
         collectIps(info(uuid), ips);
-        addAccountsUsing(ips, uuids);
 
         return build(labelFor(uuid), uuids, ips);
     }
 
     /**
-     * Expands an IP ban: every account seen at that address, then all of their
-     * other addresses.
+     * Expands an IP ban: the address plus every account seen there - the same
+     * set vanilla's {@code banPlayerIP} flips on its own, so this mostly makes
+     * the report honest. Those accounts' other addresses are deliberately left
+     * alone.
      */
     static Result fromIp(String ip) {
         Set<String> uuids = new LinkedHashSet<>();
@@ -98,21 +99,12 @@ final class BanCascade {
         ips.add(ip);
         addAccountsUsing(ips, uuids);
 
-        for (String accountUuid : List.copyOf(uuids)) {
-            collectIps(info(accountUuid), ips);
-        }
-
         return build(ip, uuids, ips);
     }
 
     /**
-     * Every account that has ever connected from one of these addresses.
-     *
-     * <p>Used to reconcile the report with what actually happened: Mindustry's
-     * own {@code banPlayerIP} marks every account that has used the address, so
-     * banning the second-step addresses can catch accounts the two-step
-     * expansion never listed. The log has to say who was really hit, not who
-     * the algorithm planned to hit.
+     * Every account that has ever connected from one of these addresses. Used
+     * by the unban report to see who a lifted address ban let back in.
      */
     static Set<String> accountsUsing(Set<String> ips) {
         Set<String> uuids = new LinkedHashSet<>();

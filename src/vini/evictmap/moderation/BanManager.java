@@ -31,8 +31,16 @@ import java.util.function.Consumer;
  *
  * <p>This manager hooks the events Mindustry fires for all of those paths, so
  * admins keep using the commands and the button they already know, and widens
- * each ban through {@link BanCascade}. Everything the cascade turns up is
- * banned, kicked and written to the file the duel workers read.
+ * each ban through {@link BanCascade} - one step: the banned account's own
+ * addresses, never onward to other accounts. Everything the cascade turns up
+ * is banned, kicked and written to the file the duel workers read.
+ *
+ * <p>The widening adds addresses to the banned-IP list directly instead of
+ * calling {@code banPlayerIP}: vanilla's method also flips every account that
+ * ever used the address, and on a shared address (CGNAT, VPN, a university)
+ * that permanently bans strangers. A plugin-added address blocks connections
+ * from it, nothing more; only an admin's own explicit {@code ban ip} keeps
+ * vanilla's account-flipping semantics.
  *
  * <p>Hub only. A worker applies what the hub decided (see {@link BanSync}) and
  * must never run a cascade of its own: its admin store is a throwaway copy, and
@@ -191,12 +199,14 @@ public final class BanManager {
     }
 
     /**
-     * Applies a cascade and reports what it really hit.
+     * Applies a cascade and reports what it hit.
      *
-     * <p>The report is rebuilt from the addresses afterwards rather than copied
-     * from the plan: {@code banPlayerIP} bans every account that has ever used
-     * the address, so applying the cascade can catch accounts the two-step
-     * expansion did not list. The log has to show those too.
+     * <p>Accounts are banned through {@code banPlayerID} as usual. Addresses
+     * are added to the banned-IP list directly, without {@code banPlayerIP}:
+     * that method would flip every account that ever used the address, and on
+     * a shared one that bans strangers for good. A quietly added address still
+     * blocks connections and is still lifted by a normal unban (vanilla's
+     * {@code unbanPlayerID} drops the account's addresses from the same list).
      */
     private BanReport apply(BanCascade.Result result, BanReport.Kind kind) {
         Administration admins = Vars.netServer.admins;
@@ -208,15 +218,23 @@ public final class BanManager {
                 admins.banPlayerID(uuid);
             }
 
+            boolean addressesAdded = false;
+
             for (String ip : result.ips()) {
-                admins.banPlayerIP(ip);
+                if (!admins.bannedIPs.contains(ip, false)) {
+                    admins.bannedIPs.add(ip);
+                    addressesAdded = true;
+                }
+            }
+
+            if (addressesAdded) {
+                admins.save();
             }
         } finally {
             applying = false;
         }
 
         Set<String> uuids = new LinkedHashSet<>(result.uuids());
-        uuids.addAll(BanCascade.accountsUsing(result.ips()));
 
         kickBanned(uuids, result.ips());
         publishList();
