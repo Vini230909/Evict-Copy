@@ -2,6 +2,8 @@ package vini.evictmap.discord;
 
 import arc.util.Strings;
 
+import vini.evictmap.core.util.MessageIdFilter;
+
 /**
  * Turns server-side values into text that is safe to put in a Discord message.
  *
@@ -68,6 +70,7 @@ public final class DiscordFormat {
         String cleaned = Strings.stripColors(raw);
         cleaned = stripControlCharacters(cleaned);
         cleaned = cleaned.replaceAll("\\s+", " ").trim();
+        cleaned = MessageIdFilter.strip(cleaned);
 
         if (cleaned.isEmpty()) {
             return "";

@@ -33,6 +33,7 @@ import vini.evictmap.duel.DuelServerManager;
 import vini.evictmap.duel.DuelWorker;
 import vini.evictmap.duel.modes.DuelMode;
 import vini.evictmap.commands.*;
+import vini.evictmap.core.util.MessageIdFilter;
 import vini.evictmap.core.util.PluginLog;
 
 import java.util.HashMap;
@@ -596,6 +597,11 @@ public class EvictMapPlugin extends Plugin {
 
     /** Loads persisted state and applies the fixed round rules and team wiring. */
     private void bootstrap() {
+        // Console readability only, and the first thing set up so it covers
+        // everything logged after it. The server installs its own log formatter
+        // in the ServerControl constructor, which has already run by now.
+        MessageIdFilter.install();
+
         settings.load();
         rankManager.load();
 
