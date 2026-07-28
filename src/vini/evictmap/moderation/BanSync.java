@@ -41,6 +41,13 @@ public final class BanSync {
     private long lastModifiedMillis = Long.MIN_VALUE;
     private boolean everApplied;
 
+    /**
+     * True while the hub's list is being applied. Applying it fires the same
+     * ban events {@link BanForwarder} watches, and a ban that came from the hub
+     * must not be sent back to it.
+     */
+    private boolean applying;
+
     public BanSync(File file) {
         this.file = file;
     }
@@ -75,7 +82,18 @@ public final class BanSync {
         lastModifiedMillis = modified;
         everApplied = true;
 
-        apply(BanList.read(file));
+        applying = true;
+
+        try {
+            apply(BanList.read(file));
+        } finally {
+            applying = false;
+        }
+    }
+
+    /** True while the hub's list is being applied; see {@link BanForwarder}. */
+    public boolean isApplying() {
+        return applying;
     }
 
     /**

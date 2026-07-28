@@ -1,5 +1,6 @@
 package vini.evictmap.discord;
 
+import vini.evictmap.moderation.BanOrigin;
 import vini.evictmap.moderation.BanReport;
 import vini.evictmap.moderation.WordFilterHit;
 
@@ -43,7 +44,7 @@ final class BanLogMessage {
     static String payload(BanReport report, long timestampSeconds) {
         DiscordJson.Arr fields = new DiscordJson.Arr();
 
-        addWordFilterFields(fields, report.wordFilterHit());
+        addStoryFields(fields, report);
 
         fields.add(field(
                 "Names (" + report.names().size() + ")",
@@ -135,32 +136,38 @@ final class BanLogMessage {
     }
 
     /**
-     * What the word filter saw, above the accounts it hit.
+     * Why the ban happened, above the accounts it hit.
      *
-     * <p>The word and the offending text make the entry reviewable on its own -
-     * a filter that bans without saying what for cannot be checked for false
-     * positives. The console time is the server's own log format, so an admin
-     * can open the log of the server named next to it and search for that line.
+     * <p>For the word filter: the word and the offending text, which is what
+     * makes the entry reviewable on its own - a filter that bans without saying
+     * what for cannot be checked for false positives. For every ban that
+     * carries one: who decided it, on which server, and the console time in
+     * that server's own log format, so an admin can open the right log and
+     * search for the line.
      */
-    private static void addWordFilterFields(DiscordJson.Arr fields, WordFilterHit hit) {
-        if (hit == null) {
+    private static void addStoryFields(DiscordJson.Arr fields, BanReport report) {
+        WordFilterHit hit = report.wordFilterHit();
+
+        if (hit != null) {
+            fields.add(field("Word", codeSpan(hit.word()), true));
+            fields.add(field("Found in", hit.source().label(), true));
+
+            fields.add(field(
+                    hit.source() == WordFilterHit.Source.CHAT ? "Message" : "Name",
+                    DiscordFormat.playerText(hit.text()),
+                    false
+            ));
+        }
+
+        BanOrigin origin = report.origin();
+
+        if (origin == null) {
             return;
         }
 
-        fields.add(field("Word", codeSpan(hit.word()), true));
-        fields.add(field("Found in", hit.source().label(), true));
-
-        fields.add(field(
-                hit.source() == WordFilterHit.Source.CHAT ? "Message" : "Name",
-                DiscordFormat.playerText(hit.text()),
-                false
-        ));
-
-        fields.add(field(
-                "Console time",
-                codeSpan(hit.consoleTime()) + " — " + hit.origin(),
-                false
-        ));
+        fields.add(field("Banned by", DiscordFormat.playerName(origin.actor()), true));
+        fields.add(field("Server", origin.server(), true));
+        fields.add(field("Console time", codeSpan(origin.consoleTime()), false));
     }
 
     /**

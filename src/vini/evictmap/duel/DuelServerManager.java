@@ -23,7 +23,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import arc.Core;
@@ -34,6 +34,8 @@ import mindustry.gen.Groups;
 import mindustry.gen.Player;
 import mindustry.net.Administration;
 import mindustry.world.Block;
+import vini.evictmap.moderation.BanOrigin;
+import vini.evictmap.moderation.BanRequest;
 import vini.evictmap.moderation.WordFilterHit;
 
 /**
@@ -114,16 +116,16 @@ public final class DuelServerManager {
     private final Set<String> appliedWorkerBanRequests = new LinkedHashSet<>();
 
     /**
-     * Hands a worker's ban request to the hub's normal ban path, together with
-     * what the word filter saw on the worker, so the hub's ban log entry says
-     * which match server's console to look in.
+     * Hands a ban made on a match server to the hub's normal ban path, with the
+     * story that came with it, so the hub's log entry says who banned and which
+     * match server's console to look in.
      */
-    private final BiConsumer<String, WordFilterHit> banRequestSink;
+    private final Consumer<BanRequest> banRequestSink;
 
     public DuelServerManager(
             EvictSettings settings,
             PlayerDataManager playerDataManager,
-            BiConsumer<String, WordFilterHit> banRequestSink
+            Consumer<BanRequest> banRequestSink
     ) {
         this.settings = settings;
         this.playerDataManager = playerDataManager;
@@ -623,33 +625,39 @@ public final class DuelServerManager {
                 }
 
                 Log.info(
-                        "[EvictMapGenerator] Applying a ban a match server asked for: @.",
+                        "[EvictMapGenerator] Applying a ban made on a match server: @.",
                         uuid
                 );
 
-                banRequestSink.accept(uuid, workerWordFilterHit(status, uuid, entry.getKey()));
+                banRequestSink.accept(workerBanRequest(status, uuid, entry.getKey()));
             }
         }
     }
 
     /**
-     * What the worker's word filter saw, if the request came from it. The
-     * console time is the worker's own, so the log entry points at that match
-     * server's log rather than the hub's.
+     * Rebuilds what the worker published about a ban it made: who banned, its
+     * own console time (so the log entry points at that match server's log
+     * rather than the hub's) and what the word filter saw, if it was the filter.
      */
-    private static WordFilterHit workerWordFilterHit(
+    private static BanRequest workerBanRequest(
             Properties status,
             String uuid,
             int port
     ) {
         String prefix = "banrequest." + uuid + ".";
 
-        return WordFilterHit.fromWorker(
-                status.getProperty(prefix + "source", ""),
-                status.getProperty(prefix + "word", ""),
-                status.getProperty(prefix + "text", ""),
-                status.getProperty(prefix + "time", ""),
-                "match server on port " + port
+        return new BanRequest(
+                uuid,
+                BanOrigin.fromWorker(
+                        status.getProperty(prefix + "actor", ""),
+                        port,
+                        status.getProperty(prefix + "time", "")
+                ),
+                WordFilterHit.fromWorker(
+                        status.getProperty(prefix + "source", ""),
+                        status.getProperty(prefix + "word", ""),
+                        status.getProperty(prefix + "text", "")
+                )
         );
     }
 

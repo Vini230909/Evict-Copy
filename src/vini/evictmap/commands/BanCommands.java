@@ -2,6 +2,8 @@ package vini.evictmap.commands;
 
 import vini.evictmap.PlayerNameFormatter;
 import vini.evictmap.data.PlayerDataManager;
+import vini.evictmap.moderation.BanOrigin;
+import vini.evictmap.moderation.BanRequest;
 
 import arc.util.CommandHandler;
 import mindustry.Vars;
@@ -15,6 +17,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * /ban: admin-only ban with the same UX as /info. No argument opens a picker
@@ -22,13 +25,15 @@ import java.util.Map;
  * on somebody who already left). Either way a confirmation menu names the
  * target before anything happens - a mistap in a picker must not ban anyone.
  *
- * <p>The command only seeds the ban: it calls Mindustry's {@code banPlayerID},
- * which fires the event {@code BanManager} listens to, so a /ban is widened to
- * the account's known addresses, kicked everywhere, synced to the match
- * servers and logged to Discord exactly like {@code ban id} or the hammer.
+ * <p>The command only hands the account over: on the hub {@code BanManager}
+ * widens it to the account's known addresses, kicks it everywhere, syncs it to
+ * the match servers, announces it and logs it to Discord, exactly like
+ * {@code ban id} or the hammer.
  *
- * <p>Hub only: a match server never decides who is banned. On a worker the
- * command exists but refuses and points at the hub.
+ * <p>It works on a match server too. There the ban takes effect locally at once
+ * and is forwarded to the hub, which owns bans and applies it properly - a ban
+ * that stayed on the worker would be lifted again by the next ban-list sync,
+ * and the player would simply walk back onto the hub.
  */
 public final class BanCommands {
 
@@ -43,8 +48,14 @@ public final class BanCommands {
 
     private final PlayerDataManager playerDataManager;
 
-    /** False on a duel worker, where /ban refuses. */
-    private final boolean hub;
+    /**
+     * Where a confirmed ban goes: the hub's ban manager, or - on a match
+     * server - the local ban plus the forward to the hub.
+     */
+    private final Consumer<BanRequest> banSeeder;
+
+    /** Which console log the ban's line is written to. */
+    private final String server;
 
     private final int pickerMenuId;
     private final int confirmMenuId;
@@ -57,9 +68,14 @@ public final class BanCommands {
     private final Map<String, Target> confirmTargetByAdminUuid =
             new HashMap<>();
 
-    public BanCommands(PlayerDataManager playerDataManager, boolean hub) {
+    public BanCommands(
+            PlayerDataManager playerDataManager,
+            boolean hub,
+            Consumer<BanRequest> banSeeder
+    ) {
         this.playerDataManager = playerDataManager;
-        this.hub = hub;
+        this.banSeeder = banSeeder;
+        this.server = hub ? BanOrigin.HUB : "this match server";
         this.pickerMenuId = Menus.registerMenu(this::handlePicker);
         this.confirmMenuId = Menus.registerMenu(this::handleConfirm);
     }
@@ -87,13 +103,6 @@ public final class BanCommands {
 
         if (!player.admin) {
             player.sendMessage("[scarlet]Only admins can ban players.[]");
-            return;
-        }
-
-        if (!hub) {
-            player.sendMessage(
-                    "[scarlet]Bans are managed on the main server, not on a match server.[]"
-            );
             return;
         }
 
@@ -257,16 +266,24 @@ public final class BanCommands {
             return;
         }
 
-        // Fires PlayerBanEvent; BanManager widens, kicks, syncs and logs.
-        if (Vars.netServer.admins.banPlayerID(target.uuid())) {
-            admin.sendMessage(
-                    "[scarlet]Banned [white]" + target.name()
-                            + "[] and the account's known addresses.[]"
-            );
-        } else {
+        if (Vars.netServer.admins.isIDBanned(target.uuid())) {
             admin.sendMessage(
                     "[lightgray]" + target.name() + " is already banned.[]"
             );
+            return;
         }
+
+        // The hub widens, kicks, syncs, announces and logs; a match server bans
+        // locally and forwards the same request to the hub, which does all of
+        // that there.
+        banSeeder.accept(BanRequest.admin(
+                target.uuid(),
+                BanOrigin.now(admin.plainName(), server)
+        ));
+
+        admin.sendMessage(
+                "[scarlet]Banned [white]" + target.name()
+                        + "[] and the account's known addresses.[]"
+        );
     }
 }

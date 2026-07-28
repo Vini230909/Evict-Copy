@@ -1,6 +1,7 @@
 package vini.evictmap.moderation;
 
 import arc.Events;
+import arc.util.Strings;
 import mindustry.Vars;
 import mindustry.game.EventType.PlayerBanEvent;
 import mindustry.game.EventType.PlayerIpBanEvent;
@@ -10,6 +11,7 @@ import mindustry.gen.Groups;
 import mindustry.net.Administration;
 import mindustry.net.Administration.PlayerInfo;
 import mindustry.net.Packets.KickReason;
+import vini.evictmap.core.text.Text;
 import vini.evictmap.core.util.PluginLog;
 import vini.evictmap.gen.EvictSettings;
 
@@ -42,9 +44,14 @@ import java.util.function.Consumer;
  * from it, nothing more; only an admin's own explicit {@code ban ip} keeps
  * vanilla's account-flipping semantics.
  *
+ * <p>Every ban that lands here is also announced in the hub's chat - by name
+ * only, never an address - so the server can see that moderation happened.
+ *
  * <p>Hub only. A worker applies what the hub decided (see {@link BanSync}) and
  * must never run a cascade of its own: its admin store is a throwaway copy, and
- * two processes deciding who is banned is one too many.
+ * two processes deciding who is banned is one too many. A ban made on a worker
+ * anyway is forwarded here by {@link BanForwarder} and goes through this class
+ * like any other.
  */
 public final class BanManager {
 
@@ -65,13 +72,12 @@ public final class BanManager {
     private boolean applying;
 
     /**
-     * The word-filter hit being seeded right now, if any. {@code banPlayerID}
-     * fires its event on this thread before it returns, so the handler picks
-     * the details up from here instead of the ban paths all having to carry a
-     * cause they do not have.
+     * The request being seeded right now, if any. {@code banPlayerID} fires its
+     * event on this thread before it returns, so the handler picks the story up
+     * from here instead of the four vanilla ban paths all having to carry one
+     * they do not have.
      */
-    private String wordFilterUuid;
-    private WordFilterHit wordFilterHit;
+    private BanRequest pending;
 
     private boolean installed;
     private boolean startupDone;
@@ -95,11 +101,13 @@ public final class BanManager {
         installed = true;
 
         Events.on(PlayerBanEvent.class, event -> handleBan(
-                BanCascade.fromUuid(event.uuid)
+                BanCascade.fromUuid(event.uuid),
+                false
         ));
 
         Events.on(PlayerIpBanEvent.class, event -> handleBan(
-                BanCascade.fromIp(event.ip)
+                BanCascade.fromIp(event.ip),
+                true
         ));
 
         // Unbans are left exactly as Mindustry applies them - no cascade. An
@@ -127,42 +135,44 @@ public final class BanManager {
     }
 
     /**
-     * Bans an account the word filter caught, remembering what it caught.
+     * Bans an account and remembers why, so the entry can say more than "an
+     * account was banned".
      *
      * <p>Goes through {@code banPlayerID} like every other ban, so the account
-     * is widened, kicked, written to the workers' list and logged - the entry
-     * is simply marked as the filter's rather than an admin's, and carries the
-     * word, the text and the console time to find it by.
+     * is widened, kicked, written to the workers' list, announced and logged -
+     * the story only decides how the log entry reads. This is the way in for
+     * the word filter, for {@code /ban}, and for a ban a match server forwarded.
      */
-    public void banForWordFilter(String uuid, WordFilterHit hit) {
-        if (uuid == null || uuid.isBlank() || Vars.netServer == null) {
+    public void ban(BanRequest request) {
+        if (request == null || request.isEmpty() || Vars.netServer == null) {
             return;
         }
 
-        wordFilterUuid = uuid;
-        wordFilterHit = hit;
+        pending = request;
 
         try {
-            Vars.netServer.admins.banPlayerID(uuid);
+            Vars.netServer.admins.banPlayerID(request.uuid());
         } finally {
-            wordFilterUuid = null;
-            wordFilterHit = null;
+            pending = null;
         }
     }
 
-    private void handleBan(BanCascade.Result result) {
+    private void handleBan(BanCascade.Result result, boolean addressSeeded) {
         if (applying || result.isEmpty()) {
             return;
         }
 
-        WordFilterHit hit = wordFilterUuid != null
-                && result.uuids().contains(wordFilterUuid)
-                ? wordFilterHit
+        BanRequest request = pending != null
+                && result.uuids().contains(pending.uuid())
+                ? pending
                 : null;
+
+        WordFilterHit hit = request == null ? null : request.wordFilterHit();
 
         BanReport report = apply(
                 result,
                 hit == null ? BanReport.Kind.BAN : BanReport.Kind.WORD_FILTER,
+                request == null ? null : request.origin(),
                 hit
         );
 
@@ -174,7 +184,41 @@ public final class BanManager {
                 report.ips().size()
         );
 
+        announce(report, addressSeeded);
         reportSink.accept(report);
+    }
+
+    /**
+     * Tells the hub's players that somebody was banned.
+     *
+     * <p>Names only, and never the seed of an address ban: a public message is
+     * a moderation signal, not a case file, so the addresses, the accounts and
+     * the offending text stay in the log where only staff can read them.
+     * Imports and unbans say nothing at all - a first start would otherwise
+     * announce the whole back catalogue.
+     */
+    private void announce(BanReport report, boolean addressSeeded) {
+        // An address ban is labelled with the address. Name the account it hit
+        // instead, and say nothing if it hit no account anybody has seen.
+        String name = addressSeeded
+                ? (report.names().isEmpty() ? null : report.names().get(0))
+                : report.seedLabel();
+
+        if (name == null) {
+            return;
+        }
+
+        Text message = Text.of().scarlet(Strings.stripColors(name));
+
+        if (report.kind() == BanReport.Kind.WORD_FILTER) {
+            message.white(" was banned automatically for using a forbidden word.");
+        } else if (report.origin() != null && report.origin().fromMatchServer()) {
+            message.white(" was banned on a match server.");
+        } else {
+            message.white(" was banned.");
+        }
+
+        message.sendAll();
     }
 
     /**
@@ -254,6 +298,7 @@ public final class BanManager {
     private BanReport apply(
             BanCascade.Result result,
             BanReport.Kind kind,
+            BanOrigin origin,
             WordFilterHit hit
     ) {
         Administration admins = Vars.netServer.admins;
@@ -292,6 +337,7 @@ public final class BanManager {
                 BanCascade.namesOf(uuids),
                 List.copyOf(uuids),
                 List.copyOf(result.ips()),
+                origin,
                 hit
         );
     }
@@ -449,7 +495,7 @@ public final class BanManager {
             return;
         }
 
-        BanReport report = apply(result, BanReport.Kind.IMPORT, null);
+        BanReport report = apply(result, BanReport.Kind.IMPORT, null, null);
 
         covered.addAll(report.uuids());
         covered.addAll(report.ips());

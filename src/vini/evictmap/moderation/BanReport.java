@@ -7,9 +7,10 @@ import java.util.List;
  * ban log ships it to Discord from another thread. {@code seedLabel} is what
  * the admin acted on, {@code names} every name every hit account has used.
  *
- * <p>{@code wordFilterHit} is set only for {@link Kind#WORD_FILTER} and carries
- * what the filter saw, so the log entry can be read without the console next to
- * it.
+ * <p>{@code origin} says who decided it, where and when - set for anything that
+ * did not simply happen on the hub. {@code wordFilterHit} is set only for
+ * {@link Kind#WORD_FILTER} and carries what the filter saw, so the log entry can
+ * be read without the console next to it.
  */
 public record BanReport(
         Kind kind,
@@ -17,10 +18,11 @@ public record BanReport(
         List<String> names,
         List<String> uuids,
         List<String> ips,
+        BanOrigin origin,
         WordFilterHit wordFilterHit
 ) {
 
-    /** An action nobody automated: the four ways an admin bans. */
+    /** An action with no story to tell: an admin's ban, straight on the hub. */
     public BanReport(
             Kind kind,
             String seedLabel,
@@ -28,7 +30,7 @@ public record BanReport(
             List<String> uuids,
             List<String> ips
     ) {
-        this(kind, seedLabel, names, uuids, ips, null);
+        this(kind, seedLabel, names, uuids, ips, null, null);
     }
 
     public enum Kind {

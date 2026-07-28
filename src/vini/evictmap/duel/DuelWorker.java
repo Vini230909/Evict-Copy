@@ -2,6 +2,7 @@ package vini.evictmap.duel;
 
 import vini.evictmap.PlayerNameFormatter;
 import vini.evictmap.duel.modes.DuelMode;
+import vini.evictmap.moderation.BanRequest;
 import vini.evictmap.moderation.WordFilterHit;
 
 import java.io.File;
@@ -149,18 +150,18 @@ public final class DuelWorker {
     private final Set<String> outUuids = new LinkedHashSet<>();
 
     /**
-     * Accounts this worker wants banned, for the hub to act on; a worker never
-     * bans itself. Cumulative and republished every write, so a missed or
-     * repeated poll costs nothing - banning is idempotent on the hub.
+     * Accounts banned here, for the hub to apply properly. Cumulative and
+     * republished every write, so a missed or repeated poll costs nothing -
+     * banning is idempotent on the hub.
      */
     private final Set<String> banRequestUuids = new LinkedHashSet<>();
 
     /**
-     * What the word filter saw per requested account, published alongside the
-     * request so the hub's ban log can name the word, quote the message and
-     * point at this worker's console log.
+     * The story per requested account - who banned them and, for the word
+     * filter, what it saw - published alongside the request so the hub's ban
+     * log can name it and point at this worker's console log.
      */
-    private final Map<String, WordFilterHit> banRequestHits = new LinkedHashMap<>();
+    private final Map<String, BanRequest> banRequestDetails = new LinkedHashMap<>();
 
     /**
      * Whether a leaving participant is still in the running (their team still
@@ -172,15 +173,14 @@ public final class DuelWorker {
      * Asks the hub to ban an account. Published at once rather than on the next
      * scheduled write: the hub should have the ban before they reconnect there.
      */
-    public void requestBan(String uuid, WordFilterHit hit) {
-        if (uuid == null || uuid.isBlank() || !banRequestUuids.add(uuid)) {
+    public void requestBan(BanRequest request) {
+        if (request == null
+                || request.isEmpty()
+                || !banRequestUuids.add(request.uuid())) {
             return;
         }
 
-        if (hit != null) {
-            banRequestHits.put(uuid, hit);
-        }
-
+        banRequestDetails.put(request.uuid(), request);
         writeStatus();
     }
 
@@ -1722,18 +1722,26 @@ public final class DuelWorker {
         // and credits the growth - otherwise a whole match would be missing
         // from a player's total playtime.
         properties.setProperty("playtime", packPlaytime());
-        // Accounts the word filter caught here. The hub does the banning, and
-        // logs it with what the filter saw - including this worker's console
-        // time, which is the only way to find the line in this worker's log.
+        // Accounts banned here - by an admin or by the word filter. The hub
+        // owns bans, so it applies them properly (widened, kicked everywhere,
+        // announced, logged) and needs the story with them: who banned, this
+        // worker's console time, and what the filter saw if it was the filter.
         properties.setProperty("banrequests", String.join(",", banRequestUuids));
 
-        for (Map.Entry<String, WordFilterHit> hit : banRequestHits.entrySet()) {
-            String prefix = "banrequest." + hit.getKey() + ".";
+        for (Map.Entry<String, BanRequest> entry : banRequestDetails.entrySet()) {
+            String prefix = "banrequest." + entry.getKey() + ".";
+            BanRequest request = entry.getValue();
 
-            properties.setProperty(prefix + "source", hit.getValue().source().key());
-            properties.setProperty(prefix + "word", hit.getValue().word());
-            properties.setProperty(prefix + "text", hit.getValue().text());
-            properties.setProperty(prefix + "time", hit.getValue().consoleTime());
+            properties.setProperty(prefix + "actor", request.origin().actor());
+            properties.setProperty(prefix + "time", request.origin().consoleTime());
+
+            WordFilterHit hit = request.wordFilterHit();
+
+            if (hit != null) {
+                properties.setProperty(prefix + "source", hit.source().key());
+                properties.setProperty(prefix + "word", hit.word());
+                properties.setProperty(prefix + "text", hit.text());
+            }
         }
 
         try (FileOutputStream output = new FileOutputStream(STATUS_FILE)) {

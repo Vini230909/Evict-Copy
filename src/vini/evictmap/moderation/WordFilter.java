@@ -5,46 +5,46 @@ import mindustry.gen.Player;
 import vini.evictmap.core.util.PluginLog;
 import vini.evictmap.gen.EvictSettings;
 
-import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 /**
  * Bans a player for a word from {@link BannedWords}, in chat or in their name.
  * The list is the policy; this is only the enforcement.
  *
- * <p>The hub bans through {@link BanManager}; a match server may not decide
- * bans, so it kicks and asks the hub instead.
+ * <p>The hub bans through {@link BanManager}; a match server bans locally so
+ * the player is gone at once, and forwards the account to the hub, which owns
+ * the decision (see {@link BanForwarder}).
  */
 public final class WordFilter {
 
     private final EvictSettings settings;
 
-    /** False on a duel worker, which asks the hub instead of banning. */
+    /** False on a duel worker, whose ban is forwarded to the hub. */
     private final boolean hub;
 
     /**
-     * Hub: {@code banPlayerID}. Worker: a request for the hub to act on. The
-     * hit travels with the account so the ban log can say what tripped, and
-     * where in the console log to find it.
+     * Where the ban goes. The hit travels with the account so the ban log can
+     * say what tripped, and where in the console log to find it.
      */
-    private final BiConsumer<String, WordFilterHit> banSeeder;
+    private final Consumer<BanRequest> banSeeder;
 
     /**
-     * Which console log the hit was written to. A worker's is replaced by the
-     * hub with the match server's port once the request arrives there.
+     * Which console log the hit was written to. A worker's label is replaced by
+     * the hub with the match server's port when the request arrives there.
      */
-    private final String origin;
+    private final String server;
 
     private boolean installed;
 
     public WordFilter(
             EvictSettings settings,
             boolean hub,
-            BiConsumer<String, WordFilterHit> banSeeder
+            Consumer<BanRequest> banSeeder
     ) {
         this.settings = settings;
         this.hub = hub;
         this.banSeeder = banSeeder;
-        this.origin = hub ? "hub console" : "match server";
+        this.server = hub ? BanOrigin.HUB : "this match server";
     }
 
     /**
@@ -121,22 +121,23 @@ public final class WordFilter {
                 player.uuid(),
                 word,
                 source.label(),
-                hub ? "banning" : "kicked, ban requested from the hub",
+                hub ? "banning" : "banning here, ban forwarded to the hub",
                 text
         );
 
-        banSeeder.accept(
-                player.uuid(),
-                WordFilterHit.now(source, word, text, origin)
-        );
-
-        // The hub's ban already kicked them; a worker's request only lands on
-        // the next poll, so it kicks here rather than wait.
+        // Kicked before the ban is seeded, so they get the filter's reason
+        // rather than the plain "banned" screen the ban would kick them with.
         if (player.con != null && !player.con.kicked) {
             player.con.kick(
                     "You were banned for using a word that is not allowed on this server."
             );
         }
+
+        banSeeder.accept(BanRequest.wordFilter(
+                player.uuid(),
+                BanOrigin.now(BanOrigin.WORD_FILTER_ACTOR, server),
+                WordFilterHit.of(source, word, text)
+        ));
     }
 
     /** For {@code evictwordfilter test}. Null when the text is clean. */

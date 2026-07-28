@@ -410,11 +410,20 @@ public final class ConsoleCommands {
 
             PlayerDataManager.PlayerInfo target = matches.get(0);
 
-            if (Vars.netServer.admins.banPlayerID(target.uuid())) {
-                Log.info("[EvictMapGenerator] Banned @ (@). The line above shows everything the ban covered.", target.lastName(), target.uuid());
-            } else {
+            if (Vars.netServer.admins.isIDBanned(target.uuid())) {
                 Log.info("[EvictMapGenerator] @ (@) is already banned.", target.lastName(), target.uuid());
+                return;
             }
+
+            banManager.ban(vini.evictmap.moderation.BanRequest.admin(
+                    target.uuid(),
+                    vini.evictmap.moderation.BanOrigin.now(
+                            "the console",
+                            vini.evictmap.moderation.BanOrigin.HUB
+                    )
+            ));
+
+            Log.info("[EvictMapGenerator] Banned @ (@). The line above shows everything the ban covered.", target.lastName(), target.uuid());
         });
     }
 

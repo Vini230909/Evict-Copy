@@ -125,9 +125,12 @@ public class EvictMapPlugin extends Plugin {
     private final InfoCommands infoCommands =
             new InfoCommands(playerDataManager);
 
-    /** /ban seeds bans on the hub only; on a worker it refuses. */
+    /**
+     * /ban works on the hub and on a match server; a worker's ban is applied
+     * locally and forwarded to the hub, which owns bans.
+     */
     private final BanCommands banCommands =
-            new BanCommands(playerDataManager, !duelWorker);
+            new BanCommands(playerDataManager, !duelWorker, this::seedBan);
 
     private final LeaderboardCommands leaderboardCommands =
             new LeaderboardCommands(playerDataManager);
@@ -203,6 +206,17 @@ public class EvictMapPlugin extends Plugin {
     private final vini.evictmap.moderation.BanSync banSync =
             new vini.evictmap.moderation.BanSync();
 
+    /**
+     * Worker only: hands a ban made here to the hub. Without it the ban lives
+     * only in this worker's throwaway admin store, is lifted again by the next
+     * sync, and never reaches the hub, the other match servers or the log.
+     */
+    private final vini.evictmap.moderation.BanForwarder banForwarder =
+            new vini.evictmap.moderation.BanForwarder(
+                    duelWorkerReferee::requestBan,
+                    banSync::isApplying
+            );
+
     /** Bans anyone using a filtered word in chat or in their name. */
     private final vini.evictmap.moderation.WordFilter wordFilter =
             new vini.evictmap.moderation.WordFilter(
@@ -244,6 +258,10 @@ public class EvictMapPlugin extends Plugin {
 
         if (duelWorker) {
             configureWorkerReferee();
+
+            // A ban made on a match server - /ban, the hammer, the console -
+            // only sticks if the hub hears about it.
+            banForwarder.install();
         } else {
             // Hub only: a server update means a new jar + a restart, so on
             // startup bring every existing duel-worker folder onto the current
@@ -513,25 +531,23 @@ public class EvictMapPlugin extends Plugin {
     }
 
     /**
-     * Puts one account into the ban system. The hub's {@code banPlayerID} runs
-     * it through {@code BanManager} like an admin's ban; a worker has only a
-     * throwaway admin store, so its request travels to the hub instead.
+     * Puts one account into the ban system, wherever this process happens to
+     * be. On the hub {@code BanManager} widens, kicks, syncs, announces and
+     * logs it; on a match server it takes effect at once and is forwarded to
+     * the hub, which does all of that there.
      *
-     * <p>{@code hit} is what the word filter saw, and rides along so the ban
-     * log entry can say which word, in which message, at which console time -
-     * null for the paths an admin drives.
+     * <p>The request carries who decided the ban and, for the word filter, what
+     * it saw, so the log entry says more than "an account was banned".
      */
-    private void seedBan(String uuid, vini.evictmap.moderation.WordFilterHit hit) {
-        if (uuid == null || uuid.isBlank()) {
+    private void seedBan(vini.evictmap.moderation.BanRequest request) {
+        if (request == null || request.isEmpty()) {
             return;
         }
 
         if (duelWorker) {
-            duelWorkerReferee.requestBan(uuid, hit);
-        } else if (hit != null) {
-            banManager.banForWordFilter(uuid, hit);
-        } else if (Vars.netServer != null) {
-            Vars.netServer.admins.banPlayerID(uuid);
+            banForwarder.ban(request);
+        } else {
+            banManager.ban(request);
         }
     }
 
