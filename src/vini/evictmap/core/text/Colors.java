@@ -1,14 +1,9 @@
 package vini.evictmap.core.text;
 
 /**
- * Named constants for the Mindustry colour markup tags used across the plugin.
- *
- * <p>Before this class the codebase carried ~275 inline {@code [scarlet]} /
- * {@code [accent]} literals; a single typo ({@code [scralet]}) silently shipped
- * a broken tag. Referencing the tags by name keeps colours consistent and gives
- * one place to retune the palette. Prefer building messages with {@link Text},
- * which uses these under the hood; reach for the raw constants only for the odd
- * literal.
+ * Named constants for Mindustry's colour markup tags, so a typo
+ * ({@code [scralet]}) cannot silently ship a broken tag. Prefer {@link Text},
+ * which uses these; reach for the raw constants only for the odd literal.
  */
 public final class Colors {
 

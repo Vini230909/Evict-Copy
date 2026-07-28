@@ -9,14 +9,9 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * Keeps teams telling-apart-able by colour.
- * <p>
- * A team's colour is a fixed function of its id and is computed identically on
- * every (vanilla) client, so the server cannot recolour a team - the only lever
- * it has against "two teams look the same" is refusing to hand out an id whose
- * colour lands too close to one already on the map. That single decision lives
- * here so {@link TeamManager} only has to say which ids are free and which
- * colours are already in play.
+ * Keeps teams distinguishable by colour. A team's colour is a fixed function of
+ * its id on every client, so the server's only lever is refusing an id whose
+ * colour lands too close to one already in play.
  */
 final class TeamColors {
 

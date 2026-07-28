@@ -1,10 +1,9 @@
 package vini.evictmap.gen;
 
 /**
- * Shared hex-grid geometry, measured from the editor reference map. The
- * single source of truth for the values that generation (EvictTerrainGenerator,
- * ResourceGenerator) and the round systems (TeamManager) must agree on - if
- * the grid ever changes, it changes here and nowhere else.
+ * Shared hex-grid geometry, measured from the editor reference map. Generation
+ * and the round systems must agree on these; if the grid changes, it changes
+ * here and nowhere else.
  */
 public final class HexGrid {
 

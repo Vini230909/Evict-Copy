@@ -5,15 +5,10 @@ import java.util.List;
 /**
  * The word list. Edit this file and rebuild - nothing else needs touching.
  *
- * <p>Write a word plainly and lowercase. Case, accents, other scripts, leetspeak
- * ({@code n1gg3r}, {@code f@ggot}), repeated letters ({@code niiigger}), colour
- * tags and punctuation wedged between the letters are all handled already, so
- * one entry covers every spelling of it. Entries under five letters are matched
- * with their letters adjacent only - allowing spacing on a short one bans
- * ordinary sentences.
- *
- * <p>Try anything new with {@code evictwordfilter test <text>} first. This bans
- * by itself.
+ * <p>Write a word plainly and lowercase. Case, accents, other scripts,
+ * leetspeak, repeated letters, colour tags and punctuation between the letters
+ * are handled already, so one entry covers every spelling of it. Try anything
+ * new with {@code evictwordfilter test <text>} first - this bans by itself.
  */
 public final class BannedWords {
 
@@ -38,12 +33,9 @@ public final class BannedWords {
     );
 
     /**
-     * Banned only as a word of its own. For an entry that is a normal part of
-     * longer, harmless words: {@code negr} on its own is a slur, but as a
-     * substring it is Montenegro, negro and negru; {@code niger} as a substring
-     * is Nigeria; {@code nazi} as a substring is nazionale, nazik and the names
-     * Nazir, Nazim and Nazia. The plural and nazism stay in {@link #WORDS},
-     * where {@code nazis} covers them.
+     * Banned only as a word of its own, for entries that are a normal part of
+     * harmless longer words: {@code negr} is Montenegro and negro, {@code niger}
+     * is Nigeria, {@code nazi} is nazionale and the name Nazir.
      */
     public static final List<String> WHOLE_WORDS = List.of(
             "niger",
@@ -52,10 +44,10 @@ public final class BannedWords {
     );
 
     /**
-     * Harmless words that contain a banned one. Each is cut out of the text
-     * before the ban list is checked, and only where it is written normally.
+     * Harmless words that contain a banned one, cut out before the scan. Here:
+     * the Russian for "quietly" and "not rude", both containing {@code негр}.
      *
-     * <p>Never put a slur here, or anything that contains one and nothing else:
+     * <p>Never a slur, and never anything that contains one and nothing else -
      * allowing {@code nigger} would allow {@code xxniggerxx} with it.
      */
     public static final List<String> ALLOWED = List.of(

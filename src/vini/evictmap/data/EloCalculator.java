@@ -1,15 +1,9 @@
 package vini.evictmap.data;
 
 /**
- * Standard Elo rating math for ranked 1v1 duels.
- *
- * Every player starts at {@link #STARTING_ELO} (1000). After a decisive match
- * the winner and loser ratings move toward each other by an amount that depends
- * on how expected the result was: beating a much stronger opponent gains a lot,
- * beating a much weaker one gains almost nothing (and losing to them costs a
- * lot). The shift is capped by the {@link #K_FACTOR}.
- *
- * Pure math with no state or I/O; {@link PlayerDataManager} persists the results.
+ * Standard Elo rating math for ranked duels: the more expected the result, the
+ * smaller the shift, capped by the {@link #K_FACTOR}. Pure math with no state
+ * or I/O; {@link PlayerDataManager} persists the results.
  */
 public final class EloCalculator {
 

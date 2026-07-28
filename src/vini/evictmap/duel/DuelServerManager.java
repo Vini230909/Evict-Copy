@@ -106,18 +106,13 @@ public final class DuelServerManager {
             new HashMap<>();
 
     /**
-     * Accounts a worker has already asked to have banned. Workers republish the
-     * whole request list every status write, so without this the hub would
-     * re-seed the same ban every poll and the ban log would repeat itself.
+     * Ban requests already applied. Workers republish the whole list every
+     * write, so without this the ban log would repeat itself every poll.
      * Main-thread only.
      */
     private final Set<String> appliedWorkerBanRequests = new LinkedHashSet<>();
 
-    /**
-     * Where a worker's ban request goes. Workers run the word filter but never
-     * ban - the hub is the single decision maker - so they publish the account
-     * and this hands it to the hub's normal ban path.
-     */
+    /** Hands a worker's ban request to the hub's normal ban path. */
     private final Consumer<String> banRequestSink;
 
     public DuelServerManager(
@@ -569,9 +564,8 @@ public final class DuelServerManager {
 
                     cachedConnectedDuelPlayers = total;
 
-                    // The same files already carry the workers' playtime and
-                    // any bans they want applied; deal with both while they are
-                    // in hand.
+                    // The same files carry playtime and ban requests; deal
+                    // with both while they are in hand.
                     Core.app.post(() -> {
                         creditPlaytime(statuses);
                         applyBanRequests(statuses);
@@ -609,10 +603,9 @@ public final class DuelServerManager {
     }
 
     /**
-     * Applies the bans the workers asked for. A match server runs the word
-     * filter but cannot ban - it kicks the offender and publishes the account
-     * here, so the ban is decided, widened and logged in one place like every
-     * other one. Main thread: it seeds through Mindustry's admin store.
+     * Applies the bans the workers asked for, so every ban is still decided,
+     * widened and logged in one place. Main thread: it seeds through the
+     * admin store.
      */
     private void applyBanRequests(Map<Integer, Properties> statuses) {
         for (Properties status : statuses.values()) {

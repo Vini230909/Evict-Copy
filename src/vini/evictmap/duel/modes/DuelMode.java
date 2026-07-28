@@ -3,20 +3,13 @@ package vini.evictmap.duel.modes;
 import vini.evictmap.duel.MatchMode;
 
 /**
- * The rules for one duel mode. {@link MatchMode} is only the wire identity of a
- * mode (its id and label); this strategy is where a mode's actual behaviour
- * lives, so each mode can be read and changed in its own file
- * ({@link OneVsOne}, {@link Teams}, {@link Ffa}, {@link Training},
- * {@link Sandbox}) instead of as conditionals scattered across the referee and
- * the hub.
- * Every flag defaults to the plain competitive-match answer; a mode overrides
- * only the ones where it differs.
+ * The rules for one duel mode, one file per mode. {@link MatchMode} is only the
+ * wire identity (id and label); the behaviour lives here. Every flag defaults
+ * to the plain competitive answer; a mode overrides only what differs.
  */
 public interface DuelMode {
 
-    /**
-     * The wire identity this strategy backs.
-     */
+    /** The wire identity this strategy backs. */
     MatchMode mode();
 
     /**
@@ -36,16 +29,12 @@ public interface DuelMode {
         return false;
     }
 
-    /**
-     * Only ranked results count toward the ELO record and appear in /history.
-     */
+    /** Only ranked results touch ELO and the ranked counters. */
     default boolean ranked() {
         return false;
     }
 
-    /**
-     * The match plays with infinite resources (Sandbox).
-     */
+    /** Infinite resources (Sandbox). */
     default boolean infiniteResources() {
         return false;
     }
@@ -66,10 +55,7 @@ public interface DuelMode {
         return false;
     }
 
-    /**
-     * Spectators may ask to join with /invite and be promoted into the match
-     * (Sandbox).
-     */
+    /** Spectators may ask to join with /invite (Sandbox). */
     default boolean allowsSpectatorInvites() {
         return false;
     }
@@ -83,11 +69,9 @@ public interface DuelMode {
     }
 
     /**
-     * Global chat is limited to the two duelists (Ranked): viewers and casting
-     * admins have their normal chat routed to the spectators' chat so they can
-     * never leak information to the players, and only a casting admin reaches
-     * global - through an inverted /t. Every other mode leaves chat untouched.
-     * See {@code vini.evictmap.duel.DuelChat}.
+     * Global chat is the two duelists only (Ranked); everyone else is routed to
+     * the spectators' chat so they cannot leak information. See
+     * {@code vini.evictmap.duel.DuelChat}.
      */
     default boolean restrictsSpectatorChat() {
         return false;

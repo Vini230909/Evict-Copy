@@ -156,10 +156,9 @@ public final class EvictSettings {
     private boolean banImportLogged = false;
 
     /**
-     * Whether the banned-word filter bans automatically. On by default: the
-     * list it works from is only the words nobody has a reason to type. Carried
-     * into every spawned duel worker with the rest of this file, so a match
-     * server filters exactly what the hub filters.
+     * Whether the banned-word filter bans automatically. Carried into every
+     * duel worker with the rest of this file, so a match server filters what
+     * the hub filters.
      */
     private boolean wordFilterEnabled = true;
 

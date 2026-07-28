@@ -91,12 +91,12 @@ public final class ConsoleCommands {
 
         commands.command("evictgen").console()
                 .args("seed:string?")
-                .description("Generate Evict terrain immediately on the currently loaded map. Prefer evictauto before hosting a map.")
+                .description("Generate Evict terrain on the loaded map now.")
                 .run(ctx -> generateTerrain(ctx.raw()));
 
         commands.command("evictauto").console()
                 .args("on/off:bool")
-                .description("Enable or disable terrain generation whenever a map is hosted or loaded. Defaults to ON.")
+                .description("Generate terrain whenever a map is hosted. Default on.")
                 .run(ctx -> {
                     runtime.autoGenerate = ctx.getBool("on/off", true);
                     Log.info("[EvictMapGenerator] Automatic generation is now @.", runtime.autoGenerate ? "ON" : "OFF");
@@ -104,25 +104,25 @@ public final class ConsoleCommands {
 
         commands.command("evictseed").console()
                 .args("seed:string?")
-                .description("Set the seed used for the next automatically generated map.")
+                .description("Seed for the next generated map.")
                 .run(ctx -> setSeed(ctx.raw()));
 
         commands.command("evictstatus").console()
-                .description("Show generator settings and required base-map size.")
+                .description("Generator settings and required base-map size.")
                 .run(ctx -> showStatus());
 
         commands.command("evictteamstatus").console()
-                .description("Show Fallen-team spawn assignment status for the current round.")
+                .description("Fallen-team spawn assignment for this round.")
                 .run(ctx -> teamManager.logStatus());
 
         commands.command("evictbuildspeed").console()
                 .args("multiplier:string?")
-                .description("Show or persist the unit factory build-speed multiplier applied each round. Defaults to 1.4 and is synced to spawned duel workers. Applies to the next generated match.")
+                .description("Unit factory build-speed multiplier. Applies next match.")
                 .run(ctx -> setBuildSpeed(ctx.raw()));
 
         commands.command("evictwater").console()
                 .args("tries-per-hex:string?", "normal-patch-tiles:string?", "large-patch-percent:string?", "large-patch-tiles:string?")
-                .description("Show or persist water patch tries per hex, normal size and large-patch chance for the next generated match.")
+                .description("Water patch tries per hex, sizes and large-patch chance.")
                 .run(ctx -> configureWater(ctx.raw()));
 
         registerOre(commands, "evictcopper", EvictSettings.OreKind.COPPER);
@@ -133,67 +133,67 @@ public final class ConsoleCommands {
         registerOre(commands, "evictscrap", EvictSettings.OreKind.SCRAP);
 
         commands.command("evictorestatus").console()
-                .description("Show persistent ore settings used for the next generated match.")
+                .description("All ore settings for the next generated match.")
                 .run(ctx -> Log.info("[EvictMapGenerator] ores: @", settings.compactOreSettings()));
 
         commands.command("evictplayerinfo").console()
                 .args("query:text?")
-                .description("Search stored player data by partial name or UUID. With no argument, list all stored players.")
+                .description("Look up a stored player by name or UUID; no argument lists all.")
                 .run(ctx -> showStoredPlayerInfo(ctx.str("query", "").trim()));
 
         commands.command("evictban").console()
                 .args("name/uuid:text")
-                .description("Ban a stored player by name or UUID, online or not - for an offender found in the chat log after the fact. Matched like evictplayerinfo; an ambiguous name lists the candidates and bans nobody. Widened to the account's known addresses and logged like every other ban.")
+                .description("Ban a stored player by name or UUID, online or not.")
                 .run(ctx -> handleBanCommand(ctx.str("name/uuid", "").trim()));
 
         commands.command("evictelo").console()
                 .args("name/uuid:string", "value:string")
-                .description("Set a stored player's ranked ELO. Matched like evictplayerinfo (partial latest name first, then UUID); pass a UUID if a name is ambiguous. Peak ELO only rises.")
+                .description("Set a stored player's ranked ELO.")
                 .run(ctx -> handleEloCommand(ctx.raw()));
 
         commands.command("evictwall").console()
                 .args("full-wall:string?", "small-wall:string?", "open:string?", "passage:string?")
-                .description("Show or set persistent wall-template percentages")
+                .description("Wall-template percentages.")
                 .run(ctx -> configureWalls(ctx.raw()));
 
         commands.command("evictcorecap").console()
                 .args("additional-per-core:int")
-                .description("Add unit-cap capacity to every core")
+                .description("Add unit-cap capacity to every core.")
                 .run(ctx -> addCoreCap(ctx.raw()));
 
         commands.command("evictattritioncore").console()
                 .args("t1-3:string?", "t4:string?", "t5:string?")
-                .description("Show or set capture attrition percentages")
+                .description("Capture attrition percentages per tier.")
                 .run(ctx -> configureCoreAttrition(ctx.raw()));
 
         commands.command("evictattritionrange").console()
                 .args("percent:string?")
-                .description("Show or set the flat range attrition percentage")
+                .description("Flat range attrition percentage.")
                 .run(ctx -> configureRangeAttrition(ctx.raw()));
 
         commands.command("evictduelserver").console()
                 .args("ip:string?", "basePort:string?", "maxWorkers:string?", "map:string?")
-                .description("Show or set the on-demand worker pool that /play uses. ip is the address clients reach workers at; basePort the first worker port; maxWorkers how many duels run at once (1-10); map the map workers host. Omitted values keep current.")
+                .description("Worker pool /play uses: ip, first port, how many, map.")
                 .run(ctx -> configureDuelServer(ctx.raw()));
 
         commands.command("evictdiscord").console()
                 .args("url/off/test:string?")
-                .description("Show or set the Discord webhook the live status message is posted to. Pass a webhook URL to (re)post the message there, 'off' to stop updating, 'test' to refresh right now.")
+                .description("Discord webhook for the live status message.")
                 .run(ctx -> handleDiscordCommand(ctx.str("url/off/test", "").trim()));
 
         commands.command("evictbanlog").console()
                 .args("url/off/test:string?")
-                .description("Show or set the Discord webhook bans are logged to. Every ban posts a new message there with all names, UUIDs and IPs it covered, so point it at a staff-only channel. 'off' stops logging, 'test' posts a sample entry.")
+                .description("Discord webhook for the ban log. Staff-only: it posts IPs.")
                 .run(ctx -> handleBanLogCommand(ctx.str("url/off/test", "").trim()));
 
         commands.command("evictbanimport").console()
                 .args("force:string?")
-                .description("Once after setting evictbanlog: run every ban currently on the server through the cascade and post each one to the ban log. Refuses to run a second time (it would repost the whole back catalogue) unless called as 'evictbanimport force'.")
+                .description("Post every existing ban to the ban log. One-off; 'force' repeats it.")
                 .run(ctx -> handleBanImportCommand(ctx.str("force", "").trim()));
 
         commands.command("evictwordfilter").console()
                 .args("action:string?", "text:text?")
-                .description("The banned-word filter: no argument shows whether it is on and how many words it watches for, 'on'/'off' switch it, 'test <text>' says which word a line would trip. The words live in BannedWords.java in the plugin source.")
+                .description("Banned-word filter: status, on/off, or test a line.")
                 .run(ctx -> handleWordFilterCommand(
                         ctx.str("action", "").trim(),
                         ctx.str("text", "")
@@ -205,17 +205,17 @@ public final class ConsoleCommands {
 
         commands.command("evictrank").console()
                 .args("action:string?", "uuid:string?", "rank:string?")
-                .description("Manage tournament ranks by UUID. 'add <uuid> [commentator]' grants, 'remove <uuid>' revokes, no args lists. Commentators get a [C] tag and may /restart matches they spectate.")
+                .description("Grant, revoke or list tournament ranks by UUID.")
                 .run(ctx -> handleRankCommand(ctx.raw()));
 
         commands.command("evicttime").console()
                 .args("time:string?")
-                .description("Set the elapsed in-game time to a given number of seconds, or show the elapsed time with no argument.")
+                .description("Show or set the elapsed round time in seconds.")
                 .run(ctx -> handleSetTimeCommand(ctx.raw()));
 
         commands.command("evictrestart").console()
                 .args("action:string?")
-                .description("Queue a graceful restart for updates (fires at the next safe moment). 'cancel' drops it; 'now' exits immediately. Needs the start-script loop - see docs/RESTART_LOOP.md.")
+                .description("Queue a graceful restart; 'cancel' drops it, 'now' exits.")
                 .run(ctx -> handleRestartCommand(ctx.str("action", "").trim().toLowerCase()));
 
         commands.installConsole(handler);
@@ -224,7 +224,7 @@ public final class ConsoleCommands {
     private void registerOre(Commands commands, String name, EvictSettings.OreKind oreKind) {
         commands.command(name).console()
                 .args("scale:string?", "threshold:string?", "octaves:string?", "falloff:string?")
-                .description("Show or persist editor-style ore noise settings for the next generated match.")
+                .description("Ore noise settings for the next generated match.")
                 .run(ctx -> configureOre(ctx.raw(), name, oreKind));
     }
 
@@ -299,12 +299,9 @@ public final class ConsoleCommands {
     }
 
     /**
-     * evictwordfilter: shows or switches the automatic banned-word filter, and
-     * tries a line against it.
-     *
-     * <p>The test is the important half. The filter bans by itself, so an entry
-     * that also fires on an ordinary sentence is a permanent ban handed out for
-     * nothing - this is how a new entry gets checked before anyone types it.
+     * evictwordfilter: show or switch the filter, or try a line against it. The
+     * test matters - the filter bans by itself, so an entry that also fires on
+     * an ordinary sentence hands out permanent bans for nothing.
      */
     private void handleWordFilterCommand(String action, String text) {
         switch (action.toLowerCase()) {

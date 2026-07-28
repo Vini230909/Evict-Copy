@@ -3,29 +3,13 @@ package vini.evictmap.discord;
 import java.util.List;
 
 /**
- * Everything the Discord status message shows, captured at one instant.
+ * Everything the Discord status message shows, captured at one instant. Filled
+ * on the main thread (gathering touches Mindustry state) and handed to the
+ * background thread that renders and sends it, which sees nothing else.
  *
- * <p>This exists so the two halves of the job stay apart: gathering the numbers
- * touches Mindustry state and therefore has to happen on the main thread, while
- * rendering and sending them is slow (JSON, a network round trip) and must not.
- * {@link DiscordStatusReporter} fills a snapshot on the main thread and hands
- * this immutable value to a background thread, which is the only thing the
- * sender ever sees.
- *
- * @param online           false only for the farewell message on shutdown
- * @param serverName       the host's configured server name, unescaped
- * @param hubPlayers       players in the main lobby round
- * @param duelPlayers      players inside duel workers (duelists and viewers)
- * @param playerLimit      configured slot cap; 0 when the server is uncapped
- * @param roundSeconds     runtime of the current generated round
- * @param extinctionInSeconds seconds until the ring collapse starts
- * @param extinctionBegun  whether Extinction is already collapsing rings
- * @param restartQueued    whether a graceful restart is waiting to fire
- * @param usedMatchSlots   worker slots in use
- * @param maxMatchSlots    worker slots configured
- * @param matches          one entry per running match, ordered by slot
- * @param ladder           the ranked ELO ladder, highest first
- * @param timestampSeconds epoch seconds this snapshot was taken
+ * <p>{@code online} is false only for the farewell message on shutdown,
+ * {@code serverName} is still unescaped, and {@code playerLimit} is 0 when the
+ * server is uncapped.
  */
 record StatusSnapshot(
         boolean online,
@@ -49,13 +33,8 @@ record StatusSnapshot(
     }
 
     /**
-     * One running match.
-     *
-     * @param slot      the pool slot, 1-based; deliberately not the port, which
-     *                  is nobody's business outside the server console
-     * @param modeLabel the match mode's display label
-     * @param teams     rosters of already-cleaned player names, one list per team
-     * @param seconds   how long the match has been running
+     * One running match. {@code slot} is the 1-based pool slot, deliberately
+     * not the port; names in {@code teams} are already cleaned.
      */
     record Match(
             int slot,
@@ -65,13 +44,7 @@ record StatusSnapshot(
     ) {
     }
 
-    /**
-     * One ranked ladder row.
-     *
-     * @param rank 1-based position
-     * @param name already-cleaned player name
-     * @param elo  current rating
-     */
+    /** One ranked ladder row; {@code rank} is 1-based, {@code name} cleaned. */
     record LadderEntry(
             int rank,
             String name,

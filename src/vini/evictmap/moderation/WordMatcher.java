@@ -8,53 +8,27 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 /**
- * Decides whether a piece of text contains one of {@link BannedWords#WORDS}.
- * Pure and static: no Mindustry state, no side effects, so it can be reasoned
- * about (and tried out with {@code evictwordfilter test}) on its own.
+ * Decides whether text contains a word from {@link BannedWords}. Pure and
+ * static, so it can be tried out on its own with {@code evictwordfilter test}.
  *
- * <p>A plain {@code contains} would be useless here - nobody types the word
- * straight out once they know it is filtered. Text is therefore folded first:
- * colour tags removed, accents and compatibility forms decomposed away,
- * invisible characters dropped, letters from other scripts that are drawn like
- * Latin ones mapped onto their Latin twin, digits and symbols used as letters
- * ({@code 1}, {@code 3}, {@code @}, {@code $}) mapped back, everything
- * lowercased. Both the text and the word list go through the same fold, so one
- * plain entry covers every dressed-up spelling of it.
- *
- * <p>What is left is matched with a pattern built per word rather than a
- * substring search, because the two remaining tricks - repeating a letter and
- * wedging punctuation between them - are cheap to express and expensive to
- * enumerate. Each letter becomes {@code x+}, so repeats collapse while the
- * number of <em>distinct</em> letters still has to be right: {@code niiigger}
- * matches, and the country Niger, with its one {@code g}, does not.
- *
- * <p>{@link BannedWords#WHOLE_WORDS} entries additionally have to stand as a
- * word of their own. An entry that is a normal part of longer harmless words -
- * {@code negr} inside Montenegro and negro, {@code niger} inside Nigeria - is
- * useless as a substring and fine as a word, which is what the boundaries are
- * for.
- *
- * <p>Separators between letters are only allowed for words of
- * {@value #SPACED_MATCH_MIN_LENGTH} letters or more. On a short word that
- * allowance is a false-positive machine - {@code f?a?g} also spells the middle
- * of "if a good game" - and a false positive here is an automatic ban.
- * Separators are non-letters only, so a run of letters in another script can
- * never be swallowed as if it were punctuation.
+ * <p>Nobody types the word straight out once they know it is filtered, so a
+ * plain {@code contains} is useless. Text and word list go through the same
+ * fold (see {@link #fold}), then each entry is matched by a pattern in which
+ * every letter repeats: {@code niiigger} matches, the country Niger with its
+ * one {@code g} does not.
  */
 public final class WordMatcher {
 
     /**
-     * Shortest word allowed to match across separators. Below this a word is
-     * only matched with its letters adjacent.
+     * Shortest entry allowed to match across separators. Below this the letters
+     * must be adjacent: {@code f?a?g} also spells the middle of "if a good
+     * game", and a false positive here is an automatic ban.
      */
     private static final int SPACED_MATCH_MIN_LENGTH = 5;
 
     /**
-     * What may sit between two letters of a spaced-out word: up to two
-     * characters that are neither letters nor digits. Deliberately not
-     * {@code [^a-z0-9]} - that would let the gaps eat Cyrillic or Greek
-     * letters, and a five-letter Russian slur would start matching any Russian
-     * sentence with those letters somewhere in it.
+     * What may sit between two letters. Not {@code [^a-z0-9]}: the gaps would
+     * eat Cyrillic, and a Russian entry would match any Russian sentence.
      */
     private static final String SEPARATOR = "[^\\p{L}\\p{N}]{0,2}";
 
@@ -78,10 +52,9 @@ public final class WordMatcher {
     }
 
     /**
-     * The banned word this text contains, or null if it is clean.
-     *
-     * @return the list entry as it is written in {@link BannedWords}, which is
-     *         what gets logged - never the player's own spelling
+     * @return the list entry this text contains, as written in
+     *         {@link BannedWords} - never the player's own spelling. Null when
+     *         the text is clean.
      */
     public static String find(String text) {
         if (text == null || text.isBlank()) {
@@ -94,10 +67,8 @@ public final class WordMatcher {
             return null;
         }
 
-        // Harmless words that contain a banned one are cut out first, so the
-        // Russian for "quietly" no longer carries the slur inside it into the
-        // scan below. Replaced by a space rather than nothing: removing it
-        // outright could join its two neighbours into a word neither of them is.
+        // Allowances are cut out first. Replaced by a space, not removed:
+        // removing could join the two neighbours into a word neither of them is.
         for (Pattern allowed : ALLOWED) {
             folded = allowed.matcher(folded).replaceAll(" ");
         }
@@ -112,8 +83,8 @@ public final class WordMatcher {
     }
 
     /**
-     * Strips a piece of text down to what it actually says: no colour tags, no
-     * accents, no invisible characters, no lookalike letters, lower case.
+     * Strips text down to what it says: no colour tags, accents, invisible
+     * characters or lookalike letters, lower case.
      */
     static String fold(String text) {
         String decomposed = Normalizer.normalize(
@@ -127,9 +98,8 @@ public final class WordMatcher {
             char character = Character.toLowerCase(decomposed.charAt(index));
             int type = Character.getType(character);
 
-            // The accent left behind by the decomposition, and the zero-width
-            // joiners and direction marks people paste into names to break
-            // string comparisons. Neither is part of what the text says.
+            // The accent the decomposition left behind, and the zero-width
+            // joiners pasted into names to break string comparisons.
             if (type == Character.NON_SPACING_MARK || type == Character.FORMAT) {
                 continue;
             }
@@ -140,12 +110,7 @@ public final class WordMatcher {
         return folded.toString();
     }
 
-    /**
-     * Maps a character onto the Latin letter it is being used as. Covers the
-     * digits and symbols of leetspeak and the Cyrillic and Greek letters that
-     * are drawn identically to Latin ones - both are a copy-paste away and both
-     * defeat a plain comparison.
-     */
+    /** Maps a character onto the Latin letter it is being used as. */
     private static char lookalike(char character) {
         return switch (character) {
             // Leetspeak.
@@ -236,11 +201,9 @@ public final class WordMatcher {
     }
 
     /**
-     * The letters of one list entry, folded. Spaces and punctuation in the
-     * entry are dropped: a multi-word entry is matched as one run of letters,
-     * with the gap between its words handled by the separator allowance like
-     * any other gap. Empty for an entry with no letters at all, which would
-     * otherwise compile to a pattern matching everything.
+     * The letters of one list entry, folded; spaces and punctuation dropped, so
+     * a multi-word entry is matched as one run of letters. Empty for an entry
+     * without letters, which would compile to a pattern matching everything.
      */
     private static String letters(String word) {
         String folded = fold(word);
@@ -258,9 +221,8 @@ public final class WordMatcher {
     }
 
     /**
-     * Pattern for a banned entry: every letter repeatable, separators allowed
-     * between them once the entry is long enough to survive it, and - for a
-     * whole-word entry - nothing that reads as part of a word on either side.
+     * Pattern for a banned entry: every letter repeatable, separators once the
+     * entry is long enough to survive them, boundaries for a whole-word entry.
      */
     private static Pattern bannedPattern(String letters, boolean wholeWord) {
         boolean spaced = letters.length() >= SPACED_MATCH_MIN_LENGTH;
@@ -275,8 +237,7 @@ public final class WordMatcher {
                 expression.append(SEPARATOR);
             }
 
-            // Every letter is folded and therefore a letter or a digit, so it
-            // needs no escaping; the trailing + is what absorbs "niiigger".
+            // Folded, so always a letter or digit and never needs escaping.
             expression.append(letters.charAt(index)).append('+');
         }
 
@@ -289,13 +250,10 @@ public final class WordMatcher {
 
     /**
      * Pattern for an allowed entry: the letters exactly, adjacent, once each.
-     *
-     * <p>Deliberately stricter than a banned entry, because an allowed entry is
-     * a hole in the filter and every allowance widened is a way through it.
-     * Repeatable letters would make "niggeria" match the allowance for
-     * "nigeria" and take the slur inside it out of the text with it; separators
-     * would let a slur be excused by typing four unrelated characters after it.
-     * A word is only harmless when it is written as that word.
+     * Stricter than a banned entry on purpose - an allowance is a hole in the
+     * filter, and a widened one is a way through it. Repeatable letters would
+     * let "niggeria" match the allowance for "nigeria" and carry the slur out
+     * of the text with it.
      */
     private static Pattern allowedPattern(String letters) {
         return compile(Pattern.quote(letters));

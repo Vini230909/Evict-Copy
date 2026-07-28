@@ -3,15 +3,9 @@ package vini.evictmap.moderation;
 import java.util.List;
 
 /**
- * What one moderation action came to, ready to be written somewhere a human
- * reads it. Deliberately plain data with no Mindustry types: the ban log ships
- * it off to Discord from another thread.
- *
- * @param kind      what happened
- * @param seedLabel the name or address the admin acted on
- * @param names     every name every hit account has ever used
- * @param uuids     every account hit
- * @param ips       every address hit
+ * What one moderation action came to. Plain data with no Mindustry types: the
+ * ban log ships it to Discord from another thread. {@code seedLabel} is what
+ * the admin acted on, {@code names} every name every hit account has used.
  */
 public record BanReport(
         Kind kind,

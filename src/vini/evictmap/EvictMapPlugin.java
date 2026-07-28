@@ -203,12 +203,7 @@ public class EvictMapPlugin extends Plugin {
     private final vini.evictmap.moderation.BanSync banSync =
             new vini.evictmap.moderation.BanSync();
 
-    /**
-     * Bans anyone who puts one of the filtered words in chat or in their name.
-     * Runs on the hub and inside matches alike - the words are no more welcome
-     * on a match server - but only the hub decides bans; a worker kicks and
-     * asks the hub for the rest.
-     */
+    /** Bans anyone using a filtered word in chat or in their name. */
     private final vini.evictmap.moderation.WordFilter wordFilter =
             new vini.evictmap.moderation.WordFilter(
                     settings,
@@ -341,10 +336,7 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Events.on(PlayerJoin.class, event -> {
-            // First: a name is the one piece of text a player puts in front of
-            // everyone without typing anything, and Mindustry only lets them
-            // change it by reconnecting. A hit bans and kicks, so there is
-            // nothing left to onboard.
+            // First: a hit bans and kicks, so there is nothing to onboard.
             if (wordFilter.checkName(event.player)) {
                 return;
             }
@@ -521,12 +513,9 @@ public class EvictMapPlugin extends Plugin {
     }
 
     /**
-     * Puts one account into the ban system. On the hub that is Mindustry's own
-     * {@code banPlayerID}, so the ban goes through {@code BanManager} exactly
-     * like an admin's: widened to the account's addresses, kicked everywhere,
-     * written to the file the match servers read and posted to the ban log. On
-     * a worker there is nothing to ban into - its admin store is a throwaway
-     * copy - so the request travels to the hub instead.
+     * Puts one account into the ban system. The hub's {@code banPlayerID} runs
+     * it through {@code BanManager} like an admin's ban; a worker has only a
+     * throwaway admin store, so its request travels to the hub instead.
      */
     private void seedBan(String uuid) {
         if (uuid == null || uuid.isBlank()) {
@@ -558,8 +547,8 @@ public class EvictMapPlugin extends Plugin {
 
         playerDataManager.start();
 
-        // Before every other chat filter, so a filtered word is dropped rather
-        // than handed on to whatever the next filter would do with it.
+        // Before every other chat filter, so a hit is dropped rather than
+        // handed on to whatever the next filter would do with it.
         wordFilter.install();
 
         if (duelWorker) {
@@ -569,9 +558,8 @@ public class EvictMapPlugin extends Plugin {
                     playerDataManager::sessionPlaytimeSnapshot
             );
 
-            // After the word filter, which must see a message first: a blocked
-            // one has to be gone before the ranked routing can deliver it to
-            // the spectators.
+            // After the word filter: a blocked message must be gone before
+            // the ranked routing can deliver it to the spectators.
             duelChat.installChatFilter();
         } else {
             // A finished ranked match must show up on the Discord ladder now,

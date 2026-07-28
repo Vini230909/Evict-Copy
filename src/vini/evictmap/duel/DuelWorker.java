@@ -148,13 +148,9 @@ public final class DuelWorker {
     private final Set<String> outUuids = new LinkedHashSet<>();
 
     /**
-     * Accounts this worker wants banned, published for the hub to act on. A
-     * match server never bans anything itself - its admin store is a throwaway
-     * copy and the hub is the single source of truth - but the word filter
-     * still runs here, so a request has to be able to travel. The set is
-     * cumulative and republished every write: banning is idempotent on the hub,
-     * so a missed or repeated poll costs nothing, and it also survives the hub
-     * being busy for a few seconds.
+     * Accounts this worker wants banned, for the hub to act on; a worker never
+     * bans itself. Cumulative and republished every write, so a missed or
+     * repeated poll costs nothing - banning is idempotent on the hub.
      */
     private final Set<String> banRequestUuids = new LinkedHashSet<>();
 
@@ -165,10 +161,8 @@ public final class DuelWorker {
     private Predicate<Player> stillCompeting;
 
     /**
-     * Asks the hub to ban an account. Published immediately rather than waiting
-     * for the next scheduled status write: the offender is being kicked at the
-     * same moment, and the hub should have the ban in place before they can
-     * reconnect there.
+     * Asks the hub to ban an account. Published at once rather than on the next
+     * scheduled write: the hub should have the ban before they reconnect there.
      */
     public void requestBan(String uuid) {
         if (uuid == null || uuid.isBlank() || !banRequestUuids.add(uuid)) {
