@@ -25,8 +25,6 @@ public final class BannedWords {
             "нігер",
             "ніггер",
             "faggot",
-            "hitler",
-            "nazis",
             "sieg heil",
             "sieg hail",
             "kill blacks"
@@ -38,9 +36,7 @@ public final class BannedWords {
      * is Nigeria, {@code nazi} is nazionale and the name Nazir.
      */
     public static final List<String> WHOLE_WORDS = List.of(
-            "niger",
             "negr",
-            "nazi"
     );
 
     /**
