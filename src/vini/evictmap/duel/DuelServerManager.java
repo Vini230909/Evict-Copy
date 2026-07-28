@@ -23,7 +23,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 import java.util.stream.Stream;
 
 import arc.Core;
@@ -34,6 +34,7 @@ import mindustry.gen.Groups;
 import mindustry.gen.Player;
 import mindustry.net.Administration;
 import mindustry.world.Block;
+import vini.evictmap.moderation.WordFilterHit;
 
 /**
  * On-demand 1v1 worker orchestration for the hub server.
@@ -112,13 +113,17 @@ public final class DuelServerManager {
      */
     private final Set<String> appliedWorkerBanRequests = new LinkedHashSet<>();
 
-    /** Hands a worker's ban request to the hub's normal ban path. */
-    private final Consumer<String> banRequestSink;
+    /**
+     * Hands a worker's ban request to the hub's normal ban path, together with
+     * what the word filter saw on the worker, so the hub's ban log entry says
+     * which match server's console to look in.
+     */
+    private final BiConsumer<String, WordFilterHit> banRequestSink;
 
     public DuelServerManager(
             EvictSettings settings,
             PlayerDataManager playerDataManager,
-            Consumer<String> banRequestSink
+            BiConsumer<String, WordFilterHit> banRequestSink
     ) {
         this.settings = settings;
         this.playerDataManager = playerDataManager;
@@ -608,7 +613,9 @@ public final class DuelServerManager {
      * admin store.
      */
     private void applyBanRequests(Map<Integer, Properties> statuses) {
-        for (Properties status : statuses.values()) {
+        for (Map.Entry<Integer, Properties> entry : statuses.entrySet()) {
+            Properties status = entry.getValue();
+
             for (String uuid : splitUuidList(status.getProperty("banrequests", ""))) {
                 // Workers republish their whole request list on every write.
                 if (!appliedWorkerBanRequests.add(uuid)) {
@@ -620,9 +627,30 @@ public final class DuelServerManager {
                         uuid
                 );
 
-                banRequestSink.accept(uuid);
+                banRequestSink.accept(uuid, workerWordFilterHit(status, uuid, entry.getKey()));
             }
         }
+    }
+
+    /**
+     * What the worker's word filter saw, if the request came from it. The
+     * console time is the worker's own, so the log entry points at that match
+     * server's log rather than the hub's.
+     */
+    private static WordFilterHit workerWordFilterHit(
+            Properties status,
+            String uuid,
+            int port
+    ) {
+        String prefix = "banrequest." + uuid + ".";
+
+        return WordFilterHit.fromWorker(
+                status.getProperty(prefix + "source", ""),
+                status.getProperty(prefix + "word", ""),
+                status.getProperty(prefix + "text", ""),
+                status.getProperty(prefix + "time", ""),
+                "match server on port " + port
+        );
     }
 
     private void creditPlaytime(int port, String packed, String packedPlayers) {

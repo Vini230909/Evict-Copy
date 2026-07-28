@@ -21,6 +21,9 @@ public final class DiscordFormat {
     /** Longest player name rendered before it is cut short. */
     private static final int MAX_NAME_LENGTH = 24;
 
+    /** Longest quoted line of chat rendered before it is cut short. */
+    private static final int MAX_TEXT_LENGTH = 300;
+
     /** Characters Discord reads as markdown, escaped with a backslash. */
     private static final String MARKDOWN_SPECIALS = "\\*_~`|";
 
@@ -36,8 +39,30 @@ public final class DiscordFormat {
      * backslash would escape whatever followed it instead.
      */
     public static String playerName(String raw) {
+        String cleaned = sanitize(raw, MAX_NAME_LENGTH);
+
+        return cleaned.isEmpty() ? "(unnamed)" : cleaned;
+    }
+
+    /**
+     * A line the player typed - a chat message quoted in the ban log - cleaned
+     * the same way a name is, only with room to read the whole sentence.
+     */
+    public static String playerText(String raw) {
+        String cleaned = sanitize(raw, MAX_TEXT_LENGTH);
+
+        return cleaned.isEmpty() ? "(empty)" : cleaned;
+    }
+
+    /**
+     * Colour tags out, control characters out, whitespace collapsed, cut to
+     * length, escaped last - the cut has to happen before the escaping, or it
+     * could land between a backslash and the character it escapes and leave the
+     * backslash escaping whatever followed instead.
+     */
+    private static String sanitize(String raw, int maxLength) {
         if (raw == null) {
-            return "(unnamed)";
+            return "";
         }
 
         String cleaned = Strings.stripColors(raw);
@@ -45,11 +70,11 @@ public final class DiscordFormat {
         cleaned = cleaned.replaceAll("\\s+", " ").trim();
 
         if (cleaned.isEmpty()) {
-            return "(unnamed)";
+            return "";
         }
 
-        if (cleaned.length() > MAX_NAME_LENGTH) {
-            cleaned = cleaned.substring(0, MAX_NAME_LENGTH) + "…";
+        if (cleaned.length() > maxLength) {
+            cleaned = cleaned.substring(0, maxLength) + "…";
         }
 
         return escapeMarkdown(cleaned);

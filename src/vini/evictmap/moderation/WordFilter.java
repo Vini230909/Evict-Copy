@@ -5,7 +5,7 @@ import mindustry.gen.Player;
 import vini.evictmap.core.util.PluginLog;
 import vini.evictmap.gen.EvictSettings;
 
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 
 /**
  * Bans a player for a word from {@link BannedWords}, in chat or in their name.
@@ -21,19 +21,30 @@ public final class WordFilter {
     /** False on a duel worker, which asks the hub instead of banning. */
     private final boolean hub;
 
-    /** Hub: {@code banPlayerID}. Worker: a request for the hub to act on. */
-    private final Consumer<String> banSeeder;
+    /**
+     * Hub: {@code banPlayerID}. Worker: a request for the hub to act on. The
+     * hit travels with the account so the ban log can say what tripped, and
+     * where in the console log to find it.
+     */
+    private final BiConsumer<String, WordFilterHit> banSeeder;
+
+    /**
+     * Which console log the hit was written to. A worker's is replaced by the
+     * hub with the match server's port once the request arrives there.
+     */
+    private final String origin;
 
     private boolean installed;
 
     public WordFilter(
             EvictSettings settings,
             boolean hub,
-            Consumer<String> banSeeder
+            BiConsumer<String, WordFilterHit> banSeeder
     ) {
         this.settings = settings;
         this.hub = hub;
         this.banSeeder = banSeeder;
+        this.origin = hub ? "hub console" : "match server";
     }
 
     /**
@@ -77,7 +88,7 @@ public final class WordFilter {
             return false;
         }
 
-        punish(player, word, "their name");
+        punish(player, word, WordFilterHit.Source.NAME, player.name);
         return true;
     }
 
@@ -92,21 +103,32 @@ public final class WordFilter {
             return message;
         }
 
-        punish(player, word, "chat");
+        punish(player, word, WordFilterHit.Source.CHAT, message);
         return null;
     }
 
-    private void punish(Player player, String word, String context) {
+    private void punish(
+            Player player,
+            String word,
+            WordFilterHit.Source source,
+            String text
+    ) {
+        // Logged before the ban, so the console line and the timestamp the ban
+        // log carries are the same moment.
         PluginLog.info(
-                "Word filter: @ (@) used '@' in @ - @.",
+                "Word filter: @ (@) used '@' in their @ - @. Text: @",
                 player.plainName(),
                 player.uuid(),
                 word,
-                context,
-                hub ? "banning" : "kicked, ban requested from the hub"
+                source.label(),
+                hub ? "banning" : "kicked, ban requested from the hub",
+                text
         );
 
-        banSeeder.accept(player.uuid());
+        banSeeder.accept(
+                player.uuid(),
+                WordFilterHit.now(source, word, text, origin)
+        );
 
         // The hub's ban already kicked them; a worker's request only lands on
         // the next poll, so it kicks here rather than wait.

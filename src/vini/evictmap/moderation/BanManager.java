@@ -64,6 +64,15 @@ public final class BanManager {
      */
     private boolean applying;
 
+    /**
+     * The word-filter hit being seeded right now, if any. {@code banPlayerID}
+     * fires its event on this thread before it returns, so the handler picks
+     * the details up from here instead of the ban paths all having to carry a
+     * cause they do not have.
+     */
+    private String wordFilterUuid;
+    private WordFilterHit wordFilterHit;
+
     private boolean installed;
     private boolean startupDone;
 
@@ -117,15 +126,49 @@ public final class BanManager {
         publishList();
     }
 
+    /**
+     * Bans an account the word filter caught, remembering what it caught.
+     *
+     * <p>Goes through {@code banPlayerID} like every other ban, so the account
+     * is widened, kicked, written to the workers' list and logged - the entry
+     * is simply marked as the filter's rather than an admin's, and carries the
+     * word, the text and the console time to find it by.
+     */
+    public void banForWordFilter(String uuid, WordFilterHit hit) {
+        if (uuid == null || uuid.isBlank() || Vars.netServer == null) {
+            return;
+        }
+
+        wordFilterUuid = uuid;
+        wordFilterHit = hit;
+
+        try {
+            Vars.netServer.admins.banPlayerID(uuid);
+        } finally {
+            wordFilterUuid = null;
+            wordFilterHit = null;
+        }
+    }
+
     private void handleBan(BanCascade.Result result) {
         if (applying || result.isEmpty()) {
             return;
         }
 
-        BanReport report = apply(result, BanReport.Kind.BAN);
+        WordFilterHit hit = wordFilterUuid != null
+                && result.uuids().contains(wordFilterUuid)
+                ? wordFilterHit
+                : null;
+
+        BanReport report = apply(
+                result,
+                hit == null ? BanReport.Kind.BAN : BanReport.Kind.WORD_FILTER,
+                hit
+        );
 
         PluginLog.info(
-                "Ban on @ covers @ account(s) and @ address(es).",
+                "@ on @ covers @ account(s) and @ address(es).",
+                hit == null ? "Ban" : "Word filter ban",
                 report.seedLabel(),
                 report.uuids().size(),
                 report.ips().size()
@@ -208,7 +251,11 @@ public final class BanManager {
      * blocks connections and is still lifted by a normal unban (vanilla's
      * {@code unbanPlayerID} drops the account's addresses from the same list).
      */
-    private BanReport apply(BanCascade.Result result, BanReport.Kind kind) {
+    private BanReport apply(
+            BanCascade.Result result,
+            BanReport.Kind kind,
+            WordFilterHit hit
+    ) {
         Administration admins = Vars.netServer.admins;
 
         applying = true;
@@ -244,7 +291,8 @@ public final class BanManager {
                 result.seedLabel(),
                 BanCascade.namesOf(uuids),
                 List.copyOf(uuids),
-                List.copyOf(result.ips())
+                List.copyOf(result.ips()),
+                hit
         );
     }
 
@@ -401,7 +449,7 @@ public final class BanManager {
             return;
         }
 
-        BanReport report = apply(result, BanReport.Kind.IMPORT);
+        BanReport report = apply(result, BanReport.Kind.IMPORT, null);
 
         covered.addAll(report.uuids());
         covered.addAll(report.ips());

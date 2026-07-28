@@ -474,7 +474,7 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.7.0. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.7.1. Use 'evictstatus' for commands and current settings."
         );
     }
 
@@ -516,14 +516,20 @@ public class EvictMapPlugin extends Plugin {
      * Puts one account into the ban system. The hub's {@code banPlayerID} runs
      * it through {@code BanManager} like an admin's ban; a worker has only a
      * throwaway admin store, so its request travels to the hub instead.
+     *
+     * <p>{@code hit} is what the word filter saw, and rides along so the ban
+     * log entry can say which word, in which message, at which console time -
+     * null for the paths an admin drives.
      */
-    private void seedBan(String uuid) {
+    private void seedBan(String uuid, vini.evictmap.moderation.WordFilterHit hit) {
         if (uuid == null || uuid.isBlank()) {
             return;
         }
 
         if (duelWorker) {
-            duelWorkerReferee.requestBan(uuid);
+            duelWorkerReferee.requestBan(uuid, hit);
+        } else if (hit != null) {
+            banManager.banForWordFilter(uuid, hit);
         } else if (Vars.netServer != null) {
             Vars.netServer.admins.banPlayerID(uuid);
         }

@@ -1,6 +1,7 @@
 package vini.evictmap.discord;
 
 import vini.evictmap.moderation.BanReport;
+import vini.evictmap.moderation.WordFilterHit;
 
 import java.util.List;
 
@@ -15,6 +16,7 @@ import java.util.List;
 final class BanLogMessage {
 
     private static final long COLOR_BAN = 0xED4245L;
+    private static final long COLOR_WORD_FILTER = 0xE67E22L;
     private static final long COLOR_UNBAN = 0x57F287L;
     private static final long COLOR_IMPORT = 0x99AAB5L;
 
@@ -40,6 +42,8 @@ final class BanLogMessage {
      */
     static String payload(BanReport report, long timestampSeconds) {
         DiscordJson.Arr fields = new DiscordJson.Arr();
+
+        addWordFilterFields(fields, report.wordFilterHit());
 
         fields.add(field(
                 "Names (" + report.names().size() + ")",
@@ -130,11 +134,52 @@ final class BanLogMessage {
                 .toString();
     }
 
+    /**
+     * What the word filter saw, above the accounts it hit.
+     *
+     * <p>The word and the offending text make the entry reviewable on its own -
+     * a filter that bans without saying what for cannot be checked for false
+     * positives. The console time is the server's own log format, so an admin
+     * can open the log of the server named next to it and search for that line.
+     */
+    private static void addWordFilterFields(DiscordJson.Arr fields, WordFilterHit hit) {
+        if (hit == null) {
+            return;
+        }
+
+        fields.add(field("Word", codeSpan(hit.word()), true));
+        fields.add(field("Found in", hit.source().label(), true));
+
+        fields.add(field(
+                hit.source() == WordFilterHit.Source.CHAT ? "Message" : "Name",
+                DiscordFormat.playerText(hit.text()),
+                false
+        ));
+
+        fields.add(field(
+                "Console time",
+                codeSpan(hit.consoleTime()) + " — " + hit.origin(),
+                false
+        ));
+    }
+
+    /**
+     * A short value in a code span. Escaping is the wrong tool inside one - a
+     * backslash renders literally there - so a backtick is replaced instead,
+     * which is the only character that could end the span early.
+     */
+    private static String codeSpan(String value) {
+        String cleaned = value == null ? "" : value.replace('`', '\'').trim();
+
+        return cleaned.isEmpty() ? "—" : "`" + cleaned + "`";
+    }
+
     private static String title(BanReport report) {
         String subject = DiscordFormat.playerName(report.seedLabel());
 
         return switch (report.kind()) {
             case BAN -> "🔨 Ban — " + subject;
+            case WORD_FILTER -> "🤖 Word filter ban — " + subject;
             case UNBAN -> "♻️ Unban — " + subject;
             case IMPORT -> "📥 Imported ban — " + subject;
         };
@@ -143,6 +188,7 @@ final class BanLogMessage {
     private static long color(BanReport.Kind kind) {
         return switch (kind) {
             case BAN -> COLOR_BAN;
+            case WORD_FILTER -> COLOR_WORD_FILTER;
             case UNBAN -> COLOR_UNBAN;
             case IMPORT -> COLOR_IMPORT;
         };
