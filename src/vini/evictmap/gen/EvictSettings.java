@@ -156,6 +156,14 @@ public final class EvictSettings {
     private boolean banImportLogged = false;
 
     /**
+     * Whether the banned-word filter bans automatically. On by default: the
+     * list it works from is only the words nobody has a reason to type. Carried
+     * into every spawned duel worker with the rest of this file, so a match
+     * server filters exactly what the hub filters.
+     */
+    private boolean wordFilterEnabled = true;
+
+    /**
      * Internal block ids players may not build (e.g. {@code router}). Stored as
      * names rather than {@code Block} objects so this class stays free of
      * Mindustry content; {@link EvictRules} resolves them at round start. Carried
@@ -359,6 +367,11 @@ public final class EvictSettings {
                     "moderation.banImportLogged",
                     banImportLogged
             );
+            wordFilterEnabled = readBoolean(
+                    properties,
+                    "moderation.wordFilter",
+                    wordFilterEnabled
+            );
 
             setBannedBlockNamesWithoutSaving(
                     splitBannedBlockNames(
@@ -553,6 +566,20 @@ public final class EvictSettings {
         }
 
         banImportLogged = true;
+        save();
+    }
+
+    /** True while the banned-word filter bans automatically. */
+    public boolean wordFilterEnabled() {
+        return wordFilterEnabled;
+    }
+
+    public void setWordFilterEnabled(boolean enabled) {
+        if (wordFilterEnabled == enabled) {
+            return;
+        }
+
+        wordFilterEnabled = enabled;
         save();
     }
 
@@ -1137,6 +1164,10 @@ public final class EvictSettings {
         properties.setProperty(
                 "moderation.banImportLogged",
                 Boolean.toString(banImportLogged)
+        );
+        properties.setProperty(
+                "moderation.wordFilter",
+                Boolean.toString(wordFilterEnabled)
         );
         properties.setProperty(
                 "rules.bannedBlocks",

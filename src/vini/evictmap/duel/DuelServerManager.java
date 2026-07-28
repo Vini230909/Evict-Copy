@@ -23,6 +23,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import arc.Core;
@@ -104,12 +105,29 @@ public final class DuelServerManager {
     private final Map<Integer, Map<String, Long>> creditedPlaytimeByPort =
             new HashMap<>();
 
+    /**
+     * Accounts a worker has already asked to have banned. Workers republish the
+     * whole request list every status write, so without this the hub would
+     * re-seed the same ban every poll and the ban log would repeat itself.
+     * Main-thread only.
+     */
+    private final Set<String> appliedWorkerBanRequests = new LinkedHashSet<>();
+
+    /**
+     * Where a worker's ban request goes. Workers run the word filter but never
+     * ban - the hub is the single decision maker - so they publish the account
+     * and this hands it to the hub's normal ban path.
+     */
+    private final Consumer<String> banRequestSink;
+
     public DuelServerManager(
             EvictSettings settings,
-            PlayerDataManager playerDataManager
+            PlayerDataManager playerDataManager,
+            Consumer<String> banRequestSink
     ) {
         this.settings = settings;
         this.playerDataManager = playerDataManager;
+        this.banRequestSink = banRequestSink;
 
         Runtime.getRuntime().addShutdownHook(
                 new Thread(this::destroyAllWorkers, "evict-duel-shutdown")
@@ -551,9 +569,13 @@ public final class DuelServerManager {
 
                     cachedConnectedDuelPlayers = total;
 
-                    // The same files already carry the workers' playtime; fold
-                    // it into the hub database while it is in hand.
-                    Core.app.post(() -> creditPlaytime(statuses));
+                    // The same files already carry the workers' playtime and
+                    // any bans they want applied; deal with both while they are
+                    // in hand.
+                    Core.app.post(() -> {
+                        creditPlaytime(statuses);
+                        applyBanRequests(statuses);
+                    });
                 } finally {
                     duelPlayerCountRefreshRunning.set(false);
                 }
@@ -583,6 +605,30 @@ public final class DuelServerManager {
                     entry.getValue().getProperty("playtime", ""),
                     entry.getValue().getProperty("players", "")
             );
+        }
+    }
+
+    /**
+     * Applies the bans the workers asked for. A match server runs the word
+     * filter but cannot ban - it kicks the offender and publishes the account
+     * here, so the ban is decided, widened and logged in one place like every
+     * other one. Main thread: it seeds through Mindustry's admin store.
+     */
+    private void applyBanRequests(Map<Integer, Properties> statuses) {
+        for (Properties status : statuses.values()) {
+            for (String uuid : splitUuidList(status.getProperty("banrequests", ""))) {
+                // Workers republish their whole request list on every write.
+                if (!appliedWorkerBanRequests.add(uuid)) {
+                    continue;
+                }
+
+                Log.info(
+                        "[EvictMapGenerator] Applying a ban a match server asked for: @.",
+                        uuid
+                );
+
+                banRequestSink.accept(uuid);
+            }
         }
     }
 

@@ -8,6 +8,8 @@ import vini.evictmap.core.cmd.Commands;
 import vini.evictmap.core.util.Players;
 import vini.evictmap.discord.BanLogReporter;
 import vini.evictmap.moderation.BanManager;
+import vini.evictmap.moderation.WordFilter;
+import vini.evictmap.moderation.WordMatcher;
 import vini.evictmap.discord.DiscordStatusReporter;
 import vini.evictmap.duel.DuelServerManager;
 
@@ -189,6 +191,14 @@ public final class ConsoleCommands {
                 .description("Once after setting evictbanlog: run every ban currently on the server through the cascade and post each one to the ban log. Refuses to run a second time (it would repost the whole back catalogue) unless called as 'evictbanimport force'.")
                 .run(ctx -> handleBanImportCommand(ctx.str("force", "").trim()));
 
+        commands.command("evictwordfilter").console()
+                .args("action:string?", "text:text?")
+                .description("The banned-word filter: no argument shows whether it is on and how many words it watches for, 'on'/'off' switch it, 'test <text>' says which word a line would trip. The words live in BannedWords.java in the plugin source.")
+                .run(ctx -> handleWordFilterCommand(
+                        ctx.str("action", "").trim(),
+                        ctx.str("text", "")
+                ));
+
         commands.command("evictduelstatus").console()
                 .description("List the active worker servers and who is in them.")
                 .run(ctx -> duelServerManager.logStatus());
@@ -285,6 +295,52 @@ public final class ConsoleCommands {
                     Log.err("[EvictMapGenerator] That is not a Discord webhook URL. Copy it from Channel Settings > Integrations > Webhooks.");
                 }
             }
+        }
+    }
+
+    /**
+     * evictwordfilter: shows or switches the automatic banned-word filter, and
+     * tries a line against it.
+     *
+     * <p>The test is the important half. The filter bans by itself, so an entry
+     * that also fires on an ordinary sentence is a permanent ban handed out for
+     * nothing - this is how a new entry gets checked before anyone types it.
+     */
+    private void handleWordFilterCommand(String action, String text) {
+        switch (action.toLowerCase()) {
+            case "" -> Log.info(
+                    "[EvictMapGenerator] Word filter: @, watching @ word(s). Bans on chat and on names. Edit the list in BannedWords.java and rebuild; 'evictwordfilter test <text>' tries a line.",
+                    settings.wordFilterEnabled() ? "on" : "off",
+                    WordMatcher.wordCount()
+            );
+            case "on" -> {
+                settings.setWordFilterEnabled(true);
+                Log.info("[EvictMapGenerator] Word filter on: a filtered word now bans automatically.");
+            }
+            case "off" -> {
+                settings.setWordFilterEnabled(false);
+                Log.info("[EvictMapGenerator] Word filter off. Nothing is filtered until it is switched back on.");
+            }
+            case "test" -> {
+                if (text.isBlank()) {
+                    Log.err("[EvictMapGenerator] Give the text to try: evictwordfilter test <text>");
+                    return;
+                }
+
+                String word = WordFilter.test(text);
+
+                if (word == null) {
+                    Log.info("[EvictMapGenerator] Clean - no ban.");
+                } else {
+                    Log.info(
+                            "[EvictMapGenerator] Would ban: matches '@' from the word list.",
+                            word
+                    );
+                }
+            }
+            default -> Log.err(
+                    "[EvictMapGenerator] Usage: evictwordfilter [on/off/test <text>]"
+            );
         }
     }
 
