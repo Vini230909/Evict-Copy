@@ -149,6 +149,22 @@ public final class PlayerDataManager {
             String loserUuid,
             String loserName
     ) {
+        recordRankedResult(winnerUuid, winnerName, loserUuid, loserName, null);
+    }
+
+    /**
+     * Same as {@link #recordRankedResult(String, String, String, String)}, but
+     * also hands the applied ELO movement (both players' before/after ratings)
+     * back on the main thread - the Discord chat log's match-end entry shows
+     * it. A null callback is simply not called.
+     */
+    public void recordRankedResult(
+            String winnerUuid,
+            String winnerName,
+            String loserUuid,
+            String loserName,
+            Consumer<EloCalculator.Result> outcome
+    ) {
         if (
                 winnerUuid == null
                         || winnerUuid.isEmpty()
@@ -160,13 +176,19 @@ public final class PlayerDataManager {
 
         long playedAtMillis = System.currentTimeMillis();
 
-        enqueue(() -> applyRankedResult(
-                winnerUuid,
-                safeName(winnerName),
-                loserUuid,
-                safeName(loserName),
-                playedAtMillis
-        ));
+        enqueue(() -> {
+            EloCalculator.Result elo = applyRankedResult(
+                    winnerUuid,
+                    safeName(winnerName),
+                    loserUuid,
+                    safeName(loserName),
+                    playedAtMillis
+            );
+
+            if (outcome != null) {
+                deliver(outcome, elo);
+            }
+        });
 
         eloChangeListener.run();
     }
@@ -878,7 +900,7 @@ public final class PlayerDataManager {
         }
     }
 
-    private void applyRankedResult(
+    private EloCalculator.Result applyRankedResult(
             String winnerUuid,
             String winnerName,
             String loserUuid,
@@ -910,6 +932,8 @@ public final class PlayerDataManager {
                     elo.loserBefore(),
                     elo.loserAfter()
             );
+
+            return elo;
         }
     }
 

@@ -102,8 +102,35 @@ public class EvictMapPlugin extends Plugin {
     private final RoundTimeCommands roundTimeCommands =
             new RoundTimeCommands(teamManager);
 
+    /**
+     * Hub-only Discord chat mirror (one channel for the hub, one per worker
+     * port). Constructed on a worker too, but never started there - a worker
+     * reports its chat through its chat.log file instead.
+     */
+    private final vini.evictmap.discord.ChatLogReporter chatLogReporter =
+            new vini.evictmap.discord.ChatLogReporter(settings);
+
+    /** Worker only: where captured chat lines go for the hub to relay. */
+    private final vini.evictmap.discord.ChatLogFile chatLogFile =
+            new vini.evictmap.discord.ChatLogFile();
+
+    /**
+     * Captures chat, commands, joins and leaves for the chat mirror. The sink
+     * is the only difference between the roles: the hub queues lines for
+     * Discord directly, a worker appends them to its chat.log.
+     */
+    private final vini.evictmap.discord.ChatLogCapture chatLogCapture =
+            new vini.evictmap.discord.ChatLogCapture(
+                    duelWorker ? chatLogFile::append : chatLogReporter::hubLine
+            );
+
     private final DuelServerManager duelServerManager =
-            new DuelServerManager(settings, playerDataManager, this::seedBan);
+            new DuelServerManager(
+                    settings,
+                    playerDataManager,
+                    this::seedBan,
+                    chatLogReporter
+            );
 
     private final vini.evictmap.metrics.MetricsReporter metricsReporter =
             new vini.evictmap.metrics.MetricsReporter(
@@ -199,7 +226,12 @@ public class EvictMapPlugin extends Plugin {
             new vini.evictmap.moderation.BanManager(
                     settings,
                     banLogReporter::log,
-                    banLogReporter::logImport
+                    banLogReporter::logImport,
+                    // The ban announcement was visible in the hub's chat, so
+                    // the chat mirror shows the same line.
+                    line -> chatLogReporter.hubLine(
+                            vini.evictmap.discord.DiscordFormat.playerText(line)
+                    )
             );
 
     /** Worker only: applies the hub's ban list to this match server. */
@@ -238,6 +270,7 @@ public class EvictMapPlugin extends Plugin {
                     duelWorker ? null : discordStatusReporter,
                     duelWorker ? null : banLogReporter,
                     duelWorker ? null : banManager,
+                    duelWorker ? null : chatLogReporter,
                     // evictgen regenerates the live map in place with no fresh snapshot,
                     // so connected clients only see the new terrain via the per-tile sync.
                     seed -> generate(seed, true)
@@ -277,6 +310,10 @@ public class EvictMapPlugin extends Plugin {
             // widens them, writes the list the workers read, and logs them.
             banLogReporter.start();
             banManager.install();
+
+            // Hub only: the Discord chat mirror. Worker chat arrives through
+            // the chat.log files the duel manager tails.
+            chatLogReporter.start();
         }
 
         Events.on(WorldLoadEvent.class, event -> {
@@ -488,11 +525,17 @@ public class EvictMapPlugin extends Plugin {
                 // store exists, then paces the ban log's queue.
                 banManager.update();
                 banLogReporter.update();
+                chatLogReporter.update();
             }
         });
 
+        // After the join/leave handlers above: by the time the mirror's join
+        // listener runs, a name the word filter banned is already kicked and
+        // stays out of the mirror.
+        chatLogCapture.installEvents();
+
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.7.1. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.8.0. Use 'evictstatus' for commands and current settings."
         );
     }
 
@@ -569,7 +612,13 @@ public class EvictMapPlugin extends Plugin {
 
         playerDataManager.start();
 
-        // Before every other chat filter, so a hit is dropped rather than
+        // First of all filters: the mirror is a staff channel and shows even
+        // what the word filter then drops - the announcement of the resulting
+        // ban follows right after it. Logging only, so the word filter's drop
+        // and the ranked spectator routing behave exactly as before.
+        chatLogCapture.installChatFilter();
+
+        // Before every remaining chat filter, so a hit is dropped rather than
         // handed on to whatever the next filter would do with it.
         wordFilter.install();
 
@@ -720,6 +769,14 @@ public class EvictMapPlugin extends Plugin {
 
         runtime.lastSeed = seed;
 
+        // Hub only: one line in the chat mirror per round. A worker's match
+        // is framed by the hub's start/end embeds instead.
+        if (!duelWorker) {
+            chatLogReporter.hubLine(
+                    "🌍 A new round has started (seed " + seed + ")."
+            );
+        }
+
         Log.info(
                 "[EvictMapGenerator] Done. seed=@ normalHexes=@ filledHexes=@ nucleusCores=@ repairedConnectivityEdges=@ resources=@ teams=@",
                 seed,
@@ -797,11 +854,73 @@ public class EvictMapPlugin extends Plugin {
                 runtime.nextSeed
         );
 
+        reportRoundEnd(winner);
+
         Events.fire(new GameOverEvent(winner));
 
         // Best moment for a queued update restart: the fresh process will
         // generate the next round, so no player loses progress.
         restartManager.onRoundEnded();
+    }
+
+    /**
+     * The chat mirror's round-end entry: who won, with whom, how, and how
+     * long the round ran. Read here, before the reset tears the round state
+     * down.
+     */
+    private void reportRoundEnd(Team winner) {
+        boolean fallenWon = winner == TeamManager.FALLEN_TEAM;
+        String leaderUuid = teamManager.leaderUuidOf(winner);
+        StringBuilder members = new StringBuilder();
+
+        if (!fallenWon) {
+            for (String uuid : teamManager.playerUuidsForTeam(winner)) {
+                if (!members.isEmpty()) {
+                    members.append('\n');
+                }
+
+                members.append(
+                        vini.evictmap.discord.DiscordFormat.playerName(
+                                storedPlayerName(uuid)
+                        )
+                );
+
+                if (uuid.equals(leaderUuid)) {
+                    members.append(" 👑");
+                }
+            }
+        }
+
+        chatLogReporter.roundEnded(
+                vini.evictmap.discord.DiscordFormat.playerName(
+                        teamManager.displayTeam(winner)
+                ),
+                members.toString(),
+                teamManager.roundRuntimeMillis() / 1000L,
+                teamManager.lastVictoryDescription(),
+                fallenWon
+        );
+    }
+
+    /**
+     * A round participant's name for the round-end entry: the live name when
+     * connected, the admin store's last name otherwise.
+     */
+    private static String storedPlayerName(String uuid) {
+        Player online = vini.evictmap.core.util.Players.byUuid(uuid);
+
+        if (online != null) {
+            return online.name;
+        }
+
+        mindustry.net.Administration.PlayerInfo info =
+                Vars.netServer == null
+                        ? null
+                        : Vars.netServer.admins.getInfoOptional(uuid);
+
+        return info == null || info.lastName == null || info.lastName.isBlank()
+                ? uuid
+                : info.lastName;
     }
 
     private void assignConnectedPlayersAndRecordStats() {

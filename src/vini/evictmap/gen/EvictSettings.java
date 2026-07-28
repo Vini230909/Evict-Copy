@@ -9,8 +9,10 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.EnumMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * Persistent Evict server tuning values.
@@ -139,6 +141,23 @@ public final class EvictSettings {
      * account's addresses, so it belongs somewhere only staff can read.
      */
     private String discordBanLogWebhookUrl = "";
+
+    /**
+     * Discord chat mirror: one channel id for the hub's chat and one per
+     * worker port, keyed by that port. A missing entry simply means that
+     * server's chat is not mirrored. Staff-only channels - they carry
+     * everything players say. The bot token is deliberately *not* here: it
+     * lives in the read-only secrets file (see {@code core.io.Secrets}), because
+     * this file is rewritten by the plugin and would carry a credential
+     * around. Neither is copied into a worker folder (see the duel manager's
+     * settings sync); workers never talk to Discord.
+     */
+    private String chatLogHubChannel = "";
+    private final TreeMap<Integer, String> chatLogPortChannels = new TreeMap<>();
+
+    private static final String CHAT_LOG_HUB_KEY = "discord.chatlog.hub.channel";
+    private static final String CHAT_LOG_PORT_PREFIX = "discord.chatlog.port.";
+    private static final String CHAT_LOG_PORT_SUFFIX = ".channel";
 
     /**
      * Set once the bans that existed before this feature have been run through
@@ -356,6 +375,7 @@ public final class EvictSettings {
                             "discord.banlog.webhook.url",
                             discordBanLogWebhookUrl
                     ).trim();
+            readChatLogSettings(properties);
             banBackfillDone = readBoolean(
                     properties,
                     "moderation.banBackfillDone",
@@ -544,6 +564,82 @@ public final class EvictSettings {
     public void setDiscordBanLogWebhook(String url) {
         discordBanLogWebhookUrl = url == null ? "" : url.trim();
         save();
+    }
+
+    /** The chat mirror's hub channel id; blank when the hub is not mirrored. */
+    public String chatLogHubChannel() {
+        return chatLogHubChannel;
+    }
+
+    /** The chat mirror's per-port channel ids, sorted by port. */
+    public Map<Integer, String> chatLogPortChannels() {
+        return new TreeMap<>(chatLogPortChannels);
+    }
+
+    /** Points the chat mirror's hub feed at a channel; blank turns it off. */
+    public void setChatLogHubChannel(String channelId) {
+        chatLogHubChannel = channelId == null ? "" : channelId.trim();
+        save();
+    }
+
+    /** Points one port's chat mirror at a channel; blank drops the entry. */
+    public void setChatLogPortChannel(int port, String channelId) {
+        String trimmed = channelId == null ? "" : channelId.trim();
+
+        if (trimmed.isEmpty()) {
+            chatLogPortChannels.remove(port);
+        } else {
+            chatLogPortChannels.put(port, trimmed);
+        }
+
+        save();
+    }
+
+    /**
+     * Drops the whole chat-mirror wiring at once. The token file is left
+     * alone - deleting a credential is the admin's call, not a side effect
+     * of switching the mirror off.
+     */
+    public void clearChatLog() {
+        chatLogHubChannel = "";
+        chatLogPortChannels.clear();
+        save();
+    }
+
+    /**
+     * Reads the chat-mirror wiring. The ports are dynamic keys
+     * ({@code discord.chatlog.port.<port>.channel}), so they are found by
+     * prefix rather than by a fixed name like every other property.
+     */
+    private void readChatLogSettings(Properties properties) {
+        chatLogHubChannel =
+                readString(properties, CHAT_LOG_HUB_KEY, chatLogHubChannel);
+        chatLogPortChannels.clear();
+
+        for (String key : properties.stringPropertyNames()) {
+            if (
+                    !key.startsWith(CHAT_LOG_PORT_PREFIX)
+                            || !key.endsWith(CHAT_LOG_PORT_SUFFIX)
+            ) {
+                continue;
+            }
+
+            String portText = key.substring(
+                    CHAT_LOG_PORT_PREFIX.length(),
+                    key.length() - CHAT_LOG_PORT_SUFFIX.length()
+            );
+
+            try {
+                int port = Integer.parseInt(portText.trim());
+                String url = properties.getProperty(key, "").trim();
+
+                if (!url.isEmpty()) {
+                    chatLogPortChannels.put(port, url);
+                }
+            } catch (NumberFormatException ignored) {
+                // A hand-edited key that is not a port; leave it alone.
+            }
+        }
     }
 
     /**
@@ -1156,6 +1252,15 @@ public final class EvictSettings {
                 "discord.banlog.webhook.url",
                 discordBanLogWebhookUrl
         );
+        properties.setProperty(CHAT_LOG_HUB_KEY, chatLogHubChannel);
+
+        for (Map.Entry<Integer, String> entry : chatLogPortChannels.entrySet()) {
+            properties.setProperty(
+                    CHAT_LOG_PORT_PREFIX + entry.getKey() + CHAT_LOG_PORT_SUFFIX,
+                    entry.getValue()
+            );
+        }
+
         properties.setProperty(
                 "moderation.banBackfillDone",
                 Boolean.toString(banBackfillDone)

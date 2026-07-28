@@ -8,5 +8,9 @@ config/*.db-wal
 
 config/*.properties
 config/evict-bans.txt
+
+# Credentials. Never commit these.
+config/*.env
+config/*.token
 duel-workers/
 bin/

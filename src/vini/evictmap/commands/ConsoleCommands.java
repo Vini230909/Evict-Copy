@@ -7,6 +7,7 @@ import vini.evictmap.round.*;
 import vini.evictmap.core.cmd.Commands;
 import vini.evictmap.core.util.Players;
 import vini.evictmap.discord.BanLogReporter;
+import vini.evictmap.discord.ChatLogReporter;
 import vini.evictmap.moderation.BanManager;
 import vini.evictmap.moderation.WordFilter;
 import vini.evictmap.moderation.WordMatcher;
@@ -52,6 +53,9 @@ public final class ConsoleCommands {
     /** Null on a duel worker: only the hub decides who is banned. */
     private final BanManager banManager;
 
+    /** Null on a duel worker: the hub relays worker chat into Discord. */
+    private final ChatLogReporter chatLogReporter;
+
     private final LongConsumer generate;
 
     private static final int MAX_CORECAP_INCREMENT = 10000;
@@ -70,6 +74,7 @@ public final class ConsoleCommands {
             DiscordStatusReporter discordStatusReporter,
             BanLogReporter banLogReporter,
             BanManager banManager,
+            ChatLogReporter chatLogReporter,
             LongConsumer generate
     ) {
         this.runtime = runtime;
@@ -83,6 +88,7 @@ public final class ConsoleCommands {
         this.discordStatusReporter = discordStatusReporter;
         this.banLogReporter = banLogReporter;
         this.banManager = banManager;
+        this.chatLogReporter = chatLogReporter;
         this.generate = generate;
     }
 
@@ -185,6 +191,11 @@ public final class ConsoleCommands {
                 .args("url/off/test:string?")
                 .description("Discord webhook for the ban log. Staff-only: it posts IPs.")
                 .run(ctx -> handleBanLogCommand(ctx.str("url/off/test", "").trim()));
+
+        commands.command("evictchatlog").console()
+                .args("target:string?", "value:string?")
+                .description("Discord chat mirror: status, setup <server-id>, hub/<port> + channel id, reload, off, test.")
+                .run(ctx -> handleChatLogCommand(ctx.raw()));
 
         commands.command("evictbanimport").console()
                 .args("force:string?")
@@ -295,6 +306,168 @@ public final class ConsoleCommands {
                     Log.err("[EvictMapGenerator] That is not a Discord webhook URL. Copy it from Channel Settings > Integrations > Webhooks.");
                 }
             }
+        }
+    }
+
+    /**
+     * evictchatlog: the Discord chat mirror's wiring. No argument prints the
+     * checklist (token file, hub and every port of the pool - eleven channel
+     * ids are eleven chances to paste one wrong); 'hub'/a port plus a channel
+     * id wires one feed, plus 'off' unwires it; 'reload' re-reads the token
+     * file; bare 'off' drops the channels (never the token file); 'test'
+     * posts a line into every configured channel so the mis-pasted one shows
+     * up as the channel that stays quiet.
+     *
+     * <p>There is deliberately no command that takes the token itself:
+     * anything typed here lands in the server log.
+     */
+    private void handleChatLogCommand(String[] args) {
+        if (chatLogReporter == null) {
+            Log.err("[EvictMapGenerator] The chat mirror only runs on the hub.");
+            return;
+        }
+
+        if (args.length == 0) {
+            Log.info("[EvictMapGenerator] Discord chat mirror:");
+
+            for (String line : chatLogReporter.statusLines(
+                    settings.duelServerPort(),
+                    settings.duelMaxWorkers()
+            )) {
+                Log.info("[EvictMapGenerator]   @", line);
+            }
+
+            Log.info(
+                    "[EvictMapGenerator] Set @ in @ (never typed into this console - it would end up in the log), run 'evictchatlog reload', then 'evictchatlog setup <server-id>' to have the bot create the channels. Staff-only channels - they mirror everything players say.",
+                    chatLogReporter.tokenKey(),
+                    chatLogReporter.tokenPath()
+            );
+            return;
+        }
+
+        String target = args[0].trim().toLowerCase();
+        String value = args.length >= 2 ? args[1].trim() : "";
+
+        switch (target) {
+            case "off" -> {
+                chatLogReporter.disableAll();
+                Log.info(
+                        "[EvictMapGenerator] Chat mirror off everywhere; all channels dropped. The secrets file (@) is left alone - remove the token yourself if the bot is being retired.",
+                        chatLogReporter.tokenPath()
+                );
+            }
+            case "setup" -> {
+                if (value.isEmpty()) {
+                    Log.err("[EvictMapGenerator] Use: evictchatlog setup <server-id> (Discord Developer Mode > right-click the server > Copy Server ID). The bot needs the Manage Channels permission for this.");
+                    return;
+                }
+
+                Log.info("[EvictMapGenerator] Creating the mirror channels in Discord; this takes a few seconds...");
+
+                chatLogReporter.setupChannels(
+                        value,
+                        settings.duelServerPort(),
+                        settings.duelMaxWorkers(),
+                        lines -> {
+                            for (String line : lines) {
+                                Log.info("[EvictMapGenerator] @", line);
+                            }
+                        }
+                );
+            }
+            case "reload" -> {
+                if (chatLogReporter.reloadToken()) {
+                    Log.info("[EvictMapGenerator] Bot token loaded from @. Invite the bot to the server with View Channel + Send Messages on the mirror channels.", chatLogReporter.tokenPath());
+                } else {
+                    Log.err("[EvictMapGenerator] @ is not set in @. Add it there, then run this again.", chatLogReporter.tokenKey(), chatLogReporter.tokenPath());
+                }
+            }
+            case "test" -> {
+                if (!chatLogReporter.hasToken()) {
+                    Log.err("[EvictMapGenerator] No bot token is loaded. Set @ in @ and run 'evictchatlog reload'.", chatLogReporter.tokenKey(), chatLogReporter.tokenPath());
+                    return;
+                }
+
+                int tested = chatLogReporter.publishTest();
+
+                if (tested == 0) {
+                    Log.err("[EvictMapGenerator] No chat-mirror channel is set.");
+                } else {
+                    Log.info("[EvictMapGenerator] Test line queued into @ channel(s). One that stays quiet is wired to the wrong channel id.", tested);
+                }
+            }
+            case "token" -> Log.err(
+                    "[EvictMapGenerator] The token is never typed here - it would be written to the server log. Set @ in @ and run 'evictchatlog reload'.",
+                    chatLogReporter.tokenKey(),
+                    chatLogReporter.tokenPath()
+            );
+            case "hub" -> {
+                if (value.isEmpty()) {
+                    Log.err("[EvictMapGenerator] Use: evictchatlog hub <channel-id/off>");
+                } else if (value.equalsIgnoreCase("off")) {
+                    chatLogReporter.disableHub();
+                    Log.info("[EvictMapGenerator] The hub's chat is no longer mirrored.");
+                } else if (chatLogReporter.configureHub(value)) {
+                    warnIfTokenMissing();
+                    Log.info("[EvictMapGenerator] Hub chat mirror wired up. 'evictchatlog test' verifies every channel.");
+                } else {
+                    Log.err("[EvictMapGenerator] That is not a channel id. Enable Developer Mode in Discord, right-click the channel, Copy Channel ID.");
+                }
+            }
+            default -> handleChatLogPort(target, value);
+        }
+    }
+
+    private void handleChatLogPort(String target, String value) {
+        int port;
+
+        try {
+            port = Integer.parseInt(target);
+        } catch (NumberFormatException exception) {
+            Log.err("[EvictMapGenerator] Use: evictchatlog [setup <server-id> | hub/<port> <channel-id/off> | reload | off | test]");
+            return;
+        }
+
+        int basePort = settings.duelServerPort();
+        int lastPort = basePort + settings.duelMaxWorkers() - 1;
+
+        if (value.isEmpty()) {
+            Log.err("[EvictMapGenerator] Use: evictchatlog @ <channel-id/off>", port);
+            return;
+        }
+
+        if (value.equalsIgnoreCase("off")) {
+            chatLogReporter.disablePort(port);
+            Log.info("[EvictMapGenerator] Port @ is no longer mirrored.", port);
+            return;
+        }
+
+        if (!chatLogReporter.configurePort(port, value)) {
+            Log.err("[EvictMapGenerator] That is not a channel id. Enable Developer Mode in Discord, right-click the channel, Copy Channel ID.");
+            return;
+        }
+
+        warnIfTokenMissing();
+
+        if (port < basePort || port > lastPort) {
+            Log.warn(
+                    "[EvictMapGenerator] Port @ mirror wired up - but the pool currently uses ports @-@, so it will not see a match until that changes.",
+                    port,
+                    basePort,
+                    lastPort
+            );
+        } else {
+            Log.info("[EvictMapGenerator] Port @ chat mirror wired up. 'evictchatlog test' verifies every channel.", port);
+        }
+    }
+
+    private void warnIfTokenMissing() {
+        if (!chatLogReporter.hasToken()) {
+            Log.warn(
+                    "[EvictMapGenerator] No bot token is loaded yet - nothing will be posted until @ is set in @ and 'evictchatlog reload' has run.",
+                    chatLogReporter.tokenKey(),
+                    chatLogReporter.tokenPath()
+            );
         }
     }
 

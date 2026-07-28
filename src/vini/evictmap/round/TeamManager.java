@@ -104,6 +104,13 @@ public final class TeamManager {
     private final Map<String, Integer> teamIdByPlayerUuid = new HashMap<>();
     private final Map<Integer, String> playerNameByTeamId = new HashMap<>();
     private final Map<Integer, String> leaderUuidByTeamId = new HashMap<>();
+
+    /**
+     * How the last finished round was won, in one sentence. Every victory
+     * path writes it just before calling the victory handler; the hub's
+     * round-end report reads it there.
+     */
+    private String lastVictoryDescription = "";
     private final List<Integer> personalTeamCreationOrder = new ArrayList<>();
     private final Map<String, Integer> claimTeamIdByPlayerUuid = new HashMap<>();
     private final Map<Integer, Map<Integer, Integer>>
@@ -1230,6 +1237,8 @@ public final class TeamManager {
 
         resetting = true;
         roundActive = false;
+        lastVictoryDescription =
+                "Ended the round early with at least 50% of all cores (/over).";
 
         Call.sendMessage(
                 "[accent]"
@@ -1329,6 +1338,7 @@ public final class TeamManager {
     private void finishRound(Team winner) {
         resetting = true;
         roundActive = false;
+        lastVictoryDescription = "Conquered every remaining hex.";
 
         String victoryReason = " has conquered every hex and won the round.";
 
@@ -1406,6 +1416,20 @@ public final class TeamManager {
         String leaderUuid = leaderUuidByTeamId.get(team.id);
 
         return leaderUuid == null ? null : onlinePlayer(leaderUuid);
+    }
+
+    /** The uuid of the team's leader, or null. For outside reporting. */
+    public String leaderUuidOf(Team team) {
+        return team == null ? null : leaderUuidByTeamId.get(team.id);
+    }
+
+    /**
+     * How the last finished round was won, for outside reporting (the Discord
+     * chat log's round-end entry). Set by every victory path right before the
+     * victory handler fires, so the handler can read it.
+     */
+    public String lastVictoryDescription() {
+        return lastVictoryDescription;
     }
 
     List<Team> activeTeamsWithOnlineLeader() {
@@ -1612,6 +1636,9 @@ public final class TeamManager {
 
         resetting = true;
         roundActive = false;
+        lastVictoryDescription = winner == FALLEN_TEAM
+                ? "No personal team survived Extinction."
+                : "Held the center core through Extinction's final phase.";
 
         if (winner == FALLEN_TEAM) {
             Call.sendMessage(

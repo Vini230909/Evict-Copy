@@ -64,6 +64,13 @@ public final class BanManager {
     private final Consumer<List<BanReport>> importSink;
 
     /**
+     * Mirrors the chat announcement ("&lt;name&gt; was banned.") into the
+     * Discord chat log, plain text - the line was visible in the hub's chat,
+     * so the mirror shows it too. Details stay in the ban log.
+     */
+    private final Consumer<String> announcementEcho;
+
+    /**
      * True while the cascade is applying its own bans. Every
      * {@code banPlayerID} fires the event this class listens to, so without
      * this the first ban would start a cascade inside a cascade inside a
@@ -85,11 +92,13 @@ public final class BanManager {
     public BanManager(
             EvictSettings settings,
             Consumer<BanReport> reportSink,
-            Consumer<List<BanReport>> importSink
+            Consumer<List<BanReport>> importSink,
+            Consumer<String> announcementEcho
     ) {
         this.settings = settings;
         this.reportSink = reportSink;
         this.importSink = importSink;
+        this.announcementEcho = announcementEcho;
     }
 
     /** Hub-only: start widening bans. Safe to call once. */
@@ -208,17 +217,22 @@ public final class BanManager {
             return;
         }
 
-        Text message = Text.of().scarlet(Strings.stripColors(name));
+        String cleanName = Strings.stripColors(name);
+        String suffix;
 
         if (report.kind() == BanReport.Kind.WORD_FILTER) {
-            message.white(" was banned automatically for using a forbidden word.");
+            suffix = " was banned automatically for using a forbidden word.";
         } else if (report.origin() != null && report.origin().fromMatchServer()) {
-            message.white(" was banned on a match server.");
+            suffix = " was banned on a match server.";
         } else {
-            message.white(" was banned.");
+            suffix = " was banned.";
         }
 
-        message.sendAll();
+        Text.of().scarlet(cleanName).white(suffix).sendAll();
+
+        if (announcementEcho != null) {
+            announcementEcho.accept(cleanName + suffix);
+        }
     }
 
     /**

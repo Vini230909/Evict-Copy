@@ -34,6 +34,9 @@ import mindustry.gen.Groups;
 import mindustry.gen.Player;
 import mindustry.net.Administration;
 import mindustry.world.Block;
+import vini.evictmap.discord.ChatLogReporter;
+import vini.evictmap.discord.ChatLogTail;
+import vini.evictmap.discord.DiscordFormat;
 import vini.evictmap.moderation.BanOrigin;
 import vini.evictmap.moderation.BanRequest;
 import vini.evictmap.moderation.WordFilterHit;
@@ -122,14 +125,30 @@ public final class DuelServerManager {
      */
     private final Consumer<BanRequest> banRequestSink;
 
+    /**
+     * The Discord chat mirror: worker chat lines are relayed into the match's
+     * port channel, framed by a start and an end embed. Inert until the hub
+     * starts the reporter; a worker process never does.
+     */
+    private final ChatLogReporter chatLog;
+
+    /**
+     * Tracks how far each worker's chat.log has been relayed. Reset at spawn
+     * (with the file itself), drained on the status poll and once more on
+     * worker exit - before the end embed, so the last words come first.
+     */
+    private final ChatLogTail chatTail = new ChatLogTail();
+
     public DuelServerManager(
             EvictSettings settings,
             PlayerDataManager playerDataManager,
-            Consumer<BanRequest> banRequestSink
+            Consumer<BanRequest> banRequestSink,
+            ChatLogReporter chatLog
     ) {
         this.settings = settings;
         this.playerDataManager = playerDataManager;
         this.banRequestSink = banRequestSink;
+        this.chatLog = chatLog;
 
         Runtime.getRuntime().addShutdownHook(
                 new Thread(this::destroyAllWorkers, "evict-duel-shutdown")
@@ -190,9 +209,16 @@ public final class DuelServerManager {
         //noinspection ResultOfMethodCallIgnored
         new File(workerDir(port), "status.properties").delete();
 
+        // Same for the previous match's chat file: a fresh match starts a
+        // fresh mirror.
+        //noinspection ResultOfMethodCallIgnored
+        new File(workerDir(port), "chat.log").delete();
+        chatTail.reset(port);
+
         workers.put(port, handle);
 
         announceMatchStart(mode, handle.label);
+        chatLog.matchStarted(port, mode.label(), rosterNames(handle));
 
         spawnExecutor.submit(() -> spawnAndRedirect(handle, rosterUuids));
 
@@ -290,6 +316,9 @@ public final class DuelServerManager {
 
             process.onExit().thenRun(
                     () -> Core.app.post(() -> {
+                        // Chat first: the players' last words belong before
+                        // the end embed in the port channel.
+                        drainWorkerChat(handle.port);
                         logResult(handle);
                         creditFinalPlaytime(handle);
                         releaseSlot(handle);
@@ -567,6 +596,10 @@ public final class DuelServerManager {
                                     status.getProperty("players", "")
                             );
                         }
+
+                        // Same poll, same background thread: relay whatever
+                        // the worker appended to its chat.log since last time.
+                        drainWorkerChat(port);
                     }
 
                     cachedConnectedDuelPlayers = total;
@@ -727,6 +760,19 @@ public final class DuelServerManager {
         }
 
         return null;
+    }
+
+    /**
+     * Relays the new lines of one worker's chat.log into its port channel.
+     * Safe from the background poll and from the main-thread exit path alike:
+     * the tail serialises both, so no line is relayed twice or out of order.
+     */
+    private void drainWorkerChat(int port) {
+        chatTail.drain(
+                port,
+                new File(workerDir(port), "chat.log"),
+                line -> chatLog.portLine(port, line)
+        );
     }
 
     /**
@@ -1066,6 +1112,15 @@ public final class DuelServerManager {
                 String.join(",", bannedBlocks)
         );
 
+        // Workers never talk to Discord, so none of the Discord wiring
+        // belongs in their folders - above all not the chat mirror's bot
+        // token, which is a credential, not a setting.
+        for (String key : new ArrayList<>(properties.stringPropertyNames())) {
+            if (key.startsWith("discord.")) {
+                properties.remove(key);
+            }
+        }
+
         try (FileOutputStream output = new FileOutputStream(
                 new File(workerConfig, "evict-map-generator.properties")
         )) {
@@ -1232,6 +1287,8 @@ public final class DuelServerManager {
                     result.reason()
             );
 
+            reportMatchEnd(handle, mode, result);
+
             // Credit the ranked record and match history on the hub's database;
             // the worker runs in its own process and cannot reach this DB. The
             // colored display names captured at match start let /history render
@@ -1239,11 +1296,25 @@ public final class DuelServerManager {
             // ELO; casual 1v1, Teams and FFA are stored as unranked history
             // entries; Training and Sandbox leave no history at all.
             if (mode.duel().ranked()) {
+                String winnerChatName = chatName(handle, winnerUuid);
+                String loserChatName = chatName(handle, loserUuid);
+
                 playerDataManager.recordRankedResult(
                         winnerUuid,
                         displayNameFor(handle, winnerUuid),
                         loserUuid,
-                        displayNameFor(handle, loserUuid)
+                        displayNameFor(handle, loserUuid),
+                        // The rating movement lands after the write; append it
+                        // to the port channel as its own follow-up line.
+                        elo -> chatLog.portLine(port, String.format(
+                                "📈 %s %d → %d  •  %s %d → %d",
+                                winnerChatName,
+                                elo.winnerBefore(),
+                                elo.winnerAfter(),
+                                loserChatName,
+                                elo.loserBefore(),
+                                elo.loserAfter()
+                        ))
                 );
             } else if (mode == MatchMode.ONE_VS_ONE) {
                 playerDataManager.recordCasualDuelResult(
@@ -1299,6 +1370,87 @@ public final class DuelServerManager {
         }
 
         return uuid;
+    }
+
+    /**
+     * A participant's name as the chat mirror shows it: the plain name from
+     * the spawn roster, sanitised for Discord. Falls back to the uuid - the
+     * channel is staff-only, so a uuid beats an unnamed blank.
+     */
+    private static String chatName(WorkerHandle handle, String uuid) {
+        for (Participant participant : handle.participants) {
+            if (participant.uuid().equals(uuid)) {
+                return DiscordFormat.playerName(participant.plainName());
+            }
+        }
+
+        return uuid == null || uuid.isEmpty() ? "?" : uuid;
+    }
+
+    /** Winner or loser rosters joined for the end embed, sanitised. */
+    private static String chatNames(WorkerHandle handle, List<String> uuids) {
+        StringBuilder names = new StringBuilder();
+
+        for (String uuid : uuids) {
+            if (!names.isEmpty()) {
+                names.append(", ");
+            }
+
+            names.append(chatName(handle, uuid));
+        }
+
+        return names.toString();
+    }
+
+    /**
+     * Frames the match's end in its port channel: winners, losers, duration
+     * and how it ended. Solo sessions (Training, Sandbox) name nobody - the
+     * start embed already did - and only say how the session closed.
+     */
+    private void reportMatchEnd(
+            WorkerHandle handle,
+            MatchMode mode,
+            DuelResult result
+    ) {
+        handle.endReported = true;
+
+        boolean solo = mode.duel().solo();
+        boolean decided = !solo && !result.winnerUuids().isEmpty();
+
+        String howItEnded = switch (result.reason()) {
+            case "victory" -> "Victory.";
+            case "surrender" -> "Ended with /die.";
+            case "sandbox-ended" -> "Closed by the sandbox owner.";
+            default -> DiscordFormat.playerText(result.reason());
+        };
+
+        chatLog.matchEnded(
+                handle.port,
+                mode.label(),
+                solo ? null : chatNames(handle, result.winnerUuids()),
+                solo ? null : chatNames(handle, result.loserUuids()),
+                matchDurationSeconds(handle),
+                howItEnded,
+                decided
+        );
+    }
+
+    /**
+     * The match's playing time for the end embed: the worker's own game clock
+     * from its final status write, falling back to worker uptime when no
+     * status ever landed.
+     */
+    private long matchDurationSeconds(WorkerHandle handle) {
+        Properties status = readStatus(handle.port);
+        long elapsed = status == null
+                ? 0L
+                : parseLong(status.getProperty("elapsedSeconds"));
+
+        if (elapsed > 0L) {
+            return elapsed;
+        }
+
+        return (System.currentTimeMillis() - handle.spawnedAtMillis) / 1000L;
     }
 
     private static List<String> splitUuidList(String packed) {
@@ -1455,6 +1607,23 @@ public final class DuelServerManager {
             workers.remove(handle.port);
             creditedPlaytimeByPort.remove(handle.port);
             activeDuelByUuid.values().removeIf(port -> port == handle.port);
+
+            // Every start embed gets its end embed, whatever way the worker
+            // went: no result file (abandoned, killed, failed to start) still
+            // closes the frame in the port channel.
+            if (!handle.endReported) {
+                handle.endReported = true;
+                chatLog.matchEnded(
+                        handle.port,
+                        handle.mode.label(),
+                        null,
+                        null,
+                        matchDurationSeconds(handle),
+                        "No result — the match was abandoned or the worker stopped.",
+                        false
+                );
+            }
+
             Log.info(
                     "[EvictMapGenerator] 1v1: duel worker on port @ ended; slot is free again.",
                     handle.port
@@ -1597,6 +1766,12 @@ public final class DuelServerManager {
         final List<Participant> participants = new ArrayList<>();
         List<String> adminUuids = new ArrayList<>();
         List<String> bannedBlocks = new ArrayList<>();
+
+        /**
+         * Whether the chat mirror's end embed went out, so the release-time
+         * fallback fires exactly once and only when logResult saw no result.
+         */
+        boolean endReported;
 
         WorkerHandle(int port) {
             this.port = port;

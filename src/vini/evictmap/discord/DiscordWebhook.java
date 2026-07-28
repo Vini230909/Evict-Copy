@@ -56,15 +56,27 @@ final class DiscordWebhook {
     private volatile int consecutiveFailures = 0;
 
     DiscordWebhook(Consumer<String> messageIdSink) {
-        this.messageIdSink = messageIdSink;
+        this(messageIdSink, newClient());
+    }
 
+    /**
+     * Shares an existing client. The chat log runs one webhook per channel -
+     * up to eleven of them - and giving each its own single-thread client
+     * would idle eleven threads for a feature that sends a line a second.
+     */
+    DiscordWebhook(Consumer<String> messageIdSink, HttpClient sharedClient) {
+        this.messageIdSink = messageIdSink;
+        this.client = sharedClient;
+    }
+
+    static HttpClient newClient() {
         ThreadFactory threads = runnable -> {
             Thread thread = new Thread(runnable, "evict-discord");
             thread.setDaemon(true);
             return thread;
         };
 
-        this.client = HttpClient.newBuilder()
+        return HttpClient.newBuilder()
                 .connectTimeout(CONNECT_TIMEOUT)
                 .executor(Executors.newFixedThreadPool(1, threads))
                 .build();
