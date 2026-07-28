@@ -14,11 +14,12 @@ public final class BannedWords {
 
     /** Banned anywhere, including inside a longer word. */
     public static final List<String> WORDS = List.of(
-            "nigger",
+            "nigge",
             "nigga",
             "niga",
             "niggre",
             "ni88er",
+            "niggu"
             "негр",
             "ниггер",
             "нигер",
@@ -27,7 +28,8 @@ public final class BannedWords {
             "faggot",
             "sieg heil",
             "sieg hail",
-            "kill blacks"
+            "kill blacks",
+            "chink"
     );
 
     /**
