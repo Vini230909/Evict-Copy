@@ -24,14 +24,25 @@ import java.util.function.LongSupplier;
  * the hub round just ended (best case: the fresh process generates the next
  * round so nobody loses progress), the hub is empty, or the round is still young
  * (&lt; 10 min, after a 30 s on-screen countdown). Otherwise it waits for the
- * current round to end. Running matches are never killed - {@code evictrestart
- * now} is the only path that kills them, and even it counts down 10 s on the
- * HUD first. {@code evictrestart cancel} aborts either countdown mid-flight.
+ * current round to end - or for the last player to leave: {@link #update()}
+ * watches an already-queued restart and fires once the hub has been empty for
+ * {@link #EMPTY_CONFIRM_MILLIS}, so a long round that simply runs out of players
+ * does not hold the update back. Running matches are never killed -
+ * {@code evictrestart now} is the only path that kills them, and even it counts
+ * down 10 s on the HUD first. {@code evictrestart cancel} aborts either
+ * countdown mid-flight.
  */
 public final class RestartManager {
 
     /** A round younger than this is cheap to interrupt (after a short warning). */
     private static final long YOUNG_ROUND_MILLIS = 10L * 60L * 1000L;
+
+    /**
+     * How long the hub must stay empty before a queued restart fires on it.
+     * Long enough that a single player reconnecting, or the brief gap while the
+     * last of two players swaps servers, does not read as an empty server.
+     */
+    private static final long EMPTY_CONFIRM_MILLIS = 10L * 1000L;
 
     /** Seconds of visible countdown before a young-round restart fires. */
     private static final int WARNING_COUNTDOWN_SECONDS = 30;
@@ -58,6 +69,13 @@ public final class RestartManager {
 
     private boolean queued;
     private long warningSerial;
+
+    /**
+     * When the hub last became empty while a restart was queued, or 0 while it
+     * is not empty. Reset by anyone joining, so the wait always measures one
+     * uninterrupted empty stretch.
+     */
+    private long emptySinceMillis;
 
     /** True while an exit countdown is on screen (warning path or restart now). */
     private boolean exitPending;
@@ -114,6 +132,37 @@ public final class RestartManager {
                 .scarlet(". Reconnect in a moment.")
                 .sendAll();
         countdownThenExit(NOW_COUNTDOWN_SECONDS, "immediate restart");
+    }
+
+    /**
+     * Per-tick watch on an already-queued restart, hub only. The other triggers
+     * are one-shot (queueing, a round ending), so without this a restart queued
+     * during a long round would sit there even after the last player left. Once
+     * the hub has been empty for {@link #EMPTY_CONFIRM_MILLIS} with no worker
+     * running, there is nobody left to disturb: restart.
+     */
+    public void update() {
+        if (!queued || exitPending) {
+            emptySinceMillis = 0L;
+            return;
+        }
+
+        if (hubPlayers.getAsInt() > 0 || activeWorkers.getAsInt() > 0) {
+            emptySinceMillis = 0L;
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+
+        if (emptySinceMillis == 0L) {
+            emptySinceMillis = now;
+            return;
+        }
+
+        if (now - emptySinceMillis >= EMPTY_CONFIRM_MILLIS) {
+            emptySinceMillis = 0L;
+            fireExit("hub empty");
+        }
     }
 
     /** Hook from the hub's round-victory handler: a queued restart fires cleanly here. */
@@ -235,7 +284,10 @@ public final class RestartManager {
             return Text.of().add("Waiting for ").num(workers).add(" duel worker(s) to finish.");
         }
         if (roundAgeMillis.getAsLong() >= YOUNG_ROUND_MILLIS) {
-            return Text.of().add("Waiting for the current round to end.");
+            return Text.of().add(
+                    "Waiting for the current round to end, or for the hub to be empty for "
+                            + (EMPTY_CONFIRM_MILLIS / 1000L) + "s."
+            );
         }
         return Text.of().add("Ready - restarting shortly.");
     }

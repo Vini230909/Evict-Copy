@@ -445,6 +445,11 @@ public class EvictMapPlugin extends Plugin {
                 banSync.update();
             } else {
                 refreshAdvertisedPlayerCount();
+
+                // Lets a queued restart fire once the hub runs empty, instead
+                // of only when the round ends.
+                restartManager.update();
+
                 metricsReporter.update();
                 discordStatusReporter.update();
 
