@@ -5,7 +5,6 @@ import mindustry.Vars;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
-import vini.evictmap.data.RankManager;
 
 /**
  * Duel-worker chat routing. In most modes chat is untouched; a mode that
@@ -17,11 +16,9 @@ import vini.evictmap.data.RankManager;
 public final class DuelChat {
 
     private final DuelWorker referee;
-    private final RankManager rankManager;
 
-    public DuelChat(DuelWorker referee, RankManager rankManager) {
+    public DuelChat(DuelWorker referee) {
         this.referee = referee;
-        this.rankManager = rankManager;
     }
 
     /**
@@ -59,6 +56,8 @@ public final class DuelChat {
      * spectator-chat-restricted mode a casting admin's /t is inverted to reach
      * global chat instead: their normal chat already goes to the spectators, so
      * /t is how they broadcast to the two duelists and everyone else at once.
+     * Hub admins are admins here too - the hub syncs them into every worker
+     * (see {@link vini.evictmap.data.AdminSync}).
      */
     public void registerTeamChatCommand(CommandHandler handler) {
         handler.<Player>register(
@@ -75,7 +74,7 @@ public final class DuelChat {
                     if (
                             referee.duelMode().restrictsSpectatorChat()
                                     && !referee.isParticipant(player.uuid())
-                                    && rankManager.canRestartMatches(player)
+                                    && player.admin
                     ) {
                         Call.sendMessage(player.name + "[white]: " + message);
                         return;

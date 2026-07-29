@@ -73,15 +73,14 @@ public class EvictMapPlugin extends Plugin {
     private final EvictSettings settings = new EvictSettings();
     private final PlayerDataManager playerDataManager =
             new PlayerDataManager();
-    private final RankManager rankManager = new RankManager();
+    private final AdminSync adminSync = new AdminSync();
 
     private final TeamManager teamManager =
             new TeamManager(this::handleVictory);
 
     private final DuelWorker duelWorkerReferee = new DuelWorker();
 
-    private final DuelChat duelChat =
-            new DuelChat(duelWorkerReferee, rankManager);
+    private final DuelChat duelChat = new DuelChat(duelWorkerReferee);
 
     private final AttritionManager attritionManager =
             new AttritionManager(teamManager, settings);
@@ -140,12 +139,7 @@ public class EvictMapPlugin extends Plugin {
             );
 
     private final DuelCommands duelCommands =
-            new DuelCommands(
-                    duelServerManager,
-                    duelWorkerReferee,
-                    rankManager,
-                    this::restartDuelMatch
-            );
+            new DuelCommands(duelServerManager, duelWorkerReferee);
 
     private final HistoryCommands historyCommands =
             new HistoryCommands(playerDataManager);
@@ -266,7 +260,6 @@ public class EvictMapPlugin extends Plugin {
                     teamManager,
                     playerDataManager,
                     duelServerManager,
-                    rankManager,
                     restartManager,
                     duelWorker ? null : discordStatusReporter,
                     duelWorker ? null : banLogReporter,
@@ -397,14 +390,10 @@ public class EvictMapPlugin extends Plugin {
                 return;
             }
 
-            // Re-apply any tournament name tag ([C] etc.); client names reset to
-            // the player's own choice on every reconnect.
-            rankManager.applyNameTag(event.player);
-
             // On a duel worker, restore admin for players the hub synced over;
             // the worker has no access to the hub's own admin list.
             if (duelWorker) {
-                rankManager.markSyncedAdmin(event.player);
+                adminSync.markSyncedAdmin(event.player);
             }
 
             // On the hub: a player who is mid-duel is bounced straight back to
@@ -536,7 +525,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.8.0. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.9.0. Use 'evictstatus' for commands and current settings."
         );
     }
 
@@ -603,11 +592,11 @@ public class EvictMapPlugin extends Plugin {
         MessageIdFilter.install();
 
         settings.load();
-        rankManager.load();
+        adminSync.load();
 
         // A duel worker has no player database of its own: it reads the hub's
         // (it runs in duel-workers/duel-<port>/, so the hub config is two levels
-        // up) so /info, /leaderboard and /history show real numbers on a match
+        // up) so /info, /top and /history show real numbers on a match
         // server, and it never writes - the hub stays the single writer. Set
         // before start(), which would otherwise create a throwaway local DB.
         if (duelWorker) {
@@ -942,44 +931,6 @@ public class EvictMapPlugin extends Plugin {
                 && player != null
                 && !duelWorkerReferee.isParticipant(player.uuid());
     }
-
-    /**
-     * Commentator/admin /restart on a duel worker: regenerate a fresh map and
-     * re-run the countdown without ending the duel or moving anyone, so the two
-     * players and the spectators stay connected.
-     */
-    private void restartDuelMatch() {
-        if (!duelWorker) {
-            return;
-        }
-
-        long seed = runtime.randomSeed();
-
-        Log.info(
-                "[EvictMapGenerator] Duel restart requested. Regenerating with seed @.",
-                seed
-        );
-
-        // A restart is a fresh match: knocked-out FFA players are participants
-        // again, and the regeneration below re-onboards them onto a team.
-        duelWorkerReferee.restoreOutParticipants();
-
-        try {
-            // In-place duel restart keeps both duelists and spectators connected
-            // (no world reload / snapshot), so the new terrain must be pushed to
-            // them tile-by-tile.
-            generate(seed, true);
-        } catch (Exception exception) {
-            Log.err(
-                    "[EvictMapGenerator] Duel restart generation failed.",
-                    exception
-            );
-            return;
-        }
-
-        duelWorkerReferee.restartMatch();
-    }
-
 
     /**
      * Runs one player-event handler isolated from the others. Arc's Events.fire

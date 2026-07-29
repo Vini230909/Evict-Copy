@@ -1,6 +1,6 @@
 # CLAUDE.md — EvictMapGenerator
 
-Server-side Mindustry plugin (game v157.4, Java 17 source) for Evict-style persistent PvP on a procedurally generated hex map. Runs on a dedicated server; clients install nothing. Current version **1.8.0** — `plugin.json` `version` and the startup revision string in `EvictMapPlugin` must always match.
+Server-side Mindustry plugin (game v157.4, Java 17 source) for Evict-style persistent PvP on a procedurally generated hex map. Runs on a dedicated server; clients install nothing. Current version **1.9.0** — `plugin.json` `version` and the startup revision string in `EvictMapPlugin` must always match.
 
 One jar, two roles:
 - **Hub** — the normal Evict FFA server players connect to.
@@ -66,7 +66,7 @@ Round systems:
 - `InviteManager` — join requests, claimed players, leader-managed invites.
 - `PlayerDataManager` — async SQLite (single background writer thread): profiles, playtime, FFA counters, ranked counters + ELO, `/history` match rows.
 - `EloCalculator` — pure Elo math (start 1000, K-factor 32); `PlayerDataManager` persists results.
-- `RankManager` — tournament name tags, worker-synced admin recognition.
+- `AdminSync` — worker-side admin recognition: the hub writes its admin UUIDs into every worker at spawn, the worker reads them back so a hub admin stays an admin on a match server.
 - `PlayerNameFormatter` — live player names for chat/menus: first `[#xxxxxx]` name colour if present, otherwise team colour.
 
 Matches:
@@ -82,7 +82,7 @@ Commands (`commands/`):
 - `HelpCommands` — `/help`.
 - `HistoryCommands` — `/history` `/h`.
 - `InfoCommands` — `/info`.
-- `LeaderboardCommands` — `/leaderboard` (`/top`, `/lb`): ranked ELO ladder over the player DB.
+- `LeaderboardCommands` — `/top`: ranked ELO ladder over the player DB.
 - `RoundEndCommands` — `/die`, `/over`.
 - `RoundTimeCommands` — `/time`.
 
@@ -118,7 +118,7 @@ Commands (`commands/`):
 - One-time stats repair (tracked via `PRAGMA user_version`): pre-1.4 builds counted every casual 1v1 in the ranked counters, so on first startup the plugin recounts normal/ranked counters from the `duel_matches` rows and replays all ranked rows chronologically through `EloCalculator`, rewriting each row's before/after ratings and every player's ELO/peak (manual `evictelo` values from before the repair are replaced).
 - New players start at ELO 1000; peak ELO only ever rises (manual `evictelo` sets never lower it).
 - Playtime flushes at round start, on leave and on shutdown; `/info` and `evictplayerinfo` add live unpersisted session time.
-- Playtime counts time on the match servers too. A worker has no database of its own: it reads the hub's (`../../config/evict-players.db`) so `/info`, `/leaderboard` and `/history` show real numbers on a match server, and it never writes. It publishes a running per-UUID total in `status.properties`; the hub diffs it every poll (~2 s) plus once more on worker exit and credits the growth, so a repeated or missed poll can neither double-count nor lose time. A reused worker folder's old status file is deleted at spawn so its totals cannot be credited twice.
+- Playtime counts time on the match servers too. A worker has no database of its own: it reads the hub's (`../../config/evict-players.db`) so `/info`, `/top` and `/history` show real numbers on a match server, and it never writes. It publishes a running per-UUID total in `status.properties`; the hub diffs it every poll (~2 s) plus once more on worker exit and credits the growth, so a repeated or missed poll can neither double-count nor lose time. A reused worker folder's old status file is deleted at spawn so its totals cannot be credited twice.
 - Lookup order for `/info [name]`, `evictplayerinfo`, `evictelo`: partial latest-name match first; old names and UUIDs only if no latest-name match. Ambiguous `evictelo` names list candidates and change nothing.
 - `/info` is public, never shows UUIDs to normal players — a server admin viewer additionally gets the subject's UUID (IPs stay console-only). No argument opens a clickable online-player picker; a name that matches exactly one stored player prints their stats, and a name matching several opens the same picker built from the matches (newest-seen first, capped, refine for the rest) instead of a text list.
 
@@ -128,9 +128,9 @@ Commands (`commands/`):
 - `/die` — leader-only surrender, available only after the round has run 10 minutes; before that it must not show a countdown. At 10 minutes a global status message lists active match player names only (no team/core counts, no mention of `/die`). No confirmation. Instantly destroys all team buildings/units, converts hexes to Fallen, restores Fallen Nucleus cores. If exactly one active personal team destroyed the most surrendered cores, players and claims transfer to it; otherwise claims are released.
 - `/over` — any personal-team player; needs ≥ 50% of all cores; teams that never owned more than one core don't block it; teams that expanded must be fully eliminated. No confirmation. Disabled once the 10-minute Extinction warning begins.
 - `/time` — round runtime since map start + the player's connected time since first join this round (join records remembered across startup scans; fallback is round start).
-- `/help [page]` — paginated; never lists itself; aliases fold into their target's row (e.g. `/history (/h)`); `/restart` is listed with its commentator/admin description and stays permission-gated. There is no separate dev help — former dev chat commands are console-only (`evictattritioncore`, `evictattritionrange`, `evictwall`, `evictcorecap`).
+- `/help [page]` — paginated; aliases fold into their target's row (e.g. `/history (/h)`). The listed rows and their order are fixed in `HelpCommands.DISPLAY_ORDER` (`/t`, `/sync`, `/invite`, `/die`, `/over`, `/time`, `/play`, `/view`, `/fullassault`, `/history`, `/info`, `/top`, `/a`, `/ban`); a registered command that is not named there still shows up, after those rows, so nothing goes silently missing. `HIDDEN` drops `/help` itself and vanilla's `/votekick` + `/vote`, which are disabled on this server. Permission-gated commands such as `/ban` are listed and stay gated at execution. There is no separate dev help — former dev chat commands are console-only (`evictattritioncore`, `evictattritionrange`, `evictwall`, `evictcorecap`).
 - `/history` (`/h`) — a player's 1v1, Teams and FFA matches, most recent first.
-- `/leaderboard` (`/top`, `/lb`) — the ranked ELO ladder (players with ≥ 1 ranked match), highest first; optional count (1–25, default 10).
+- `/top` — the ranked ELO ladder (players with ≥ 1 ranked match), highest first; optional count (1–25, default 10). One command, no aliases.
 
 ### Matches (`/play`, `/p`)
 Game-mode menu: `1v1`, `Ranked`, `Teams`, `Random Teams`, `FFA`, `Training`, `Sandbox`.
@@ -144,7 +144,7 @@ Game-mode menu: `1v1`, `Ranked`, `Teams`, `Random Teams`, `FFA`, `Training`, `Sa
 
 All modes run the same generated Evict map and worker rules: wait-for-everyone start gate, 5 s countdown, disconnect pause with rejoin window.
 
-Chat routing (workers only): every mode except **Ranked** uses normal global chat for everyone. In a **Ranked** match only the two duelists chat on global; viewers and casting admins have their normal chat routed to the spectators' chat instead (so nobody can leak information to the players). A casting admin (`RankManager.canRestartMatches` — server admin or ranked commentator) reaches global with an inverted `/t`: their normal chat goes to spectators, and `/t` broadcasts to everyone. Plain viewers have no path to global. The hub's `/t` is left vanilla; the worker overrides `/t` for this.
+Chat routing (workers only): every mode except **Ranked** uses normal global chat for everyone. In a **Ranked** match only the two duelists chat on global; viewers and casting admins have their normal chat routed to the spectators' chat instead (so nobody can leak information to the players). A casting admin (a server admin; the hub syncs its admins into every worker, see `AdminSync`) reaches global with an inverted `/t`: their normal chat goes to spectators, and `/t` broadcasts to everyone. Plain viewers have no path to global. The hub's `/t` is left vanilla; the worker overrides `/t` for this.
 
 Worker infrastructure:
 - One Mindustry process hosts one game, so each match gets its own worker process — spawned on demand, never idle.
@@ -216,7 +216,7 @@ Hub-sent, staff-only. Operator setup walkthrough: `docs/CHATLOG_SETUP.md`. Mirro
 Hub-only. One webhook message in a Discord channel (`#serverstatus`), edited in place every **30 s** — never a new message, and an edit notifies nobody. Two embeds: server status (player count vs. the server's slot cap, lobby/match split only while a match runs, round runtime + Extinction countdown, running matches, and a `⚠️ Restart queued` field that appears only while a restart is queued) and the top-10 ranked ELO ladder.
 - Refresh is unconditional, not change-detected. The closing `Updated <t:…:R>` line is a Discord relative timestamp that counts up client-side, so a healthy server always reads "seconds ago" and a stuck one is visible by the number growing.
 - Matches are identified by **pool slot** (1..`maxWorkers`), never by port, with mode label, rosters and worker uptime. Names come from the spawn-time roster (`DuelServerManager.matchStatuses()`), so a match still lists everyone after a disconnect.
-- The ladder is re-queried every 5 min, and immediately whenever a stored rating changes (a ranked result or `evictelo`) — otherwise it would disagree with `/info` and `/leaderboard` until the slow refresh came round. The message still redraws every 30 s from the cache.
+- The ladder is re-queried every 5 min, and immediately whenever a stored rating changes (a ranked result or `evictelo`) — otherwise it would disagree with `/info` and `/top` until the slow refresh came round. The message still redraws every 30 s from the cache.
 - Player names are user-controlled, so every name passes `DiscordFormat.playerName`: strip Mindustry colour tags → strip control chars → collapse whitespace → truncate to 24 → backslash-escape `\ * _ ~ ` |` (escape last, so a cut never splits an escape pair). Independently, every payload sets `allowed_mentions: {"parse": []}` — that, not the escaping, is what stops a player named `@everyone` from pinging the whole Discord server twice a minute.
 - Message id is persisted (`discord.message.id`) so restarts keep editing the same message. A 404 while editing means someone deleted it → post a fresh one; a 404 while creating means the webhook is gone → stop and log. 401/403 disables; 429 backs off for `retry_after`; transient failures are logged on the 1st and then every 20th.
 - Clean shutdown posts `🔴 Offline` from a JVM shutdown hook (blocking send, 3 s budget), so `evictrestart` and normal stops are covered. A hard crash cannot reach it — that is what the counting timestamp is for.

@@ -11,14 +11,15 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 
 /**
  * Replaces vanilla /help with the Evict help menu.
  * /help never lists itself, and an alias registration (description
  * "Alias for /x.") gets no row of its own - it is folded into its target's
- * row, e.g. "/history (/h)". Permission-gated commands such as /restart stay
- * gated at execution; the menu only lists them.
+ * row, e.g. "/history (/h)". Permission-gated commands such as /ban stay gated
+ * at execution; the menu only lists them.
  * Supported forms:
  * - /help
  * - /help 2
@@ -32,6 +33,39 @@ public final class HelpCommands {
      * another command.
      */
     private static final String ALIAS_DESCRIPTION_PREFIX = "Alias for /";
+
+    /**
+     * The order the menu lists commands in - registration order mixes vanilla
+     * and plugin commands and reads arbitrarily. A registered command that is
+     * not named here still shows up, after these rows, so a new command is
+     * never silently invisible.
+     */
+    private static final List<String> DISPLAY_ORDER = List.of(
+            "t",
+            "sync",
+            "invite",
+            "die",
+            "over",
+            "time",
+            "play",
+            "view",
+            "fullassault",
+            "history",
+            "info",
+            "top",
+            "a",
+            "ban"
+    );
+
+    /**
+     * Commands that exist but are never listed: /help itself, plus the vanilla
+     * vote-kick pair, which is disabled on this server.
+     */
+    private static final Set<String> HIDDEN = Set.of(
+            "help",
+            "votekick",
+            "vote"
+    );
 
     void registerClientCommands(CommandHandler handler) {
         /*
@@ -104,9 +138,10 @@ public final class HelpCommands {
     }
 
     /**
-     * The rows /help shows, in registration order: /help itself and alias
-     * registrations are dropped, and every remaining command becomes one row
-     * that carries its aliases.
+     * The rows /help shows: hidden and alias registrations are dropped, every
+     * remaining command becomes one row carrying its aliases, and the rows are
+     * put into {@link #DISPLAY_ORDER} (anything unlisted trails behind in
+     * registration order).
      */
     private List<HelpEntry> entriesFor(CommandHandler handler) {
         Seq<Command> commands = handler.getCommandList();
@@ -127,7 +162,7 @@ public final class HelpCommands {
 
         for (Command command : commands) {
             if (
-                    "help".equals(command.text)
+                    HIDDEN.contains(command.text)
                             || aliasTarget(command) != null
             ) {
                 continue;
@@ -139,7 +174,22 @@ public final class HelpCommands {
             ));
         }
 
+        entries.sort((left, right) -> Integer.compare(
+                displayRank(left.command().text),
+                displayRank(right.command().text)
+        ));
+
         return entries;
+    }
+
+    /**
+     * Position in the menu; an unlisted command sorts after every listed one.
+     * The sort is stable, so unlisted commands keep their registration order.
+     */
+    private static int displayRank(String name) {
+        int index = DISPLAY_ORDER.indexOf(name);
+
+        return index < 0 ? DISPLAY_ORDER.size() : index;
     }
 
     /**

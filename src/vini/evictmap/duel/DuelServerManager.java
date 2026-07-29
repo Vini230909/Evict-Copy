@@ -1053,9 +1053,7 @@ public final class DuelServerManager {
 
         copyDirectory(new File("config/mods"), new File(workerConfig, "mods"));
 
-        // Refreshed every spawn so the worker knows the current commentators
-        // (name tags + /restart permission) and hub admins.
-        copyRanksFile(workerConfig);
+        // Refreshed every spawn so the worker recognizes the hub's admins.
         writeAdminsFile(workerConfig, handle.adminUuids);
 
         // Refreshed every spawn so the worker's terrain/ore/water generation and
@@ -1064,20 +1062,6 @@ public final class DuelServerManager {
         copySettingsFile(workerConfig, handle.bannedBlocks);
 
         return workerDir;
-    }
-
-    private static void copyRanksFile(File workerConfig) throws IOException {
-        File source = new File("config/evict-ranks.properties");
-
-        if (!source.exists()) {
-            return;
-        }
-
-        Files.copy(
-                source.toPath(),
-                new File(workerConfig, "evict-ranks.properties").toPath(),
-                StandardCopyOption.REPLACE_EXISTING
-        );
     }
 
     /**

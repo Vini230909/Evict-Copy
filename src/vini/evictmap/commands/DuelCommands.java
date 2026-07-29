@@ -91,8 +91,6 @@ public final class DuelCommands {
 
     private final DuelServerManager duelManager;
     private final DuelWorker worker;
-    private final RankManager rankManager;
-    private final Runnable restartMatch;
 
     private final int modeMenuId;
     private final int selectionMenuId;
@@ -143,14 +141,10 @@ public final class DuelCommands {
 
     public DuelCommands(
             DuelServerManager duelManager,
-            DuelWorker worker,
-            RankManager rankManager,
-            Runnable restartMatch
+            DuelWorker worker
     ) {
         this.duelManager = duelManager;
         this.worker = worker;
-        this.rankManager = rankManager;
-        this.restartMatch = restartMatch;
         this.modeMenuId = Menus.registerMenu(this::handleModeSelection);
         this.selectionMenuId = Menus.registerMenu(this::handleSelection);
         this.challengeMenuId = Menus.registerMenu(this::handleChallengeResponse);
@@ -183,12 +177,6 @@ public final class DuelCommands {
                 "v",
                 "Alias for /view.",
                 (args, player) -> handleViewCommand(player)
-        );
-
-        handler.<Player>register(
-                "restart",
-                "Commentator/admin: restart the match you are spectating with a fresh map.",
-                (args, player) -> handleRestartCommand(player)
         );
     }
 
@@ -1157,39 +1145,6 @@ public final class DuelCommands {
                     "[scarlet]That match is no longer available.[]"
             );
         }
-    }
-
-    /**
-     * Restarts the current match with a fresh map. Only on a worker, only for
-     * an admin or commentator, and only for a spectator (never a participant).
-     */
-    private void handleRestartCommand(Player player) {
-        if (player == null) {
-            return;
-        }
-
-        if (!worker.isActive()) {
-            player.sendMessage(
-                    "[scarlet]/restart can only be used on a match server.[]"
-            );
-            return;
-        }
-
-        if (!rankManager.canRestartMatches(player)) {
-            player.sendMessage(
-                    "[scarlet]Only commentators and admins can restart a match.[]"
-            );
-            return;
-        }
-
-        if (worker.isParticipant(player.uuid())) {
-            player.sendMessage(
-                    "[scarlet]You can't restart a match you are playing in.[]"
-            );
-            return;
-        }
-
-        restartMatch.run();
     }
 
     /**

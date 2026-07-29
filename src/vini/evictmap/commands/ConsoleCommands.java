@@ -5,7 +5,6 @@ import vini.evictmap.gen.*;
 import vini.evictmap.data.*;
 import vini.evictmap.round.*;
 import vini.evictmap.core.cmd.Commands;
-import vini.evictmap.core.util.Players;
 import vini.evictmap.discord.BanLogReporter;
 import vini.evictmap.discord.ChatLogReporter;
 import vini.evictmap.moderation.BanManager;
@@ -19,9 +18,7 @@ import arc.util.Log;
 import mindustry.Vars;
 import mindustry.content.Blocks;
 import mindustry.game.Team;
-import mindustry.gen.Player;
 
-import java.util.Map;
 import java.util.function.LongConsumer;
 
 /**
@@ -41,7 +38,6 @@ public final class ConsoleCommands {
     private final TeamManager teamManager;
     private final PlayerDataManager playerDataManager;
     private final DuelServerManager duelServerManager;
-    private final RankManager rankManager;
     private final RestartManager restartManager;
 
     /** Null on a duel worker, which never reports to Discord. */
@@ -69,7 +65,6 @@ public final class ConsoleCommands {
             TeamManager teamManager,
             PlayerDataManager playerDataManager,
             DuelServerManager duelServerManager,
-            RankManager rankManager,
             RestartManager restartManager,
             DiscordStatusReporter discordStatusReporter,
             BanLogReporter banLogReporter,
@@ -83,7 +78,6 @@ public final class ConsoleCommands {
         this.teamManager = teamManager;
         this.playerDataManager = playerDataManager;
         this.duelServerManager = duelServerManager;
-        this.rankManager = rankManager;
         this.restartManager = restartManager;
         this.discordStatusReporter = discordStatusReporter;
         this.banLogReporter = banLogReporter;
@@ -213,11 +207,6 @@ public final class ConsoleCommands {
         commands.command("evictduelstatus").console()
                 .description("List the active worker servers and who is in them.")
                 .run(ctx -> duelServerManager.logStatus());
-
-        commands.command("evictrank").console()
-                .args("action:string?", "uuid:string?", "rank:string?")
-                .description("Grant, revoke or list tournament ranks by UUID.")
-                .run(ctx -> handleRankCommand(ctx.raw()));
 
         commands.command("evicttime").console()
                 .args("time:string?")
@@ -753,88 +742,6 @@ public final class ConsoleCommands {
 
         Log.info("[EvictMapGenerator] setting time to @", parsedTime);
         teamManager.setElapsedTimeMillis(parsedTime * 1000);
-    }
-
-    private void handleRankCommand(String[] args) {
-        if (args.length == 0 || args[0].equalsIgnoreCase("list")) {
-            listRanks();
-            return;
-        }
-
-        String action = args[0].trim().toLowerCase();
-
-        if (action.equals("add") || action.equals("grant") || action.equals("set")) {
-            addRank(args);
-            return;
-        }
-
-        if (action.equals("remove") || action.equals("revoke") || action.equals("delete")) {
-            removeRank(args);
-            return;
-        }
-
-        Log.err("[EvictMapGenerator] Use: evictrank [list/add/remove] [uuid] [rank]");
-    }
-
-    private void addRank(String[] args) {
-        if (args.length < 2) {
-            Log.err("[EvictMapGenerator] Use: evictrank add <uuid> [commentator]");
-            return;
-        }
-
-        String uuid = args[1].trim();
-        RankManager.Rank rank = args.length >= 3 ? RankManager.Rank.parse(args[2]) : RankManager.Rank.COMMENTATOR;
-
-        if (rank == null) {
-            Log.err("[EvictMapGenerator] Unknown rank '@'. Known ranks: commentator.", args[2]);
-            return;
-        }
-
-        if (!rankManager.grant(uuid, rank)) {
-            Log.err("[EvictMapGenerator] Could not grant the rank; check the UUID.");
-            return;
-        }
-
-        applyTagToOnline(uuid);
-        Log.info("[EvictMapGenerator] Granted @ to @. Applies to matches started from now on.", rank.title, uuid);
-    }
-
-    private void removeRank(String[] args) {
-        if (args.length < 2) {
-            Log.err("[EvictMapGenerator] Use: evictrank remove <uuid>");
-            return;
-        }
-
-        String uuid = args[1].trim();
-
-        if (!rankManager.revoke(uuid)) {
-            Log.info("[EvictMapGenerator] @ had no rank to remove.", uuid);
-            return;
-        }
-
-        applyTagToOnline(uuid);
-        Log.info("[EvictMapGenerator] Removed the rank from @.", uuid);
-    }
-
-    private void listRanks() {
-        Map<String, RankManager.Rank> ranks = rankManager.snapshot();
-
-        if (ranks.isEmpty()) {
-            Log.info("[EvictMapGenerator] No tournament ranks are granted.");
-            return;
-        }
-
-        Log.info("[EvictMapGenerator] Tournament ranks (@):", ranks.size());
-        for (Map.Entry<String, RankManager.Rank> entry : ranks.entrySet()) {
-            Log.info("[EvictMapGenerator]   @ = @", entry.getKey(), entry.getValue().title);
-        }
-    }
-
-    private void applyTagToOnline(String uuid) {
-        Player player = Players.byUuid(uuid);
-        if (player != null) {
-            rankManager.applyNameTag(player);
-        }
     }
 
     private void configureWalls(String[] args) {

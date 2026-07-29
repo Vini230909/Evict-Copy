@@ -34,7 +34,7 @@ public final class PlayerDataManager {
     /**
      * Database every read goes to. Defaults to this server's own DB. A duel
      * worker points this at the hub DB (the worker's own DB is empty - it never
-     * writes one), so /info, /leaderboard and /history on a match server show
+     * writes one), so /info, /top and /history on a match server show
      * the same numbers as the hub instead of blank profiles.
      */
     private volatile File readDatabaseFile = DATABASE_FILE;
@@ -315,7 +315,7 @@ public final class PlayerDataManager {
 
     /**
      * The top ranked players by ELO (only those who have played a ranked match),
-     * highest first, for the /leaderboard command. Delivered on the main thread.
+     * highest first, for the /top command. Delivered on the main thread.
      */
     public void topRankedByElo(
             int limit,

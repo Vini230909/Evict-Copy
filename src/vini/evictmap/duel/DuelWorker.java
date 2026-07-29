@@ -217,7 +217,7 @@ public final class DuelWorker {
      * in milliseconds. A player only freezes the match for whatever is left of
      * their personal {@link #REJOIN_SECONDS} budget - leaving again does not
      * refill it, so leave/rejoin cycling cannot pause the match forever.
-     * Cleared on /restart so a fresh match grants fresh budgets.
+     * Reset per match so a fresh match grants fresh budgets.
      */
     private final Map<String, Long> usedPauseMillisByUuid = new HashMap<>();
 
@@ -251,7 +251,7 @@ public final class DuelWorker {
      * disconnect pause no longer waits for them - otherwise one permanent
      * leaver would make every future pause run its full length even though
      * everyone still competing is present. Rejoining removes the waiver.
-     * Cleared on /restart.
+     * Reset per match.
      */
     private final Set<String> waivedUuids = new HashSet<>();
 
@@ -372,20 +372,6 @@ public final class DuelWorker {
         if (participantUuids.remove(uuid)) {
             outUuids.add(uuid);
         }
-    }
-
-    /**
-     * A commentator /restart begins a fresh match, so previously eliminated
-     * FFA players rejoin the roster as full participants. Must run before the
-     * map regenerates so the team assignment picks them up again.
-     */
-    public void restoreOutParticipants() {
-        if (!active || outUuids.isEmpty()) {
-            return;
-        }
-
-        participantUuids.addAll(outUuids);
-        outUuids.clear();
     }
 
     /**
@@ -1043,7 +1029,7 @@ public final class DuelWorker {
 
         // The camera-settle window leaves the world running, so freeze it now to
         // hold both duelists still through the "starts in N" countdown. Harmless
-        // if it is already paused (e.g. a commentator /restart).
+        // if it is already paused.
         pauseGame();
         startFreezeApplied = true;
 
@@ -1109,63 +1095,6 @@ public final class DuelWorker {
                 2,
                 TimeUnit.SECONDS
         );
-    }
-
-    /**
-     * Resets the match back to the pre-countdown state after the world has been
-     * regenerated, so a commentator's /restart re-freezes both duelists and runs
-     * a fresh countdown. Bumping the serial invalidates any countdown still in
-     * flight from the previous match. Sandbox skips all of that and just keeps
-     * running in the regenerated world.
-     */
-    public void restartMatch() {
-        if (!active) {
-            return;
-        }
-
-        matchSerial++;
-        disconnectSerial++;
-        countdownStarted = false;
-        matchStarted = false;
-        pausedForDisconnect = false;
-        resolved = false;
-        matchStartMillis = 0L;
-
-        // A restart is a fresh match: everyone gets their full rejoin budget
-        // back, and a pause that was running is not charged to anyone. The
-        // world regenerates, so the plan guard is dropped without a scrub.
-        usedPauseMillisByUuid.clear();
-        waivedUuids.clear();
-        pauseAbsenceStartMillis.clear();
-        cancelPauseTicker();
-        planGuardActive = false;
-        pausePlanKeysByUuid.clear();
-        planGuardExemptUuids.clear();
-
-        hideHud();
-        Call.sendMessage("[accent]The match was restarted by a commentator.[]");
-
-        // Ungated modes (Sandbox) never freeze: resume straight into the
-        // regenerated world instead of gating on a countdown that never fires.
-        if (!duelMode.gated()) {
-            matchStarted = true;
-            matchStartMillis = System.currentTimeMillis();
-
-            if (Vars.state.isPaused()) {
-                resumeGame();
-            }
-
-            return;
-        }
-
-        pauseGame();
-        startFreezeApplied = true;
-
-        if (bothPlayersPresent()) {
-            startCountdown();
-        } else {
-            showWaitingHud();
-        }
     }
 
     private void beginDisconnectPause(Player player) {

@@ -6,7 +6,7 @@ import vini.evictmap.core.cmd.Commands;
 import vini.evictmap.core.text.Text;
 
 /**
- * {@code /leaderboard} ({@code /top}, {@code /lb}) - the ranked ELO ladder.
+ * {@code /top} - the ranked ELO ladder.
  *
  * <p>A player-facing view over data the plugin already stores in
  * {@code evict-players.db}. Built on the command framework and the
@@ -26,7 +26,7 @@ public final class LeaderboardCommands {
     public void registerClientCommands(CommandHandler handler) {
         Commands commands = new Commands();
 
-        commands.command("leaderboard").aliases("top", "lb").client()
+        commands.command("top").client()
                 .args("count:int?")
                 .description("Show the top 1v1 players by ELO.")
                 .run(ctx -> {

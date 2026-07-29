@@ -30,17 +30,13 @@ A server-side Mindustry plugin for Evict-style persistent PvP on a procedurally 
 /view (/v)
 /history (/h)
 /info [player]
+/top [count]
 /fullassault (/fa)
 /invite [number]
+/ban [player]
 /die
 /over
 /time
-```
-
-## Development Commands
-
-```text
-/restart
 ```
 
 The gameplay tuning that used to be dev chat commands lives on the server

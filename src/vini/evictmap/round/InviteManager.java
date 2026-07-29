@@ -63,7 +63,7 @@ public final class InviteManager {
         handler.register(
                 "invite",
                 "[number]",
-                "List or use Evict team invitations.",
+                "List or use team invitations.",
                 this::handleInvite
         );
     }

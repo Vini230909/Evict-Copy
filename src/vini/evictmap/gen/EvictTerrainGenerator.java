@@ -128,7 +128,7 @@ public final class EvictTerrainGenerator {
      *                      clients, so the extra per-tile flood is redundant and - layered on top
      *                      of the snapshot stream - is what overflows client connections and
      *                      drops them with "(error)" at match end. Only in-place regeneration
-     *                      (duel /restart, evictgen on a live map) needs the per-tile push,
+     *                      (evictgen on a live map) needs the per-tile push,
      *                      because no fresh snapshot is sent there.
      */
     public GeneratedRound generate(long seed, boolean syncToClients) {

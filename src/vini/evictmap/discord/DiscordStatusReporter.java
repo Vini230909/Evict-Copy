@@ -137,7 +137,7 @@ public final class DiscordStatusReporter {
      * Drops the cached ladder so the next update re-queries it. Wired to every
      * rating change: without it a finished ranked match would keep showing the
      * pre-match ratings for up to {@link #LADDER_REFRESH_MILLIS}, disagreeing
-     * with /info and /leaderboard the whole time.
+     * with /info and /top the whole time.
      */
     public void markLadderStale() {
         lastLadderRefreshMillis = 0L;
