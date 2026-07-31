@@ -104,10 +104,9 @@ public final class BanSync {
     private void apply(BanList.Snapshot snapshot) {
         Administration admins = Vars.netServer.admins;
 
-        // Lifted bans go first. Applying an IP ban flips every local account
-        // that has used the address, and those accounts are not in the hub's
-        // list by name - running the cleanup afterwards would read them as
-        // stale and unban them again, address and all, once every poll.
+        // Lifted bans go first: dropping a stale address also clears the
+        // accounts an older build flipped through it, and the loops below then
+        // restore whatever the hub still lists.
         int removed = dropLiftedBans(admins, snapshot);
         int added = 0;
 
@@ -118,11 +117,25 @@ public final class BanSync {
             }
         }
 
+        // Addresses go onto the list directly, never through banPlayerIP. That
+        // method flips every locally known account that has ever used the
+        // address, so one shared address - CGNAT, a VPN endpoint, a household -
+        // banned bystanders here who were never banned on the hub, and the hub
+        // has no idea it happened. Same rule the hub itself follows in
+        // BanManager.apply. A quietly added address still refuses the
+        // connection; it just does not brand the accounts behind it.
+        boolean addressesAdded = false;
+
         for (String ip : snapshot.ips()) {
             if (!admins.bannedIPs.contains(ip, false)) {
-                admins.banPlayerIP(ip);
+                admins.bannedIPs.add(ip);
+                addressesAdded = true;
                 added++;
             }
+        }
+
+        if (addressesAdded) {
+            admins.save();
         }
 
         int kicked = kickBanned(snapshot);
@@ -140,6 +153,13 @@ public final class BanSync {
     /**
      * Lifts bans the hub no longer lists. The worker's store is a copy of the
      * hub's decisions, so anything in it that the hub has dropped is stale.
+     *
+     * <p>An account is kept banned only when the hub lists it by UUID. Sharing
+     * an address with a banned account is deliberately not enough: the hub
+     * decides who is banned, and it never widens an address on to the accounts
+     * behind it. This also repairs stores where an older build had flipped
+     * bystanders through {@code banPlayerIP} - they were held banned forever by
+     * the very address that branded them.
      */
     private int dropLiftedBans(
             Administration admins,
@@ -154,10 +174,7 @@ public final class BanSync {
                 continue;
             }
 
-            // Not listed by UUID, but banned because of an address the hub
-            // bans: that is a live ban, not a leftover. Unbanning it would
-            // also strip the address out of the ban list.
-            if (snapshot.uuids().contains(info.id) || usesBannedIp(info, snapshot)) {
+            if (snapshot.uuids().contains(info.id)) {
                 continue;
             }
 
@@ -183,25 +200,6 @@ public final class BanSync {
         }
 
         return removed;
-    }
-
-    /** True when this account has ever connected from an address the hub bans. */
-    private static boolean usesBannedIp(PlayerInfo info, BanList.Snapshot snapshot) {
-        if (info.lastIP != null && snapshot.ips().contains(info.lastIP)) {
-            return true;
-        }
-
-        if (info.ips == null) {
-            return false;
-        }
-
-        for (String ip : info.ips) {
-            if (snapshot.ips().contains(ip)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /** Removes connected players the hub has banned, mid-match included. */
