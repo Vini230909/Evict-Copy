@@ -25,11 +25,11 @@ generated hex map. Players connect and play — nothing to install.
 
 `/play` starts a real match on its own server, spawned on demand:
 
-- **1v1** — casual
-- **Ranked** — rated, ELO and ladder
+- **Unranked** — casual duel, nothing at stake
+- **1v1** — the rated duel: ELO and the ladder
 - **Teams** / **Random Teams** — up to 8 rosters
 - **FFA** — everyone for themselves
-- **Training** / **Sandbox** — no stakes
+- **Training** / **Sandbox** — solo, nothing recorded
 
 Everyone waits for everyone, 5 s countdown, disconnects pause the
 match. Results and playtime go back into the stats database.
@@ -42,25 +42,6 @@ match. Results and playtime go back into the stats database.
 /invite [n]    /fullassault (/fa)
 /die           /over          /time
 /ban [name]    (admin)
-```
-
-## Server side
-
-- Stats in SQLite: playtime, matches, ELO, match history.
-- Bans are widened over the account's own addresses, kicked
-  everywhere at once and synced into running matches.
-- Word filter bans automatically, in chat and in player names.
-- Discord: live status message, ban log, chat mirror.
-- Console tuning for ores, water, walls, attrition and the match
-  pool, persisted across restarts.
-- `evictrestart` for a graceful update restart.
-
-## Installation
-
-Build the jar and drop it into the server's `config/mods`:
-
-```bash
-./gradlew jar
 ```
 
 ## Credits
