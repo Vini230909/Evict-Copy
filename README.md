@@ -1,94 +1,76 @@
 # Evict Map Generator
 
-A server-side Mindustry plugin for Evict-style persistent PvP on a procedurally generated hex map.
+Server-side Mindustry plugin for Evict-style PvP on a procedurally
+generated hex map. Players connect and play — nothing to install.
 
-## Features
+- Game: Mindustry v157.4
+- Version: 1.9.1
 
-- Procedural hex-map generation with walls, passages, ores, water and oil
-- Fallen team `#14` as the neutral owner of unclaimed cores
-- Personal player teams with protected starting hexes, a start schematic and starting resources
-- Core captures with a 5-second replacement delay, hex cleanup, captured Core Shards and verified replacement placement
-- Elimination messages, claims and leader-managed `/invite` requests
-- Capture and long-range unit attrition
-- Core units can build and mine, but cannot damage buildings or units
-- Building-fired bullets deal 10% damage to buildings while keeping normal
-  damage against units
-- Team-scoped `/fullassault` mode for unattended combat units
-- `/die` surrender after 10 minutes, with a neutral 10-minute match-player
-  status broadcast, and `/over` early round ending
-- Timed Extinction late game with collapsing outer rings and a center-core final phase
-- Fallen can win Extinction by still owning the center core when the final timer ends
-- Async SQLite player data storage for profiles, playtime and FFA results
-- Automatic random-seed round resets
-- Persistent tuning for attrition, walls, ore/water generation and Extinction terrain streaming
+## The round
 
-## Player Commands
+- The map is a hex grid, new seed every round.
+- Every player gets a personal team and one protected starting hex,
+  with a start schematic and starting resources.
+- Unclaimed hexes belong to the neutral Fallen team.
+- Kill a core and the hex is yours; a Core Shard replaces it after 5 s.
+- Lose your last core and you become Fallen — you can still watch,
+  chat and ask for a team with `/invite`.
+- Units far from your cores slowly bleed away (attrition).
+- Core units build and mine, but do no combat damage.
+- After 1:30 h Extinction starts: the outer rings collapse ring by
+  ring until only the middle seven hexes are left, then a 4-minute
+  fight over the center core decides it.
 
-```text
-/help
-/play (/p)
-/view (/v)
-/history (/h)
-/info [player]
-/top [count]
-/fullassault (/fa)
-/invite [number]
-/ban [player]
-/die
-/over
-/time
-```
+## Matches
 
-The gameplay tuning that used to be dev chat commands lives on the server
-console:
+`/play` starts a real match on its own server, spawned on demand:
+
+- **1v1** — casual
+- **Ranked** — rated, ELO and ladder
+- **Teams** / **Random Teams** — up to 8 rosters
+- **FFA** — everyone for themselves
+- **Training** / **Sandbox** — no stakes
+
+Everyone waits for everyone, 5 s countdown, disconnects pause the
+match. Results and playtime go back into the stats database.
+
+## Player commands
 
 ```text
-evictattritioncore [t1-3] [t4] [t5]
-evictattritionrange [percent]
-evictwall [full-wall] [small-wall] [open] [passage]
-evictcorecap [additional-per-core]
+/help          /play (/p)     /view (/v)
+/info [name]   /history (/h)  /top [count]
+/invite [n]    /fullassault (/fa)
+/die           /over          /time
+/ban [name]    (admin)
 ```
 
-Extinction terrain streaming is set by `extinction.terrainChangesPerTick` in
-`config/evict-map-generator.properties`.
+## Server side
 
-Stored player data can be searched from the server console:
-
-```text
-evictplayerinfo [name/uuid]
-```
-
-Console player lookup searches the latest stored name first. Old stored names
-and UUIDs are used only if no latest-name match exists. `/info [name]` searches
-the same stored data; running `/info` without arguments opens a clickable
-player selection menu.
-
-Ore presets can be adjusted from the server console:
-
-```text
-evictcopper [scale] [threshold] [octaves] [falloff]
-evictlead [scale] [threshold] [octaves] [falloff]
-evictcoal [scale] [threshold] [octaves] [falloff]
-evicttitanium [scale] [threshold] [octaves] [falloff]
-evictthorium [scale] [threshold] [octaves] [falloff]
-evictscrap [scale] [threshold] [octaves] [falloff]
-```
-
-Water patches can be adjusted from the server console:
-
-```text
-evictwater [tries-per-hex] [normal-patch-tiles] [large-patch-percent] [large-patch-tiles]
-```
-
-`tries-per-hex` is the water amount knob: `1` is the default/current amount.
-Decimal values add a fractional extra try per hex, so `4.3` means 4 guaranteed
-tries and a 30% chance for one more. The console command accepts either `4.3`
-or `4,3`. `normal-patch-tiles` is the usual puddle size. `large-patch-percent`
-is the chance that any one puddle becomes large, and `large-patch-tiles` is that
-larger size. Default is
-`evictwater 1 3 13.33 8`. Water/resource overlap is hard-coded; water tiles may
-also carry ore overlays.
+- Stats in SQLite: playtime, matches, ELO, match history.
+- Bans are widened over the account's own addresses, kicked
+  everywhere at once and synced into running matches.
+- Word filter bans automatically, in chat and in player names.
+- Discord: live status message, ban log, chat mirror.
+- Console tuning for ores, water, walls, attrition and the match
+  pool, persisted across restarts.
+- `evictrestart` for a graceful update restart.
 
 ## Installation
 
-Build the plugin JAR and place it in the Mindustry server `config/mods` folder. Clients do not need to install the plugin.
+Build the jar and drop it into the server's `config/mods`:
+
+```bash
+./gradlew jar
+```
+
+## Credits
+
+Evict is run by three owners, equally — nobody is the boss:
+
+- **actualquak**
+- **Vini2309** — also the copyright holder of the code
+- **Virogens**
+
+## License
+
+© Vini2309. All Rights Reserved. 2026 — see [LICENSE](LICENSE).
