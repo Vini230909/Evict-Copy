@@ -64,7 +64,9 @@ public final class HelpCommands {
     private static final Set<String> HIDDEN = Set.of(
             "help",
             "votekick",
-            "vote"
+            "vote",
+            // Admin-only test switch for the wave extinction, not a feature yet.
+            "extinction"
     );
 
     void registerClientCommands(CommandHandler handler) {

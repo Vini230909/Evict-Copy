@@ -22,6 +22,7 @@ public final class ClientCommands {
     private final InfoCommands info;
     private final BanCommands bans;
     private final LeaderboardCommands leaderboard;
+    private final ExtinctionCommands extinction;
     private final HelpCommands help;
 
     public ClientCommands(
@@ -34,6 +35,7 @@ public final class ClientCommands {
             InfoCommands info,
             BanCommands bans,
             LeaderboardCommands leaderboard,
+            ExtinctionCommands extinction,
             HelpCommands help
     ) {
         this.fullassault = fullassault;
@@ -45,6 +47,7 @@ public final class ClientCommands {
         this.info = info;
         this.bans = bans;
         this.leaderboard = leaderboard;
+        this.extinction = extinction;
         this.help = help;
     }
 
@@ -58,6 +61,7 @@ public final class ClientCommands {
         info.registerClientCommands(handler);
         bans.registerClientCommands(handler);
         leaderboard.registerClientCommands(handler);
+        extinction.registerClientCommands(handler);
 
         // Register last so the filtered menu replaces vanilla /help.
         help.registerClientCommands(handler);

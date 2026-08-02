@@ -1,6 +1,6 @@
 # CLAUDE.md — EvictMapGenerator
 
-Server-side Mindustry plugin (game v157.4, Java 17 source) for Evict-style persistent PvP on a procedurally generated hex map. Runs on a dedicated server; clients install nothing. Current version **1.9.1** — `plugin.json` `version` and the startup revision string in `EvictMapPlugin` must always match.
+Server-side Mindustry plugin (game v157.4, Java 17 source) for Evict-style persistent PvP on a procedurally generated hex map. Runs on a dedicated server; clients install nothing. Current version **1.9.2** — `plugin.json` `version` and the startup revision string in `EvictMapPlugin` must always match.
 
 One jar, two roles:
 - **Hub** — the normal Evict FFA server players connect to.
@@ -159,7 +159,18 @@ Worker infrastructure:
 - Rings collapse farthest → nearest; the next ring starts 90 s after the prior ring finishes. Within a ring, core/hex collapse has no artificial delay; terrain-to-Space conversion is throttled separately.
 - If all surviving cores belong to one team during Extinction, that team wins immediately.
 - Final phase: the center hex + its six neighbours are protected from procedural filling. When only those 7 hexes remain, a 4-minute center-core phase begins; whoever owns the middle core after 4 minutes wins — including Fallen (then the round resets normally).
-- Terrain streaming: `extinction.terrainChangesPerTick` in the properties file — Space-floor conversions per tick, default 120, range 1..4096.
+- Terrain streaming: `ExtinctionManager.EXTINCTION_TILE_FILL_RATE`, hard-coded 128 tiles per tick. The documented `extinction.terrainChangesPerTick` setting is loaded by `EvictSettings` but never read by the collapse — it currently does nothing.
+
+### Wave extinction (1.9.2, under test — not wired to the round yet)
+`gameplay/WaveExtinction` — the intended replacement for the ring collapse, running beside it. Nothing starts it automatically; only `/extinction`, and it works on the hub and on any match server in any mode.
+- **Why.** Each converted tile costs two reliable packets to *every* client (`removeNet` + `setFloorNet`, ~18 B per client), and `Net.send` skips no connection — not even one still receiving the world. The ring collapse drains a whole ring at 128 tiles per **tick**, i.e. ~135 KB/s per client at 60 TPS, against the 32 KB per-client write buffer `ArcNetProvider` allocates (`new Server(32768, 16384, …)`). An overflow is not queued, it is a disconnect (`ArcConnection.send` → "Error sending packet. Disconnecting invalid client!"), which is why a ring collapse on a lagging server drops nearly everyone at once — and why a player joining during one never finishes the world stream and gets *Failed to load world data!* (a 30 s client-side connect timeout, `NetClient.update`, `@disconnect.data`).
+- **What changes.** Only the pacing — the same ~262,000 tiles are converted either way. The rings do it in five bursts inside a 10-minute window they otherwise spend idle (~6 % duty cycle); the wave spreads the identical work evenly: **~445 tiles/s, ~7.8 KB/s per client, factor ~17 lower peak, same end time**. The write buffer goes from 0.24 s of headroom to 4.1 s.
+- **Time-based, not tick-based.** The batch comes from elapsed time, so a TPS drop cannot stretch the collapse: ~7 tiles/tick at 60 TPS, ~44 at 10 TPS, identical packets per second. `MAX_TILES_PER_TICK` (455 ≈ ¼ of the write buffer) caps a catch-up burst; at the default duration it only engages below ~1 TPS.
+- **Equal area, not equal radius.** Tiles are consumed farthest-first from a distance-ordered list (counting sort over integer distance), so the tile rate stays flat no matter how much hex area sits at a given radius. A linear radius would idle at the corners and then burst 120× harder mid-map.
+- **Scope.** Only the hex circles, same membership test as the ring collapse (nearest slot owns the tile, within `HexGrid.HEX_RADIUS`) — gaps between hexes and filled wall hexes stay. `removeNet` is skipped for tiles carrying no block, which halves the packets again.
+- **The center hex is never touched**: it is the prize. A hex is marked extinct (owner → derelict, captures suppressed) just before the wave reaches its core, so a core lost to the wave is not treated as a capture. Units beyond the front are killed once a second.
+- At the end the holder of the center core is **announced only**. Handing it to `TeamManager.finishExtinction` is the step that turns this from a test into the real system, together with removing `ExtinctionManager`.
+- `/extinction [seconds|stop|status]` — admin-only, hidden from `/help`. No argument runs the full 600 s; a duration (10..3600) is for quick tests; `stop` halts it, already-converted terrain stays Space.
 
 ### Bans
 Hub-only decision making; workers apply what the hub decided.
