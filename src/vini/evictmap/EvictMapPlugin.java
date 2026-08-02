@@ -525,7 +525,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.9.1. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.10.0. Use 'evictstatus' for commands and current settings."
         );
     }
 
@@ -590,6 +590,13 @@ public class EvictMapPlugin extends Plugin {
         // everything logged after it. The server installs its own log formatter
         // in the ServerControl constructor, which has already run by now.
         MessageIdFilter.install();
+
+        // Takes over the console's stdin loop, which ServerControl only starts
+        // on ServerLoadEvent - two lines after the mods' init() that runs this.
+        // Later than here and vanilla's loop would already own stdin.
+        if (!duelWorker) {
+            duelServerManager.console().install();
+        }
 
         settings.load();
         adminSync.load();
