@@ -208,14 +208,6 @@ public final class ConsoleCommands {
                 .description("List the active worker servers and who is in them.")
                 .run(ctx -> duelServerManager.logStatus());
 
-        // Registered on the hub for 'help' (the stdin interception answers it
-        // first) and on a worker so a stray line there says where it is instead
-        // of "Invalid command".
-        commands.command("evictattach").console()
-                .args("port:string?")
-                .description("Send this console to a match server; no port comes back.")
-                .run(ctx -> duelServerManager.console().command(ctx.str("port", "")));
-
         commands.command("evicttime").console()
                 .args("time:string?")
                 .description("Show or set the elapsed round time in seconds.")

@@ -139,14 +139,6 @@ public final class DuelServerManager {
      */
     private final ChatLogTail chatTail = new ChatLogTail();
 
-    /**
-     * Sends the hub's console to a running worker and back
-     * ({@code evictattach}). Registered with every worker that goes live and
-     * unregistered when its slot is released; inert on a worker process, which
-     * never installs it.
-     */
-    private final WorkerConsole console = new WorkerConsole();
-
     public DuelServerManager(
             EvictSettings settings,
             PlayerDataManager playerDataManager,
@@ -165,11 +157,6 @@ public final class DuelServerManager {
 
     public boolean isConfigured() {
         return settings.duelServerConfigured();
-    }
-
-    /** The console attach ({@code evictattach}); installed by the hub only. */
-    public WorkerConsole console() {
-        return console;
     }
 
     /**
@@ -324,12 +311,8 @@ public final class DuelServerManager {
 
             writeHandshake(workerDir, handle, rosterUuids);
 
-            Process process = launchWorker(workerDir, handle);
+            Process process = launchWorker(workerDir, handle.port);
             handle.process = process;
-
-            // From here on the console can be sent to this worker; the stdin
-            // pipe is the same one the port and host commands went through.
-            console.register(handle.port, process, handle.stdin, workerDir);
 
             process.onExit().thenRun(
                     () -> Core.app.post(() -> {
@@ -1532,10 +1515,7 @@ public final class DuelServerManager {
         return new File(new File(WORKER_BASE_DIR), WORKER_DIR_PREFIX + port);
     }
 
-    private Process launchWorker(File workerDir, WorkerHandle handle)
-            throws IOException {
-        int port = handle.port;
-
+    private Process launchWorker(File workerDir, int port) throws IOException {
         String javaExe = new File(
                 System.getProperty("java.home"),
                 "bin/java"
@@ -1554,11 +1534,7 @@ public final class DuelServerManager {
 
         Process process = builder.start();
 
-        // Kept open for the lifetime of the worker: the console attach writes
-        // its lines into the very same pipe.
         OutputStream stdin = process.getOutputStream();
-        handle.stdin = stdin;
-
         writeCommand(stdin, "config port " + port);
         // Mirror the hub's votekick setting: it lives in Mindustry's settings.bin,
         // which is not part of the copied worker config, so the worker would
@@ -1614,10 +1590,6 @@ public final class DuelServerManager {
         if (workers.get(handle.port) == handle) {
             workers.remove(handle.port);
             creditedPlaytimeByPort.remove(handle.port);
-
-            // Sends the console back to the hub if it was on this worker, so
-            // nothing is ever typed into a pipe nobody reads any more.
-            console.unregister(handle.port);
             activeDuelByUuid.values().removeIf(port -> port == handle.port);
 
             // Every start embed gets its end embed, whatever way the worker
@@ -1773,10 +1745,6 @@ public final class DuelServerManager {
         final int port;
         final long spawnedAtMillis = System.currentTimeMillis();
         volatile Process process;
-
-        /** The worker's console pipe, for {@link WorkerConsole}. */
-        volatile OutputStream stdin;
-
         MatchMode mode = MatchMode.ONE_VS_ONE;
         String label = "?";
         final List<Participant> participants = new ArrayList<>();
