@@ -216,13 +216,6 @@ public final class ConsoleCommands {
                 .description("Send this console to a match server; no port comes back.")
                 .run(ctx -> duelServerManager.console().command(ctx.str("port", "")));
 
-        // The detach-only spelling the interception accepts, declared so it
-        // shows up in 'help' as well - a way back that is not listed anywhere
-        // is a way back nobody finds.
-        commands.command("evictdetach").console()
-                .description("Come back from a match server to this hub console.")
-                .run(ctx -> duelServerManager.console().command(""));
-
         commands.command("evicttime").console()
                 .args("time:string?")
                 .description("Show or set the elapsed round time in seconds.")
