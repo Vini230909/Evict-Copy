@@ -22,6 +22,14 @@ java {
     sourceCompatibility = JavaVersion.VERSION_17
 }
 
+// The source contains UTF-8 characters (emoji, em-dashes). JDK 18+ defaults
+// javac's source encoding to UTF-8, but JDK 17 uses the platform charset
+// (windows-1252 here) and fails with "unmappable character". Pin it so the
+// build works on any JDK, not just the VSCode-bundled 21.
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+}
+
 ext {
     mindustryVersion = "v157.4"
 }
