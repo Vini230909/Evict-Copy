@@ -242,6 +242,25 @@ public class EvictMapPlugin extends Plugin {
                     )
             );
 
+    /**
+     * Turns a Discord {@code /ban} or {@code /unban} into an ordinary ban, so
+     * it is widened, kicked, synced, announced and logged like any other.
+     */
+    private final vini.evictmap.moderation.RemoteBan remoteBan =
+            new vini.evictmap.moderation.RemoteBan(this::seedBan);
+
+    /**
+     * Hub-only Discord slash commands. The hub is the single writer of bans,
+     * and one bot answering per match server would be four answers to one
+     * command.
+     */
+    private final vini.evictmap.discord.DiscordModCommands discordModCommands =
+            new vini.evictmap.discord.DiscordModCommands(
+                    settings,
+                    remoteBan::ban,
+                    remoteBan::unban
+            );
+
     /** Worker only: applies the hub's ban list to this match server. */
     private final vini.evictmap.moderation.BanSync banSync =
             new vini.evictmap.moderation.BanSync();
@@ -278,6 +297,7 @@ public class EvictMapPlugin extends Plugin {
                     duelWorker ? null : banLogReporter,
                     duelWorker ? null : banManager,
                     duelWorker ? null : chatLogReporter,
+                    duelWorker ? null : discordModCommands,
                     // evictgen regenerates the live map in place with no fresh snapshot,
                     // so connected clients only see the new terrain via the per-tile sync.
                     seed -> generate(seed, true)
@@ -321,6 +341,10 @@ public class EvictMapPlugin extends Plugin {
             // Hub only: the Discord chat mirror. Worker chat arrives through
             // the chat.log files the duel manager tails.
             chatLogReporter.start();
+
+            // Hub only: Discord's /ban and /unban. Started after the mirror,
+            // which shares the same bot token out of the secrets file.
+            discordModCommands.start();
         }
 
         Events.on(WorldLoadEvent.class, event -> {
@@ -539,7 +563,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.9.2. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.9.3. Use 'evictstatus' for commands and current settings."
         );
     }
 

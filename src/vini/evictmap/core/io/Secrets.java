@@ -13,7 +13,12 @@ import java.io.File;
  */
 public final class Secrets {
 
-    /** Bot token for the Discord chat mirror. */
+    /**
+     * Bot token for Discord. Named for the chat mirror, which was the first
+     * feature to need it; the {@code /ban} and {@code /unban} slash commands
+     * use the same bot, because one bot with one token is one credential to
+     * rotate rather than two.
+     */
     public static final String DISCORD_CHAT_BOT_TOKEN =
             "DISCORD_CHAT_BOT_TOKEN";
 
@@ -26,8 +31,11 @@ public final class Secrets {
             # Lines starting with # are ignored, an empty value counts as unset.
             # Reload without a restart: 'evictchatlog reload'.
 
-            # Discord bot that mirrors chat into the staff channels.
+            # Discord bot: mirrors chat into the staff channels, and answers
+            # the /ban and /unban slash commands ('evictdiscordcmd').
             # Discord Developer Portal > your app > Bot > Reset Token.
+            # Invite the bot with both the 'bot' and 'applications.commands'
+            # scopes, or the slash commands cannot be registered.
             DISCORD_CHAT_BOT_TOKEN=
             """;
 

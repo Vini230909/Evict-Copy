@@ -5,8 +5,10 @@ import vini.evictmap.gen.*;
 import vini.evictmap.data.*;
 import vini.evictmap.round.*;
 import vini.evictmap.core.cmd.Commands;
+import vini.evictmap.core.io.Secrets;
 import vini.evictmap.discord.BanLogReporter;
 import vini.evictmap.discord.ChatLogReporter;
+import vini.evictmap.discord.DiscordModCommands;
 import vini.evictmap.moderation.BanManager;
 import vini.evictmap.moderation.WordFilter;
 import vini.evictmap.moderation.WordMatcher;
@@ -52,6 +54,9 @@ public final class ConsoleCommands {
     /** Null on a duel worker: the hub relays worker chat into Discord. */
     private final ChatLogReporter chatLogReporter;
 
+    /** Null on a duel worker: only the hub answers Discord's /ban. */
+    private final DiscordModCommands discordModCommands;
+
     private final LongConsumer generate;
 
     private static final int MAX_CORECAP_INCREMENT = 10000;
@@ -70,6 +75,7 @@ public final class ConsoleCommands {
             BanLogReporter banLogReporter,
             BanManager banManager,
             ChatLogReporter chatLogReporter,
+            DiscordModCommands discordModCommands,
             LongConsumer generate
     ) {
         this.runtime = runtime;
@@ -83,6 +89,7 @@ public final class ConsoleCommands {
         this.banLogReporter = banLogReporter;
         this.banManager = banManager;
         this.chatLogReporter = chatLogReporter;
+        this.discordModCommands = discordModCommands;
         this.generate = generate;
     }
 
@@ -185,6 +192,14 @@ public final class ConsoleCommands {
                 .args("url/off/test:string?")
                 .description("Discord webhook for the ban log. Staff-only: it posts IPs.")
                 .run(ctx -> handleBanLogCommand(ctx.str("url/off/test", "").trim()));
+
+        commands.command("evictdiscordcmd").console()
+                .args("action:string?", "value:text?")
+                .description("Discord /ban and /unban: setup, role <name>, reload, off.")
+                .run(ctx -> handleDiscordCommandsCommand(
+                        ctx.str("action", "").trim(),
+                        ctx.str("value", "").trim()
+                ));
 
         commands.command("evictchatlog").console()
                 .args("target:string?", "value:string?")
@@ -299,6 +314,82 @@ public final class ConsoleCommands {
     }
 
     /**
+     * evictdiscordcmd: the wiring for Discord's /ban and /unban. No argument
+     * prints the checklist; a server id (with an optional role id) wires them
+     * up and registers the commands; 'reload' re-reads the token file after a
+     * rotation; 'off' stops answering.
+     *
+     * <p>Like the chat mirror, this never takes the bot token: typing it here
+     * would write it into the server log and the start script's screen log
+     * permanently. It lives in the secrets file.
+     */
+    private void handleDiscordCommandsCommand(String action, String value) {
+        if (discordModCommands == null) {
+            Log.err("[EvictMapGenerator] The Discord commands only run on the hub.");
+            return;
+        }
+
+        switch (action.toLowerCase()) {
+            case "" -> {
+                Log.info("[EvictMapGenerator] Discord /ban and /unban:");
+
+                for (String line : discordModCommands.statusLines()) {
+                    Log.info("[EvictMapGenerator]   @", line);
+                }
+
+                if (!discordModCommands.isConfigured()) {
+                    Log.info("[EvictMapGenerator] Run 'evictdiscordcmd setup' - it finds the Discord server itself, no ids to copy. ('evictchatlog setup <server-id>' already does this too.)");
+                }
+            }
+            case "setup" -> {
+                Log.info("[EvictMapGenerator] Setting the Discord commands up; this takes a few seconds...");
+                discordModCommands.setup(this::logDiscordCommandLines);
+            }
+            case "role" -> {
+                if (value.isEmpty()) {
+                    Log.err("[EvictMapGenerator] Use: evictdiscordcmd role <role name or id> ('evictdiscordcmd setup' lists the names).");
+                } else {
+                    discordModCommands.setRole(value, this::logDiscordCommandLines);
+                }
+            }
+            case "off" -> {
+                discordModCommands.disable();
+                Log.info("[EvictMapGenerator] Discord /ban and /unban are off. The commands stay visible in Discord until Discord drops them; this server simply refuses them.");
+            }
+            case "reload" -> {
+                if (discordModCommands.reload()) {
+                    Log.info("[EvictMapGenerator] Bot token re-read; reconnecting to Discord.");
+                } else {
+                    Log.err("[EvictMapGenerator] @ is not set in @. Add it there, then run this again.", Secrets.DISCORD_CHAT_BOT_TOKEN, Secrets.path());
+                }
+            }
+            case "token" -> Log.err(
+                    "[EvictMapGenerator] The token is never typed here - it would be written to the server log. Set @ in @ and run 'evictdiscordcmd reload'.",
+                    Secrets.DISCORD_CHAT_BOT_TOKEN,
+                    Secrets.path()
+            );
+            default -> {
+                // A bare server id still works, for the case setup cannot
+                // settle by itself: several Discord servers with the same bot.
+                if (!action.chars().allMatch(Character::isDigit)) {
+                    Log.err("[EvictMapGenerator] Usage: evictdiscordcmd [setup | role <name> | reload | off]");
+                    return;
+                }
+
+                discordModCommands.configure(action, value);
+                Log.info("[EvictMapGenerator] Discord commands wired to server @. Run 'evictdiscordcmd' to check the connection.", action);
+            }
+        }
+    }
+
+    /** Setup and role changes answer asynchronously; print what they found. */
+    private void logDiscordCommandLines(java.util.List<String> lines) {
+        for (String line : lines) {
+            Log.info("[EvictMapGenerator] @", line);
+        }
+    }
+
+    /**
      * evictchatlog: the Discord chat mirror's wiring. No argument prints the
      * checklist (token file, hub and every port of the pool - eleven channel
      * ids are eleven chances to paste one wrong); 'hub'/a port plus a channel
@@ -363,6 +454,14 @@ public final class ConsoleCommands {
                             }
                         }
                 );
+
+                // Same bot, same Discord server: there is no reason to make an
+                // admin find the id a second time for the slash commands.
+                if (discordModCommands != null
+                        && !discordModCommands.isConfigured()) {
+                    discordModCommands.configure(value, "");
+                    Log.info("[EvictMapGenerator] Discord /ban and /unban wired to the same server. 'evictdiscordcmd role <name>' picks who may use them; until then it is Discord's Administrator permission.");
+                }
             }
             case "reload" -> {
                 if (chatLogReporter.reloadToken()) {
