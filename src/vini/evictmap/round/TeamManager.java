@@ -1228,6 +1228,42 @@ public final class TeamManager {
         );
     }
 
+    /**
+     * The one personal team that could end the round early right now, or
+     * {@code null} if none can.
+     *
+     * <p>This is what lets a player who is not on that team - Fallen, or
+     * someone who has not taken a hex yet - call the round with {@code /over}:
+     * the conditions are a property of the map, not of who is looking at it.
+     *
+     * <p>Two eligible teams cannot happen while both need more than half the
+     * cores, but if it ever did, nothing here would be entitled to pick the
+     * winner - so it declines instead.
+     */
+    public Team eligibleEarlyEndTeam() {
+        Team eligible = null;
+
+        for (int teamId : personalTeamCreationOrder) {
+            if (!isActivePersonalTeam(teamId)) {
+                continue;
+            }
+
+            Team team = Team.get(teamId);
+
+            if (!earlyEndStatus(team).eligible()) {
+                continue;
+            }
+
+            if (eligible != null) {
+                return null;
+            }
+
+            eligible = team;
+        }
+
+        return eligible;
+    }
+
     public boolean endRoundEarly(Team winner) {
         EarlyEndStatus status = earlyEndStatus(winner);
 

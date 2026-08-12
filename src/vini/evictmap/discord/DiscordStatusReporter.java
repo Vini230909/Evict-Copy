@@ -9,7 +9,7 @@ import vini.evictmap.RestartManager;
 import vini.evictmap.core.util.PluginLog;
 import vini.evictmap.data.PlayerDataManager;
 import vini.evictmap.duel.DuelServerManager;
-import vini.evictmap.gameplay.ExtinctionManager;
+import vini.evictmap.gameplay.WaveExtinction;
 import vini.evictmap.gen.EvictSettings;
 import vini.evictmap.round.TeamManager;
 
@@ -53,7 +53,7 @@ public final class DiscordStatusReporter {
     private final EvictSettings settings;
     private final PlayerDataManager playerDataManager;
     private final TeamManager teamManager;
-    private final ExtinctionManager extinctionManager;
+    private final WaveExtinction extinction;
     private final DuelServerManager duelServerManager;
     private final RestartManager restartManager;
 
@@ -69,14 +69,14 @@ public final class DiscordStatusReporter {
             EvictSettings settings,
             PlayerDataManager playerDataManager,
             TeamManager teamManager,
-            ExtinctionManager extinctionManager,
+            WaveExtinction extinction,
             DuelServerManager duelServerManager,
             RestartManager restartManager
     ) {
         this.settings = settings;
         this.playerDataManager = playerDataManager;
         this.teamManager = teamManager;
-        this.extinctionManager = extinctionManager;
+        this.extinction = extinction;
         this.duelServerManager = duelServerManager;
         this.restartManager = restartManager;
 
@@ -241,8 +241,8 @@ public final class DiscordStatusReporter {
                 duelPlayers,
                 Math.max(0, Vars.netServer.admins.getPlayerLimit()),
                 teamManager.roundRuntimeMillis() / 1000L,
-                (long) extinctionManager.secondsUntilExtinction(),
-                extinctionManager.hasBegun(),
+                (long) extinction.secondsUntilExtinction(),
+                extinction.hasBegun(),
                 restartManager.isQueued(),
                 matches.size(),
                 settings.duelMaxWorkers(),

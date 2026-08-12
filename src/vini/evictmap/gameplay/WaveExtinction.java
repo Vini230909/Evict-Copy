@@ -19,29 +19,34 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Extinction as a continuous wave that eats the map from the outside in, tile
- * by tile, instead of collapsing whole hex rings in bursts.
+ * Extinction: the late-game collapse that decides a round nobody has won on
+ * the map.
  *
- * <p>This exists next to {@link ExtinctionManager}, not inside it: it is
- * driven only by {@code /extinction} for now and is meant to replace the ring
- * collapse once it has been tested in a live round. Nothing else in the plugin
- * starts it.
+ * <p>It runs as a continuous wave that eats the map from the outside in, tile
+ * by tile. The ring collapse it replaced (1.9.3) did the same total work in
+ * five bursts, and those bursts disconnected players.
+ *
+ * <h2>The schedule</h2>
+ * Driven by the round clock, exactly as the ring collapse was: warnings at 80,
+ * 85 and 89 minutes, and at {@link #EXTINCTION_BEGINS_SECONDS} (90 minutes) the
+ * wave arms itself over {@link #DURATION_SECONDS}, so the map is gone by minute
+ * 100. Nothing else starts it.
  *
  * <h2>Why a wave</h2>
- * The ring collapse queues a whole ring at once and drains it at a fixed 128
+ * The ring collapse queued a whole ring at once and drained it at a fixed 128
  * tiles per <em>tick</em>. Each tile costs two reliable packets to every
  * connected client ({@code removeNet} + {@code setFloorNet}, ~18 bytes per
  * client), so at 60 TPS that is ~135 KB/s per client - more than four times
  * what a 32 KB per-client write buffer holds per second. A client whose buffer
  * overflows is dropped by {@code ArcNetProvider} on the spot, which is why a
- * ring collapse on a laggy server disconnects nearly everyone at once, and why
- * a player connecting during one never finishes receiving the world.
+ * ring collapse on a laggy server disconnected nearly everyone at once, and why
+ * a player connecting during one never finished receiving the world.
  *
  * <p>The total work is the same either way - every hex tile has to become
- * space. The ring collapse just does it in five bursts inside a ten-minute
- * window it otherwise spends idle (~6% duty cycle). Spreading the identical
- * work evenly across that window costs no extra wall-clock time and drops the
- * peak rate by a factor of ~17, to ~445 tiles/s (~7.8 KB/s per client).
+ * space. The rings just did it in five bursts inside a ten-minute window they
+ * otherwise spent idle (~6% duty cycle). Spreading the identical work evenly
+ * across that window costs no extra wall-clock time and drops the peak rate by
+ * a factor of ~17, to ~445 tiles/s (~7.8 KB/s per client).
  *
  * <h2>Rate</h2>
  * The budget is derived from elapsed <em>time</em>, not from a per-tick
@@ -58,16 +63,40 @@ import java.util.List;
  * <h2>What it touches</h2>
  * Only the hex circles themselves, exactly like the ring collapse - the gaps
  * between hexes and the filled wall hexes stay as they are. The center hex is
- * excluded entirely: it is the prize, and whoever holds its core when the wave
- * finishes has won.
+ * excluded entirely: it is the prize, and whoever holds its core when the rest
+ * of the map is gone has won.
+ *
+ * <h2>How the round ends</h2>
+ * A hex is marked extinct just before the wave reaches its core, which is what
+ * takes it out of the ownership counts - {@code TeamManager} skips extinct
+ * slots. Each time that happens the same two checks the ring collapse ran are
+ * run: teams that have lost every surviving core are eliminated, and a single
+ * remaining owner wins on the spot. So the round is decided the moment the last
+ * hex besides the center goes, whoever holds the center core then - including
+ * Fallen, which resets the round normally.
  */
 public final class WaveExtinction implements GameplayManagerInterface {
 
-    /** Full collapse duration when {@code /extinction} is called without one. */
-    public static final int DEFAULT_DURATION_SECONDS = 600;
+    /**
+     * Round time, in seconds, at which the collapse starts. The warnings before
+     * it are offsets from this moment.
+     */
+    public static final float EXTINCTION_BEGINS_SECONDS = 90 * 60;
 
-    public static final int MIN_DURATION_SECONDS = 10;
-    public static final int MAX_DURATION_SECONDS = 3600;
+    /**
+     * How long the collapse takes. 90 to 100 minutes of round time - the same
+     * window the five ring collapses used to be spread across.
+     */
+    private static final int DURATION_SECONDS = 600;
+
+    /** Round seconds at which each warning goes out, and what it says. */
+    private static final float[] WARNING_SECONDS = {80 * 60, 85 * 60, 89 * 60};
+
+    private static final String[] WARNING_MESSAGES = {
+            "Extinction begins in 10 minutes.",
+            "Extinction begins in 5 minutes.",
+            "Extinction begins in 1 minute."
+    };
 
     /**
      * Hard ceiling on one tick's batch, ~8 KB of packets per client - a quarter
@@ -99,7 +128,12 @@ public final class WaveExtinction implements GameplayManagerInterface {
     private boolean running;
     private long startedAtMillis;
     private long lastUnitSweepMillis;
-    private int durationSeconds = DEFAULT_DURATION_SECONDS;
+
+    /** Which warning is next; also how far through the schedule the round is. */
+    private int nextWarning;
+
+    /** Set once the schedule has armed the wave, so it is armed only once. */
+    private boolean triggered;
 
     /** Every tile the wave will convert, farthest from the center hex first. */
     private Tile[] tiles = new Tile[0];
@@ -123,88 +157,28 @@ public final class WaveExtinction implements GameplayManagerInterface {
     }
 
     /**
-     * Arms the wave over {@code seconds}.
-     *
-     * @return {@code null} once running, or the reason it could not start.
+     * Seconds left before the collapse starts, 0 once it has. Read off the
+     * round clock rather than the wave's own state, so it stays right whether
+     * the wave is armed, running or already finished.
      */
-    public String start(int seconds) {
-        if (running) {
-            return "The wave is already running - /extinction stop first.";
-        }
-
-        List<HexSlot> slots = teamManager.slots();
-
-        if (slots.isEmpty()) {
-            return "No hex slots on this map - nothing to collapse.";
-        }
-
-        centerSlot = findCenterSlot(slots);
-
-        if (centerSlot == null) {
-            return "No center hex found.";
-        }
-
-        collectTiles(slots);
-
-        if (tiles.length == 0) {
-            return "Every hex tile is already space.";
-        }
-
-        collectSlots(slots);
-
-        durationSeconds = seconds;
-        nextTile = 0;
-        nextSlot = 0;
-        startedAtMillis = Time.millis();
-        lastUnitSweepMillis = startedAtMillis;
-        running = true;
-
-        PluginLog.info(
-                "Wave extinction armed: @ tiles over @ s (@ tiles/s, ~@ B/s per client).",
-                tiles.length,
-                seconds,
-                tiles.length / seconds,
-                tiles.length / seconds * 18
-        );
-
-        return null;
+    public float secondsUntilExtinction() {
+        return Math.max(0f, EXTINCTION_BEGINS_SECONDS - roundSeconds());
     }
 
-    /** Stops the wave where it is; already-converted terrain stays space. */
-    public void stop() {
-        running = false;
-        tiles = new Tile[0];
-        tileDistances = new int[0];
-        slotsByDistance = new HexSlot[0];
-        slotDistances = new int[0];
-        nextTile = 0;
-        nextSlot = 0;
+    /** Whether the round has reached Extinction. */
+    public boolean hasBegun() {
+        return secondsUntilExtinction() <= 0f;
     }
 
     public boolean isRunning() {
         return running;
     }
 
-    /** One line for {@code /extinction status}. */
-    public String status() {
-        if (!running) {
-            return "Wave extinction is not running.";
-        }
-
-        int done = nextTile;
-        int total = tiles.length;
-        int percent = total == 0 ? 100 : done * 100 / total;
-        float elapsed = elapsedSeconds();
-
-        return "Wave extinction: " + percent + "% (" + done + "/" + total
-                + " tiles), radius " + currentRadius()
-                + ", " + Math.max(0, Math.round(durationSeconds - elapsed)) + " s left, "
-                + (total - done) + " tiles to go.";
-    }
-
     @Override
     public void beginRound() {
         stop();
+        nextWarning = 0;
+        triggered = false;
     }
 
     @Override
@@ -214,11 +188,112 @@ public final class WaveExtinction implements GameplayManagerInterface {
 
     @Override
     public void update() {
-        if (!running) {
+        if (!teamManager.isRoundActiveForSystems()) {
             return;
         }
 
-        int target = Math.round(tiles.length * Math.min(1f, elapsedSeconds() / durationSeconds));
+        if (running) {
+            advance();
+        } else if (!triggered) {
+            followSchedule();
+        }
+    }
+
+    /**
+     * Warns the round, then arms the wave when the clock reaches Extinction.
+     *
+     * <p>One step per tick, like the state machine this replaced: a server that
+     * comes up mid-round past several of these announces them in quick
+     * succession rather than swallowing the ones it missed.
+     */
+    private void followSchedule() {
+        float elapsed = roundSeconds();
+
+        if (
+                nextWarning < WARNING_SECONDS.length
+                        && elapsed >= WARNING_SECONDS[nextWarning]
+        ) {
+            Call.sendMessage(WARNING_MESSAGES[nextWarning]);
+            nextWarning++;
+            return;
+        }
+
+        if (elapsed < EXTINCTION_BEGINS_SECONDS) {
+            return;
+        }
+
+        // Set before arming: a map the wave cannot collapse must not be
+        // retried every tick for the rest of the round.
+        triggered = true;
+
+        String failure = arm();
+
+        if (failure != null) {
+            PluginLog.err("Extinction could not start: @", failure);
+            return;
+        }
+
+        Call.sendMessage("[scarlet]Extinction has begun.[]");
+    }
+
+    /**
+     * Works out what the wave will eat and starts it.
+     *
+     * @return {@code null} once running, or the reason it could not start
+     */
+    private String arm() {
+        List<HexSlot> slots = teamManager.slots();
+
+        if (slots.isEmpty()) {
+            return "no hex slots on this map - nothing to collapse";
+        }
+
+        centerSlot = findCenterSlot(slots);
+
+        if (centerSlot == null) {
+            return "no center hex found";
+        }
+
+        collectTiles(slots);
+
+        if (tiles.length == 0) {
+            return "every hex tile is already space";
+        }
+
+        collectSlots(slots);
+
+        nextTile = 0;
+        nextSlot = 0;
+        startedAtMillis = Time.millis();
+        lastUnitSweepMillis = startedAtMillis;
+        running = true;
+
+        PluginLog.info(
+                "Extinction armed: @ tiles over @ s (@ tiles/s, ~@ B/s per client).",
+                tiles.length,
+                DURATION_SECONDS,
+                tiles.length / DURATION_SECONDS,
+                tiles.length / DURATION_SECONDS * 18
+        );
+
+        return null;
+    }
+
+    /** Stops the wave where it is; already-converted terrain stays space. */
+    private void stop() {
+        running = false;
+        tiles = new Tile[0];
+        tileDistances = new int[0];
+        slotsByDistance = new HexSlot[0];
+        slotDistances = new int[0];
+        nextTile = 0;
+        nextSlot = 0;
+    }
+
+    private void advance() {
+        int target = Math.round(
+                tiles.length * Math.min(1f, elapsedSeconds() / DURATION_SECONDS)
+        );
         int budget = Math.min(target - nextTile, MAX_TILES_PER_TICK);
 
         if (budget > 0) {
@@ -227,7 +302,18 @@ public final class WaveExtinction implements GameplayManagerInterface {
             int radiusAfter =
                     tileDistances[Math.min(nextTile + budget, tiles.length - 1)];
 
-            markReachedSlotsExtinct(radiusAfter);
+            if (markReachedSlotsExtinct(radiusAfter) > 0) {
+                settleOwnership();
+
+                // Settling can end the round outright - the last hex besides
+                // the center leaves one owner standing. Nothing more to convert
+                // then; the map is about to be replaced anyway.
+                if (!teamManager.isRoundActiveForSystems()) {
+                    stop();
+                    return;
+                }
+            }
+
             convert(budget);
         }
 
@@ -236,6 +322,20 @@ public final class WaveExtinction implements GameplayManagerInterface {
         if (nextTile >= tiles.length) {
             finish();
         }
+    }
+
+    /**
+     * The two checks the ring collapse ran after every collapsed hex: teams
+     * that have just lost their last surviving core are eliminated, and a
+     * single remaining owner wins.
+     *
+     * <p>Marking the slot extinct is enough for both - {@code TeamManager}
+     * skips extinct slots when it counts cores, so the core block standing
+     * there for another second does not keep a dead team alive.
+     */
+    private void settleOwnership() {
+        teamManager.eliminateCorelessTeamsThroughExtinction();
+        teamManager.checkVictory();
     }
 
     /**
@@ -265,7 +365,10 @@ public final class WaveExtinction implements GameplayManagerInterface {
         }
     }
 
-    private void markReachedSlotsExtinct(int radiusAfter) {
+    /** @return how many hexes this batch killed, so ownership is only re-checked when one did */
+    private int markReachedSlotsExtinct(int radiusAfter) {
+        int marked = 0;
+
         while (
                 nextSlot < slotsByDistance.length
                         && radiusAfter <= slotDistances[nextSlot] + CORE_CLEARANCE
@@ -276,7 +379,10 @@ public final class WaveExtinction implements GameplayManagerInterface {
             slot.capturing = false;
             slot.ownerTeamId = Team.derelict.id;
             slot.pendingCaptureTeamId = Team.derelict.id;
+            marked++;
         }
+
+        return marked;
     }
 
     /**
@@ -315,32 +421,33 @@ public final class WaveExtinction implements GameplayManagerInterface {
         }
     }
 
+    /**
+     * The wave has eaten everything but the center hex.
+     *
+     * <p>Usually the round is already over by now: the hex before last going
+     * extinct leaves a single owner, and {@link #settleOwnership()} ends it
+     * there. This covers what is left - above all a center core held by Fallen,
+     * or none at all, neither of which any team wins by holding.
+     */
     private void finish() {
         running = false;
 
         Team holder = centerCoreTeam();
 
         if (holder == null) {
-            Call.sendMessage(
-                    "[scarlet]Extinction complete.[] The center core did not survive - nobody won."
-            );
-            PluginLog.info("Wave extinction finished with no surviving center core.");
+            PluginLog.info("Extinction finished with no surviving center core.");
         } else {
-            Call.sendMessage(
-                    "[scarlet]Extinction complete.[] [accent]"
-                            + teamManager.displayTeam(holder)
-                            + "[] held the center core."
-            );
             PluginLog.info(
-                    "Wave extinction finished: team #@ held the center core.",
+                    "Extinction finished: team #@ held the center core.",
                     holder.id
             );
         }
 
-        // TODO: when this replaces ExtinctionManager, hand the holder to
-        // TeamManager.finishExtinction(holder) instead of only announcing it.
-        // Left out while the wave is under test so a trial run cannot end a
-        // live round.
+        // No core left means nobody held the middle, which is Fallen's win in
+        // the same sense an empty map is: no personal team survived.
+        teamManager.finishExtinction(
+                holder == null ? TeamManager.FALLEN_TEAM : holder
+        );
     }
 
     private Team centerCoreTeam() {
@@ -359,6 +466,11 @@ public final class WaveExtinction implements GameplayManagerInterface {
 
     private float elapsedSeconds() {
         return (Time.millis() - startedAtMillis) / 1000f;
+    }
+
+    /** Round time, which excludes whatever the round spent paused. */
+    private float roundSeconds() {
+        return teamManager.roundRuntimeMillis() / 1000f;
     }
 
     /**

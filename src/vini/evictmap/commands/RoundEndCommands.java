@@ -135,14 +135,27 @@ public final class RoundEndCommands {
 
         Team team = player.team();
 
+        /*
+         * Anyone may call the round, not only a player on the winning team.
+         * The conditions are a property of the map - one team holds at least
+         * half of it and every team that ever expanded is gone - and that is
+         * just as visible to a Fallen player as to the one who won. Someone on
+         * a personal team asks about their own team, so they still get the
+         * "you need 2 more cores" answer; everybody else asks about whoever
+         * qualifies.
+         */
         if (
                 team == TeamManager.FALLEN_TEAM
                         || !teamManager.isActivePersonalTeam(team.id)
         ) {
-            player.sendMessage(
-                    "[scarlet]Only players in an active personal team can use /over.[]"
-            );
-            return;
+            team = teamManager.eligibleEarlyEndTeam();
+
+            if (team == null) {
+                player.sendMessage(
+                        "[scarlet]No team meets the conditions to end the round early yet.[]"
+                );
+                return;
+            }
         }
 
         TeamManager.EarlyEndStatus status =

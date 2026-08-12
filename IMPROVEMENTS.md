@@ -108,8 +108,9 @@ code so each piece reads on its own.
 - **`[3]` `TeamManager.surrenderTeam()` (~100 lines)** and its asset-wipe helper.
   Extract the "who inherits the surrendered cores" decision and the wipe.
 - **`[3]` `DuelCommands.handlePickSelection()` (~100 lines).** Split per menu-branch.
-- **`[3]` `ExtinctionManager.update()` (~100 lines).** Drive the ring-collapse /
-  center-core / overtime phases from a small phase enum, one `stepX()` each.
+- ~~**`[3]` `ExtinctionManager.update()` (~100 lines).**~~ Moot: the ring collapse
+  was deleted in 1.9.4 and `WaveExtinction` replaced it (see CLAUDE.md,
+  Extinction).
 - **`[3]` `DuelServerManager.logResult()` / `EvictSettings.save()` (~90–117 lines).**
   Long linear methods; `save()` collapses via C4, `logResult()` splits per mode.
 

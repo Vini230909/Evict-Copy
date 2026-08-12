@@ -25,7 +25,6 @@ import mindustry.mod.Plugin;
 import mindustry.world.blocks.storage.CoreBlock;
 import vini.evictmap.gameplay.AttritionManager;
 import vini.evictmap.gameplay.RulesApplier;
-import vini.evictmap.gameplay.ExtinctionManager;
 import vini.evictmap.gameplay.AttackManager;
 import vini.evictmap.gameplay.WaveExtinction;
 import vini.evictmap.discord.DiscordStatusReporter;
@@ -89,13 +88,9 @@ public class EvictMapPlugin extends Plugin {
     private final InviteManager inviteManager =
             new InviteManager(teamManager);
 
-    private final ExtinctionManager extinctionManager =
-            new ExtinctionManager(teamManager);
-
     /**
-     * The outside-in wave that is meant to replace {@link ExtinctionManager}.
-     * Nothing starts it automatically - only {@code /extinction}, while it is
-     * being tested in live rounds.
+     * The late-game collapse. Driven by the round clock alone; there is no
+     * command that starts it.
      */
     private final WaveExtinction waveExtinction =
             new WaveExtinction(teamManager);
@@ -166,9 +161,6 @@ public class EvictMapPlugin extends Plugin {
     private final LeaderboardCommands leaderboardCommands =
             new LeaderboardCommands(playerDataManager);
 
-    private final ExtinctionCommands extinctionCommands =
-            new ExtinctionCommands(waveExtinction);
-
     private final HelpCommands helpCommands =
             new HelpCommands();
 
@@ -183,7 +175,6 @@ public class EvictMapPlugin extends Plugin {
                     infoCommands,
                     banCommands,
                     leaderboardCommands,
-                    extinctionCommands,
                     helpCommands
             );
 
@@ -213,7 +204,7 @@ public class EvictMapPlugin extends Plugin {
                     settings,
                     playerDataManager,
                     teamManager,
-                    extinctionManager,
+                    waveExtinction,
                     duelServerManager,
                     restartManager
             );
@@ -531,7 +522,6 @@ public class EvictMapPlugin extends Plugin {
 
             attritionManager.update();
             attackManager.update();
-            extinctionManager.update();
             waveExtinction.update();
 
             // Only the hub is listed in the multiplayer browser; keep its
@@ -563,7 +553,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.9.3. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.9.4. Use 'evictstatus' for commands and current settings."
         );
     }
 
@@ -797,7 +787,6 @@ public class EvictMapPlugin extends Plugin {
         inviteManager.beginRound();
         roundEndCommands.beginRound();
         roundTimeCommands.beginRound();
-        extinctionManager.beginRound();
         waveExtinction.beginRound();
         assignConnectedPlayersAndRecordStats();
 
