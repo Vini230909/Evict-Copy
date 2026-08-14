@@ -41,14 +41,20 @@ public final class WordMatcher {
     }
 
     private static final List<Term> BANNED = banned();
+    private static final List<Term> NAMES = names();
     private static final List<Pattern> ALLOWED = allowed();
 
     private WordMatcher() {
     }
 
-    /** How many words the filter is watching for. */
+    /** How many words the filter is watching for everywhere. */
     public static int wordCount() {
         return BANNED.size();
+    }
+
+    /** How many words are banned in a player's name on top of those. */
+    public static int nameWordCount() {
+        return NAMES.size();
     }
 
     /**
@@ -57,7 +63,29 @@ public final class WordMatcher {
      *         the text is clean.
      */
     public static String find(String text) {
-        if (text == null || text.isBlank()) {
+        return match(text, BANNED);
+    }
+
+    /**
+     * The same for a player's name, which is held to the stricter list: every
+     * banned word plus {@link BannedWords#NAMES}.
+     */
+    public static String findInName(String text) {
+        String word = find(text);
+
+        return word != null ? word : findNameOnly(text);
+    }
+
+    /**
+     * Only {@link BannedWords#NAMES} - what a name may not carry but chat may.
+     * For {@code evictwordfilter test}, so it can say which list decided.
+     */
+    public static String findNameOnly(String text) {
+        return match(text, NAMES);
+    }
+
+    private static String match(String text, List<Term> terms) {
+        if (text == null || text.isBlank() || terms.isEmpty()) {
             return null;
         }
 
@@ -73,7 +101,7 @@ public final class WordMatcher {
             folded = allowed.matcher(folded).replaceAll(" ");
         }
 
-        for (Term term : BANNED) {
+        for (Term term : terms) {
             if (term.pattern().matcher(folded).find()) {
                 return term.word();
             }
@@ -168,6 +196,15 @@ public final class WordMatcher {
 
         add(terms, BannedWords.WORDS, false);
         add(terms, BannedWords.WHOLE_WORDS, true);
+
+        return List.copyOf(terms);
+    }
+
+    /** The name-only entries, matched anywhere in the name like {@code WORDS}. */
+    private static List<Term> names() {
+        List<Term> terms = new ArrayList<>();
+
+        add(terms, BannedWords.NAMES, false);
 
         return List.copyOf(terms);
     }

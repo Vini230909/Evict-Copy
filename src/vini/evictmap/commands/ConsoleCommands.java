@@ -567,9 +567,10 @@ public final class ConsoleCommands {
     private void handleWordFilterCommand(String action, String text) {
         switch (action.toLowerCase()) {
             case "" -> Log.info(
-                    "[EvictMapGenerator] Word filter: @, watching @ word(s). Bans on chat and on names. Edit the list in BannedWords.java and rebuild; 'evictwordfilter test <text>' tries a line.",
+                    "[EvictMapGenerator] Word filter: @, watching @ word(s) everywhere plus @ banned in names only. Bans on chat and on names. Edit the lists in BannedWords.java and rebuild; 'evictwordfilter test <text>' tries a line.",
                     settings.wordFilterEnabled() ? "on" : "off",
-                    WordMatcher.wordCount()
+                    WordMatcher.wordCount(),
+                    WordMatcher.nameWordCount()
             );
             case "on" -> {
                 settings.setWordFilterEnabled(true);
@@ -587,12 +588,22 @@ public final class ConsoleCommands {
 
                 String word = WordFilter.test(text);
 
-                if (word == null) {
+                if (word != null) {
+                    Log.info(
+                            "[EvictMapGenerator] Would ban in chat and as a name: matches '@' from the word list.",
+                            word
+                    );
+                    return;
+                }
+
+                String name = WordFilter.testName(text);
+
+                if (name == null) {
                     Log.info("[EvictMapGenerator] Clean - no ban.");
                 } else {
                     Log.info(
-                            "[EvictMapGenerator] Would ban: matches '@' from the word list.",
-                            word
+                            "[EvictMapGenerator] Would ban as a player name only: matches '@' from the name list. The same text in chat passes.",
+                            name
                     );
                 }
             }

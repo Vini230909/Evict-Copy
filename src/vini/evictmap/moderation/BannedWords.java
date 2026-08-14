@@ -42,6 +42,21 @@ public final class BannedWords {
     );
 
     /**
+     * Banned in a player's name only - a name carrying one of these is an
+     * automatic ban on join, while the same text in chat passes. For names
+     * nobody has a reason to wear: impersonation, advertising, a slur that is
+     * fine to talk *about* but not to be called.
+     *
+     * <p>{@link #WORDS} and {@link #WHOLE_WORDS} still ban in names as well;
+     * this list only adds to them. Matched anywhere in the name, like
+     * {@link #WORDS}, and {@link #ALLOWED} cuts out of it the same way.
+     */
+    public static final List<String> NAMES = List.of(
+            "hitler",
+            "stalin"
+    );
+
+    /**
      * Harmless words that contain a banned one, cut out before the scan. Here:
      * the Russian for "quietly" and "not rude", both containing {@code негр}.
      *

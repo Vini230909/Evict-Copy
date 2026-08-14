@@ -67,13 +67,15 @@ public final class WordFilter {
         Vars.netServer.admins.addChatFilter(this::filterChat);
 
         PluginLog.info(
-                "Word filter armed: @ word(s), automatic ban on chat and names.",
-                WordMatcher.wordCount()
+                "Word filter armed: @ word(s) banned anywhere plus @ banned in names only, automatic ban on chat and names.",
+                WordMatcher.wordCount(),
+                WordMatcher.nameWordCount()
         );
     }
 
     /**
-     * Checks a joining player's name.
+     * Checks a joining player's name, against the stricter name list: every
+     * banned word plus {@link BannedWords#NAMES}.
      *
      * @return true when they were banned, so the caller can skip the join
      */
@@ -82,7 +84,7 @@ public final class WordFilter {
             return false;
         }
 
-        String word = WordMatcher.find(player.name);
+        String word = WordMatcher.findInName(player.name);
 
         if (word == null) {
             return false;
@@ -143,5 +145,14 @@ public final class WordFilter {
     /** For {@code evictwordfilter test}. Null when the text is clean. */
     public static String test(String text) {
         return WordMatcher.find(text);
+    }
+
+    /**
+     * For {@code evictwordfilter test}: the entry that would ban this only as a
+     * player name, so the console can say which list decided. Null when no
+     * name-only entry matches - {@link #test} still has the final say.
+     */
+    public static String testName(String text) {
+        return WordMatcher.findNameOnly(text);
     }
 }
