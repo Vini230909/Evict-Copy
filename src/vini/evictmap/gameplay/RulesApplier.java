@@ -78,6 +78,17 @@ public final class RulesApplier {
         Vars.state.rules.unitBuildSpeedMultiplier = 1.0f;
         Vars.state.rules.cleanupDeadTeams = false;
 
+        /*
+         * Team 6 (neoplastic) is the only team Mindustry ships with
+         * ignoreUnitCap = true, and Units.getCap honours that flag before it
+         * ever looks at the game mode - PvP included. Personal teams are handed
+         * out from ids 1..128, so a player rolling that id would play with no
+         * unit cap at all while everyone else is capped by their cores. The
+         * field lives on the shared Team object, so clearing it once per rules
+         * pass is enough; nothing here uses neoplastic for anything else.
+         */
+        Team.neoplastic.ignoreUnitCap = false;
+
         for (Team team : Team.all) {
             Vars.state.rules.teams.get(team).cheat = isGodMode;
             Vars.state.rules.teams.get(team).fillItems = isGodMode;

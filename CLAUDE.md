@@ -93,6 +93,7 @@ Commands (`commands/`):
 - New players get a personal team and one protected starting hex; every building in that hex (including Fallen ones) is wiped before the start schematic + core are placed.
 - Eliminated players become Fallen; Fallen players can still chat and move their camera; Fallen can request teams via `/invite`.
 - Team leaders are the players who created their teams.
+- Personal team ids run 1..128 (14 is Fallen), which includes Mindustry's base teams. Team **6 is neoplastic**, the one team the game ships with `ignoreUnitCap = true` — and `Units.getCap` honours that flag before it checks the game mode, so it applies in PvP as well. `RulesApplier` clears it every rules pass; without that, whoever rolled id 6 played with no unit cap while everyone else was capped by their cores. (`TeamData.active()` also lets a neoplastic team with units but no cores/buildings count as active; harmless, since ownership and victory count real core blocks.) No other team has hard-coded rules — the other base teams appear only as colours.
 
 ### Captures
 - Core dies → ownership changes logically immediately; buildings inside the captured hex are deleted immediately.
