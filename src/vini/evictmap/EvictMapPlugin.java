@@ -158,6 +158,10 @@ public class EvictMapPlugin extends Plugin {
     private final BanCommands banCommands =
             new BanCommands(playerDataManager, !duelWorker, this::seedBan);
 
+    /** /js: the console's js command in chat, admin-only, hub and worker. */
+    private final JsCommands jsCommands =
+            new JsCommands();
+
     private final LeaderboardCommands leaderboardCommands =
             new LeaderboardCommands(playerDataManager);
 
@@ -174,6 +178,7 @@ public class EvictMapPlugin extends Plugin {
                     historyCommands,
                     infoCommands,
                     banCommands,
+                    jsCommands,
                     leaderboardCommands,
                     helpCommands
             );

@@ -21,6 +21,7 @@ public final class ClientCommands {
     private final HistoryCommands history;
     private final InfoCommands info;
     private final BanCommands bans;
+    private final JsCommands js;
     private final LeaderboardCommands leaderboard;
     private final HelpCommands help;
 
@@ -33,6 +34,7 @@ public final class ClientCommands {
             HistoryCommands history,
             InfoCommands info,
             BanCommands bans,
+            JsCommands js,
             LeaderboardCommands leaderboard,
             HelpCommands help
     ) {
@@ -44,6 +46,7 @@ public final class ClientCommands {
         this.history = history;
         this.info = info;
         this.bans = bans;
+        this.js = js;
         this.leaderboard = leaderboard;
         this.help = help;
     }
@@ -57,6 +60,7 @@ public final class ClientCommands {
         history.registerClientCommands(handler);
         info.registerClientCommands(handler);
         bans.registerClientCommands(handler);
+        js.registerClientCommands(handler);
         leaderboard.registerClientCommands(handler);
 
         // Register last so the filtered menu replaces vanilla /help.
