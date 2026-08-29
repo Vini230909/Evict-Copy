@@ -162,11 +162,17 @@ public final class DuelServerManager {
     /**
      * Reserves a worker and, once it is hosting, redirects every rostered
      * player to it. Each inner list is one match team (FFA passes N teams of
-     * one player, Training/Sandbox a single team). Returns false immediately
-     * if the feature is unconfigured or all worker slots are in use; the
-     * caller is responsible for notifying the players in that case.
+     * one player, Training/Sandbox a single team). The patch is the optional
+     * rebalance the match plays with ({@code /play nerf}); the worker applies
+     * it, the hub never does. Returns false immediately if the feature is
+     * unconfigured or all worker slots are in use; the caller is responsible
+     * for notifying the players in that case.
      */
-    public boolean requestMatch(MatchMode mode, List<List<Player>> rosterTeams) {
+    public boolean requestMatch(
+            MatchMode mode,
+            MatchPatch patch,
+            List<List<Player>> rosterTeams
+    ) {
         if (!isConfigured() || rosterTeams == null || rosterTeams.isEmpty()) {
             return false;
         }
@@ -179,6 +185,7 @@ public final class DuelServerManager {
 
         WorkerHandle handle = new WorkerHandle(port);
         handle.mode = mode;
+        handle.patch = patch == null ? MatchPatch.NONE : patch;
 
         List<List<String>> rosterUuids = new ArrayList<>();
 
@@ -198,7 +205,7 @@ public final class DuelServerManager {
             rosterUuids.add(uuids);
         }
 
-        handle.label = matchLabel(mode, rosterTeams);
+        handle.label = matchLabel(mode, handle.patch, rosterTeams);
         handle.adminUuids = snapshotAdminUuids();
         handle.bannedBlocks = snapshotBannedBlockNames();
 
@@ -217,8 +224,8 @@ public final class DuelServerManager {
 
         workers.put(port, handle);
 
-        announceMatchStart(mode, handle.label);
-        chatLog.matchStarted(port, mode.label(), rosterNames(handle));
+        announceMatchStart(mode, handle.patch, handle.label);
+        chatLog.matchStarted(port, handle.modeLabel(), rosterNames(handle));
 
         spawnExecutor.submit(() -> spawnAndRedirect(handle, rosterUuids));
 
@@ -242,6 +249,7 @@ public final class DuelServerManager {
      */
     private static String matchLabel(
             MatchMode mode,
+            MatchPatch patch,
             List<List<Player>> rosterTeams
     ) {
         String label;
@@ -281,23 +289,47 @@ public final class DuelServerManager {
             label = String.join(" [white]vs[] ", teamNames);
         }
 
-        if (mode != MatchMode.ONE_VS_ONE) {
-            label += " [lightgray](" + mode.label() + ")[]";
+        if (labelCarriesMode(mode, patch)) {
+            label += " [lightgray](" + modeLabel(mode, patch) + ")[]";
         }
 
         return label;
     }
 
     /**
+     * "Teams", or "Teams, Nerf" when the match runs a rebalance patch. The
+     * patch is worth spelling out everywhere the mode is: it changes how the
+     * match plays, so a spectator picking a match or a Discord reader should
+     * not have to guess.
+     */
+    private static String modeLabel(MatchMode mode, MatchPatch patch) {
+        return patch == null || patch.isNone()
+                ? mode.label()
+                : mode.label() + ", " + patch.label();
+    }
+
+    /**
+     * Whether {@link #matchLabel} already spelled the mode out. A plain
+     * unpatched 1v1 is the one match whose label stays just the two names.
+     */
+    private static boolean labelCarriesMode(MatchMode mode, MatchPatch patch) {
+        return mode != MatchMode.ONE_VS_ONE || (patch != null && !patch.isNone());
+    }
+
+    /**
      * Tells everyone still in the hub that a match is starting, right after
      * every rostered player accepted and just before they are redirected to
-     * the worker. The label carries the mode for every mode except 1v1 (see
-     * {@link #matchLabel}), so 1v1 appends it here.
+     * the worker. The label carries the mode for every match except a plain
+     * 1v1 (see {@link #matchLabel}), which appends it here.
      */
-    private static void announceMatchStart(MatchMode mode, String label) {
-        String announcement = mode == MatchMode.ONE_VS_ONE
-                ? label + " [lightgray](" + mode.label() + ")[]"
-                : label;
+    private static void announceMatchStart(
+            MatchMode mode,
+            MatchPatch patch,
+            String label
+    ) {
+        String announcement = labelCarriesMode(mode, patch)
+                ? label
+                : label + " [lightgray](" + modeLabel(mode, patch) + ")[]";
 
         Call.sendMessage("[accent]Match starting:[] " + announcement);
     }
@@ -383,7 +415,7 @@ public final class DuelServerManager {
         for (Player player : players) {
             player.sendMessage(
                     "[accent]Connecting you to your "
-                            + handle.mode.label() + "...[]"
+                            + handle.modeLabel() + "...[]"
             );
             activeDuelByUuid.put(player.uuid(), handle.port);
             Call.connect(player.con, ip, handle.port);
@@ -536,7 +568,7 @@ public final class DuelServerManager {
 
             statuses.add(new MatchStatus(
                     handle.port - settings.duelServerPort() + 1,
-                    handle.mode.label(),
+                    handle.modeLabel(),
                     rosterNames(handle),
                     (now - handle.spawnedAtMillis) / 1000L
             ));
@@ -808,7 +840,7 @@ public final class DuelServerManager {
         }
 
         viewer.sendMessage(
-                "[accent]Connecting you to the " + handle.mode.label()
+                "[accent]Connecting you to the " + handle.modeLabel()
                         + " as a spectator...[]"
         );
         Call.sendMessage(
@@ -1183,6 +1215,8 @@ public final class DuelServerManager {
     ) throws IOException {
         Properties properties = new Properties();
         properties.setProperty("mode", handle.mode.id());
+        // The rebalance the worker applies to its content before the round.
+        properties.setProperty("patch", handle.patch.id());
         // The display label ("A vs B (Teams)") is repeated in the handshake so
         // sibling workers can list this match in their own /s hop menu.
         properties.setProperty("label", handle.label);
@@ -1410,7 +1444,7 @@ public final class DuelServerManager {
 
         chatLog.matchEnded(
                 handle.port,
-                mode.label(),
+                modeLabel(mode, handle.patch),
                 solo ? null : chatNames(handle, result.winnerUuids()),
                 solo ? null : chatNames(handle, result.loserUuids()),
                 matchDurationSeconds(handle),
@@ -1599,7 +1633,7 @@ public final class DuelServerManager {
                 handle.endReported = true;
                 chatLog.matchEnded(
                         handle.port,
-                        handle.mode.label(),
+                        handle.modeLabel(),
                         null,
                         null,
                         matchDurationSeconds(handle),
@@ -1746,6 +1780,10 @@ public final class DuelServerManager {
         final long spawnedAtMillis = System.currentTimeMillis();
         volatile Process process;
         MatchMode mode = MatchMode.ONE_VS_ONE;
+
+        /** The rebalance this match plays with; applied by the worker. */
+        MatchPatch patch = MatchPatch.NONE;
+
         String label = "?";
         final List<Participant> participants = new ArrayList<>();
         List<String> adminUuids = new ArrayList<>();
@@ -1759,6 +1797,11 @@ public final class DuelServerManager {
 
         WorkerHandle(int port) {
             this.port = port;
+        }
+
+        /** The mode as players read it, patch included. */
+        String modeLabel() {
+            return DuelServerManager.modeLabel(mode, patch);
         }
     }
 }

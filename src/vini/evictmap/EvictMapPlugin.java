@@ -26,11 +26,13 @@ import mindustry.world.blocks.storage.CoreBlock;
 import vini.evictmap.gameplay.AttritionManager;
 import vini.evictmap.gameplay.RulesApplier;
 import vini.evictmap.gameplay.AttackManager;
+import vini.evictmap.gameplay.NerfPatch;
 import vini.evictmap.gameplay.WaveExtinction;
 import vini.evictmap.discord.DiscordStatusReporter;
 import vini.evictmap.duel.DuelChat;
 import vini.evictmap.duel.DuelServerManager;
 import vini.evictmap.duel.DuelWorker;
+import vini.evictmap.duel.MatchPatch;
 import vini.evictmap.duel.modes.DuelMode;
 import vini.evictmap.commands.*;
 import vini.evictmap.core.util.MessageIdFilter;
@@ -379,6 +381,15 @@ public class EvictMapPlugin extends Plugin {
             if (duelWorker) {
                 duelWorkerReferee.begin();
 
+                // The handshake is loaded now, so the referee knows whether
+                // this match was started as /play nerf. The patch mutates
+                // shared content objects; a worker hosts one match and exits,
+                // so it is applied here and never undone. The hub, which
+                // hosts round after round, never applies it.
+                if (duelWorkerReferee.matchPatch() == MatchPatch.NERF) {
+                    NerfPatch.apply();
+                }
+
                 // The handshake is loaded now, so the referee knows the mode:
                 // gate the victory check on the full roster count, and open
                 // the sandbox /invite flow for spectators.
@@ -558,7 +569,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.9.4. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.10.0. Use 'evictstatus' for commands and current settings."
         );
     }
 

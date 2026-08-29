@@ -129,6 +129,13 @@ public final class DuelWorker {
      * class under {@code vini.evictmap.duel.modes}.
      */
     private DuelMode duelMode = mode.duel();
+
+    /**
+     * The rebalance patch this match plays with, from the hub handshake. The
+     * plugin applies it to this process's content once the handshake is
+     * loaded; a worker hosts one match and exits, so it is never undone.
+     */
+    private MatchPatch patch = MatchPatch.NONE;
     private final List<List<String>> rosterTeams = new ArrayList<>();
     private final Set<String> participantUuids = new LinkedHashSet<>();
 
@@ -306,6 +313,21 @@ public final class DuelWorker {
 
     public MatchMode matchMode() {
         return mode;
+    }
+
+    /** The rebalance patch this worker's match runs with. */
+    public MatchPatch matchPatch() {
+        return patch;
+    }
+
+    /**
+     * The mode as players read it, patch included ("Teams, Nerf") - so the
+     * worker's own messages name the rebalance the same way the hub did.
+     */
+    public String modeLabel() {
+        return patch.isNone()
+                ? mode.label()
+                : mode.label() + ", " + patch.label();
     }
 
     /**
@@ -686,6 +708,19 @@ public final class DuelWorker {
             return;
         }
 
+        // Everyone who arrives is told the balance is not vanilla - the hub's
+        // announcement is gone with the server switch, and a changed overdrive
+        // or reconstructor cost is not something to discover mid-build.
+        if (player != null && !patch.isNone()) {
+            player.sendMessage(
+                    "[orange]This match runs the " + patch.label()
+                            + " rebalance:[] overdrive projectors and domes,"
+                            + " T5 reconstructors, phase weavers, surge"
+                            + " smelters, navanax, quasar and vela are"
+                            + " changed."
+            );
+        }
+
         if (
                 player != null
                         && handshakeLoaded
@@ -744,7 +779,7 @@ public final class DuelWorker {
      */
     private void welcomeSpectator(Player player) {
         String message = "[accent]You are now spectating this "
-                + mode.label()
+                + modeLabel()
                 + " match. Use /s to switch matches or return to the lobby.[]";
 
         if (duelMode.allowsSpectatorInvites()) {
@@ -884,7 +919,7 @@ public final class DuelWorker {
 
         Call.sendMessage(
                 "[accent]" + winnerName
-                        + "[accent] won the " + mode.label()
+                        + "[accent] won the " + modeLabel()
                         + ". Returning to the lobby in 5 seconds...[]"
         );
 
@@ -990,7 +1025,7 @@ public final class DuelWorker {
         writeResult(new ArrayList<>(), allRosterUuids, reason);
 
         Call.sendMessage(
-                "[accent]The " + mode.label()
+                "[accent]The " + modeLabel()
                         + " session is over. Returning to the lobby in 5 seconds...[]"
         );
 
@@ -1780,6 +1815,9 @@ public final class DuelWorker {
                     properties.getProperty("mode", "1v1").trim()
             );
             duelMode = mode.duel();
+            patch = MatchPatch.fromId(
+                    properties.getProperty("patch", MatchPatch.NONE.id()).trim()
+            );
 
             rosterTeams.clear();
             participantUuids.clear();
@@ -1836,10 +1874,11 @@ public final class DuelWorker {
             }
 
             Log.info(
-                    "[EvictMapGenerator] Duel worker loaded handshake: hub=@:@ mode=@ teams=@ players=@.",
+                    "[EvictMapGenerator] Duel worker loaded handshake: hub=@:@ mode=@ patch=@ teams=@ players=@.",
                     hubIp,
                     hubPort,
                     mode.id(),
+                    patch.id(),
                     rosterTeams.size(),
                     String.join(",", participantUuids)
             );
