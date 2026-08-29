@@ -37,7 +37,7 @@ match. Results and playtime go back into the stats database.
 ## Player commands
 
 ```text
-/help          /play (/p)     /view (/v)
+/help          /play (/p)     /spectate (/s)
 /info [name]   /history (/h)  /top [count]
 /invite [n]    /fullassault (/fa)
 /die           /over          /time

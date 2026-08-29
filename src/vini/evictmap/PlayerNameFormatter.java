@@ -44,7 +44,7 @@ public final class PlayerNameFormatter {
 
     /**
      * Joins already-formatted display names with {@code separator}, capping
-     * how many are shown so a big FFA/Teams roster never blows up a /v or /h
+     * how many are shown so a big FFA/Teams roster never blows up a /s or /h
      * menu into an unreadable wall of text; the rest are folded into a
      * trailing "+N more".
      */

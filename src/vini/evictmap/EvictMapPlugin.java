@@ -434,7 +434,7 @@ public class EvictMapPlugin extends Plugin {
             }
 
             // On a duel worker anyone who is not a rostered participant is a
-            // /view spectator: park them on derelict (no cores) and skip the
+            // /spectate spectator: park them on derelict (no cores) and skip the
             // normal FFA onboarding so they only watch.
             if (
                     duelWorker
@@ -443,7 +443,7 @@ public class EvictMapPlugin extends Plugin {
                 guarded("spectator assign", () -> teamManager.assignSpectator(event.player));
                 guarded("duelWorker join", () -> duelWorkerReferee.handlePlayerJoin(event.player));
                 event.player.sendMessage(
-                        "[accent]Spectating this match. Use [white]/v[accent] to return to the lobby.[]"
+                        "[accent]Spectating this match. Use [white]/s[accent] to return to the lobby.[]"
                 );
 
                 if (duelWorkerReferee.duelMode().allowsSpectatorInvites()) {
@@ -692,7 +692,7 @@ public class EvictMapPlugin extends Plugin {
 
     /**
      * A knocked-out FFA or Teams player is free: demoted to a spectator, they
-     * can watch, /v back to the lobby, or disconnect - the hub will let them
+     * can watch, /s back to the lobby, or disconnect - the hub will let them
      * join the main round normally instead of bouncing them back into this
      * match. In two-team games the deciding elimination fires this too,
      * harmlessly: the victory resolves right after from the unchanged rosters.
@@ -714,7 +714,7 @@ public class EvictMapPlugin extends Plugin {
                 member.sendMessage(
                         "[scarlet]You are out of the "
                                 + workerMode.mode().label()
-                                + " match.[] [accent]You are now spectating - use [white]/v[accent] to return to the lobby.[]"
+                                + " match.[] [accent]You are now spectating - use [white]/s[accent] to return to the lobby.[]"
                 );
             }
         }

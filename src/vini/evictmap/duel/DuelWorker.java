@@ -135,7 +135,7 @@ public final class DuelWorker {
     /**
      * The player who started a Sandbox (the sole launch participant). Everyone
      * else is a guest promoted in later via /invite. The owner is the only one
-     * who can end the room with /die; guests leave with /v. Empty for the
+     * who can end the room with /die; guests leave with /s. Empty for the
      * competitive modes, which have no owner.
      */
     private String ownerUuid = "";
@@ -143,7 +143,7 @@ public final class DuelWorker {
     /**
      * Eliminated FFA/Teams players. They stay in the rosters (so the final
      * result still records them as losers) but stop being participants: the
-     * start gate and disconnect pause ignore them, /v lets them leave, and
+     * start gate and disconnect pause ignore them, /s lets them leave, and
      * the hub reads this list from status.properties to stop bouncing them
      * back.
      */
@@ -360,7 +360,7 @@ public final class DuelWorker {
     /**
      * Marks an eliminated FFA/Teams player as out. They keep their roster
      * spot (so the final result still lists them as a loser) but are no
-     * longer a participant: the match stops waiting for them, /v returns
+     * longer a participant: the match stops waiting for them, /s returns
      * them to the lobby, and the hub stops bouncing them back into this
      * worker.
      */
@@ -384,7 +384,7 @@ public final class DuelWorker {
 
     /**
      * True for the Sandbox owner - the sole launch participant. The owner ends
-     * the room with /die; guests only leave with /v.
+     * the room with /die; guests only leave with /s.
      */
     public boolean isOwner(String uuid) {
         return uuid != null && !uuid.isEmpty() && uuid.equals(ownerUuid);
@@ -392,7 +392,7 @@ public final class DuelWorker {
 
     /**
      * Promotes a spectator into the sandbox: they become a full participant on
-     * the sandbox roster. Re-clears any earlier /v "out" mark, so a guest who
+     * the sandbox roster. Re-clears any earlier /s "out" mark, so a guest who
      * left and got re-invited is a proper participant again.
      */
     public void addSandboxParticipant(Player player) {
@@ -414,9 +414,9 @@ public final class DuelWorker {
     }
 
     /**
-     * A guest leaving the sandbox with /v: drop them from the roster and mark
+     * A guest leaving the sandbox with /s: drop them from the roster and mark
      * them "out" so the hub stops bouncing them back, then send them to the
-     * lobby. They must /view and /invite again to return. The owner cannot
+     * lobby. They must /spectate and /invite again to return. The owner cannot
      * leave this way - they end the room with /die instead.
      */
     private void leaveSandbox(Player player) {
@@ -433,7 +433,7 @@ public final class DuelWorker {
     }
 
     /**
-     * Handles /v pressed by a sandbox participant. Returns true when it dealt
+     * Handles /s pressed by a sandbox participant. Returns true when it dealt
      * with the player (so the caller stops), false when this is not a sandbox
      * and the caller should apply the normal "you're in this match" refusal.
      */
@@ -471,7 +471,7 @@ public final class DuelWorker {
             endSoloSession("sandbox-ended");
         } else {
             player.sendMessage(
-                    "[accent]Only the sandbox owner can end it. Use [white]/v[accent] to leave.[]"
+                    "[accent]Only the sandbox owner can end it. Use [white]/s[accent] to leave.[]"
             );
         }
 
@@ -745,7 +745,7 @@ public final class DuelWorker {
     private void welcomeSpectator(Player player) {
         String message = "[accent]You are now spectating this "
                 + mode.label()
-                + " match. Use /v to switch matches or return to the lobby.[]";
+                + " match. Use /s to switch matches or return to the lobby.[]";
 
         if (duelMode.allowsSpectatorInvites()) {
             message += "\n[lightgray]Use /invite to ask to join the sandbox.[]";
@@ -1590,7 +1590,7 @@ public final class DuelWorker {
     }
 
     /**
-     * True when no participant is connected. Pure /view spectators never keep a
+     * True when no participant is connected. Pure /spectate spectators never keep a
      * worker alive - a match (or sandbox) with only watchers left should free
      * its slot. Before the handshake loads we fall back to the raw player count
      * so a misconfigured worker still shuts down once truly empty.
@@ -1643,7 +1643,7 @@ public final class DuelWorker {
         // The live roster (including offline members) and the owner let the hub
         // bounce a disconnected participant back to this worker - even a sandbox
         // guest who was never in the launch handshake - while sending viewers
-        // and /v'd-out players to the lobby.
+        // and /s'd-out players to the lobby.
         properties.setProperty("participants", String.join(",", participantUuids));
         properties.setProperty("owner", ownerUuid);
         // Running per-UUID playtime on this worker. The hub is the only process

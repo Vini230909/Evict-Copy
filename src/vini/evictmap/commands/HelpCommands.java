@@ -1,17 +1,17 @@
 package vini.evictmap.commands;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import arc.math.Mathf;
 import arc.struct.Seq;
 import arc.util.CommandHandler;
 import arc.util.CommandHandler.Command;
 import arc.util.Strings;
 import mindustry.gen.Player;
-
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 
 /**
@@ -48,7 +48,7 @@ public final class HelpCommands {
             "over",
             "time",
             "play",
-            "view",
+            "spectate",
             "fullassault",
             "history",
             "info",

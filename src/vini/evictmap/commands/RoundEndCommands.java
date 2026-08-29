@@ -1,18 +1,14 @@
 package vini.evictmap.commands;
 
-import vini.evictmap.*;
-import vini.evictmap.gen.*;
-import vini.evictmap.data.*;
-import vini.evictmap.round.*;
-import vini.evictmap.core.cmd.CommandContext;
-import vini.evictmap.core.cmd.Commands;
-import vini.evictmap.duel.DuelWorker;
-
 import arc.util.CommandHandler;
 import arc.util.Time;
 import mindustry.game.Team;
 import mindustry.gen.Call;
 import mindustry.gen.Player;
+import vini.evictmap.core.cmd.CommandContext;
+import vini.evictmap.core.cmd.Commands;
+import vini.evictmap.duel.DuelWorker;
+import vini.evictmap.round.TeamManager;
 
 /**
  * Player-facing round-ending commands.
@@ -78,7 +74,7 @@ public final class RoundEndCommands {
         }
 
         // Sandbox /die is owner-only (it ends the room); guests are told to use
-        // /v. It must not surrender the shared sandbox team, so intercept before
+        // /s. It must not surrender the shared sandbox team, so intercept before
         // the normal surrender path.
         if (duelWorker && duelWorkerReferee.handleSandboxDie(player)) {
             return;

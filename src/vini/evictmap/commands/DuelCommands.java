@@ -1,20 +1,5 @@
 package vini.evictmap.commands;
 
-import vini.evictmap.*;
-import vini.evictmap.gen.*;
-import vini.evictmap.data.*;
-import vini.evictmap.round.*;
-import vini.evictmap.duel.DuelServerManager;
-import vini.evictmap.duel.DuelWorker;
-import vini.evictmap.duel.MatchMode;
-
-import arc.util.CommandHandler;
-import arc.util.Time;
-import mindustry.gen.Call;
-import mindustry.gen.Groups;
-import mindustry.gen.Player;
-import mindustry.ui.Menus;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -23,6 +8,17 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import arc.util.CommandHandler;
+import arc.util.Time;
+import mindustry.gen.Call;
+import mindustry.gen.Groups;
+import mindustry.gen.Player;
+import mindustry.ui.Menus;
+import vini.evictmap.PlayerNameFormatter;
+import vini.evictmap.duel.DuelServerManager;
+import vini.evictmap.duel.DuelWorker;
+import vini.evictmap.duel.MatchMode;
 
 /**
  * /play (alias /p) match-making.
@@ -52,7 +48,7 @@ public final class DuelCommands {
     private static final int ACCEPT_OPTION = 0;
 
     /**
-     * Sentinel stored in a /v menu's target-port list for the worker-side
+     * Sentinel stored in a /s menu's target-port list for the worker-side
      * "Return to the lobby" row; never a real worker port.
      */
     private static final int RETURN_TO_LOBBY_PORT = -1;
@@ -134,7 +130,7 @@ public final class DuelCommands {
             new HashMap<>();
 
     /**
-     * Viewer UUID -> ordered match ports shown in their /view menu.
+     * Viewer UUID -> ordered match ports shown in their /spectate menu.
      */
     private final Map<String, List<Integer>> viewTargetsByViewerUuid =
             new HashMap<>();
@@ -168,14 +164,14 @@ public final class DuelCommands {
         );
 
         handler.<Player>register(
-                "view",
+                "spectate",
                 "Spectate an ongoing match; while spectating, switch matches or return to the lobby.",
                 (args, player) -> handleViewCommand(player)
         );
 
         handler.<Player>register(
-                "v",
-                "Alias for /view.",
+                "s",
+                "Alias for /spectate.",
                 (args, player) -> handleViewCommand(player)
         );
     }
@@ -1005,7 +1001,7 @@ public final class DuelCommands {
     // --- spectating ---
 
     /**
-     * On a match worker /view returns a spectator to the lobby (and refuses
+     * On a match worker /spectate returns a spectator to the lobby (and refuses
      * the participants). On the hub it opens the menu of matches to spectate.
      */
     private void handleViewCommand(Player player) {
@@ -1015,14 +1011,14 @@ public final class DuelCommands {
 
         if (worker.isActive()) {
             if (worker.isParticipant(player.uuid())) {
-                // On a sandbox, a guest may leave with /v (the owner is told to
+                // On a sandbox, a guest may leave with /s (the owner is told to
                 // use /die); in a real match, participants cannot leave this way.
                 if (worker.handleSandboxLeave(player)) {
                     return;
                 }
 
                 player.sendMessage(
-                        "[scarlet]You are in this match; you cannot leave it with /v.[]"
+                        "[scarlet]You are in this match; you cannot leave it with /s.[]"
                 );
                 return;
             }
@@ -1035,7 +1031,7 @@ public final class DuelCommands {
     }
 
     /**
-     * The /v menu on a match worker: a spectator may hop straight to another
+     * The /s menu on a match worker: a spectator may hop straight to another
      * ongoing match or return to the hub lobby. The lobby row is stored as
      * {@link #RETURN_TO_LOBBY_PORT} so handleViewSelection can tell it apart
      * from a real worker port.
@@ -1099,7 +1095,7 @@ public final class DuelCommands {
                 player.con,
                 viewMenuId,
                 "[accent]Spectate a match",
-                "Select a match to watch. Use /v again to return to the lobby.",
+                "Select a match to watch. Use /s again to return to the lobby.",
                 rows.toArray(new String[0][])
         );
     }

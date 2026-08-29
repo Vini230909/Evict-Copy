@@ -289,7 +289,7 @@ public final class TeamManager {
     /**
      * Assigns every not-yet-registered connected player. Players the optional
      * spectator predicate accepts are parked on derelict instead of claiming a
-     * personal team; duel workers use this so /view spectators are kept out of
+     * personal team; duel workers use this so /spectate spectators are kept out of
      * the match across a regenerate.
      */
     public void assignConnectedPlayers(Predicate<Player> spectator) {
@@ -322,7 +322,7 @@ public final class TeamManager {
      * Parks a player on `Team.derelict` so they spectate without a starting hex
      * or core. Registering them in teamIdByPlayerUuid keeps the connected-player
      * assignment scan from later handing them a personal team. Used on duel
-     * workers for /view spectators.
+     * workers for /spectate spectators.
      */
     public void assignSpectator(Player player) {
         if (player == null) {

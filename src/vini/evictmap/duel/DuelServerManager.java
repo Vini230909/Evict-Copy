@@ -227,7 +227,7 @@ public final class DuelServerManager {
     }
 
     /**
-     * Caps how many player names a /v or /h label spells out before folding
+     * Caps how many player names a /s or /h label spells out before folding
      * the rest into "+N more" - FFA has no participant cap, and a match (or
      * history entry) with a lot of players in it used to render as one huge,
      * broken-looking line of text.
@@ -494,7 +494,7 @@ public final class DuelServerManager {
     }
 
     /**
-     * Snapshot of the duels in progress for the /view menu. Main-thread only.
+     * Snapshot of the duels in progress for the /spectate menu. Main-thread only.
      * Finished or not-yet-hosting workers are skipped so a viewer is never sent
      * to a match that is wrapping up or not ready, ordered by port for a stable
      * menu.
@@ -561,7 +561,7 @@ public final class DuelServerManager {
     }
 
     /**
-     * Players currently connected across all duel workers (duelists plus /view
+     * Players currently connected across all duel workers (duelists plus /spectate
      * spectators), read from each worker's status.properties. Lets the hub fold
      * duel players into its advertised player count. Main-thread only.
      *
@@ -1184,7 +1184,7 @@ public final class DuelServerManager {
         Properties properties = new Properties();
         properties.setProperty("mode", handle.mode.id());
         // The display label ("A vs B (Teams)") is repeated in the handshake so
-        // sibling workers can list this match in their own /v hop menu.
+        // sibling workers can list this match in their own /s hop menu.
         properties.setProperty("label", handle.label);
         properties.setProperty(
                 "team.count",
@@ -1704,7 +1704,7 @@ public final class DuelServerManager {
     }
 
     /**
-     * One in-progress match exposed to the /view menu.
+     * One in-progress match exposed to the /spectate menu.
      */
     public record ActiveDuel(
             int port,
