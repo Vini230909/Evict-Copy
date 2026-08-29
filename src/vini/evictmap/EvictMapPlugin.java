@@ -51,7 +51,15 @@ public class EvictMapPlugin extends Plugin {
     private static final float CONNECTED_PLAYER_SCAN_INITIAL_DELAY_TICKS = 1f;
     private static final float CONNECTED_PLAYER_SCAN_INTERVAL_TICKS = 15f;
     private static final int CONNECTED_PLAYER_SCAN_ATTEMPTS = 120;
-    private static final long ADVERTISED_COUNT_REFRESH_MILLIS = 2000L;
+    /**
+     * How often the worker status files are polled. Named for the advertised
+     * player count it was written for, but that poll is now what carries every
+     * worker's chat, playtime, ban requests and performance numbers to the hub,
+     * and the performance table redraws every three seconds - so it runs once a
+     * second rather than twice as slowly as the thing reading it. The reads sit
+     * on a background thread and cover at most ten small files.
+     */
+    private static final long ADVERTISED_COUNT_REFRESH_MILLIS = 1000L;
 
     /**
      * How long the exit's shutdown hooks may take before the halt guard
@@ -142,6 +150,30 @@ public class EvictMapPlugin extends Plugin {
             new vini.evictmap.metrics.MetricsReporter(
                     () -> duelServerManager.activeDuels().size(),
                     duelServerManager::connectedDuelPlayers
+            );
+
+    /**
+     * Measures this process's tick rate, load and hotspots. Runs on the hub and
+     * on every match server alike - it reads the game's own groups and touches
+     * no gameplay - which is what lets one Discord table compare all of them.
+     * Created in bootstrap() rather than here, because it has to capture the
+     * game thread and only bootstrap() is guaranteed to be running on it.
+     */
+    private vini.evictmap.metrics.PerfSampler perfSampler;
+
+    /**
+     * Hub-only live performance table in Discord: one message showing the hub
+     * and every match-server slot, refreshed every few seconds. Constructed on
+     * a worker too (inert until started), but only the hub ever starts it - a
+     * worker publishes its numbers through its status file and reports nowhere.
+     */
+    private final vini.evictmap.discord.PerfReporter perfReporter =
+            new vini.evictmap.discord.PerfReporter(
+                    settings,
+                    () -> perfSampler == null
+                            ? vini.evictmap.metrics.PerfSnapshot.empty()
+                            : perfSampler.snapshot(),
+                    duelServerManager::poolPerf
             );
 
     private final DuelCommands duelCommands =
@@ -296,6 +328,8 @@ public class EvictMapPlugin extends Plugin {
                     duelWorker ? null : banManager,
                     duelWorker ? null : chatLogReporter,
                     duelWorker ? null : discordModCommands,
+                    duelWorker ? null : perfReporter,
+                    () -> perfSampler,
                     // evictgen regenerates the live map in place with no fresh snapshot,
                     // so connected clients only see the new terrain via the per-tile sync.
                     seed -> generate(seed, true)
@@ -343,6 +377,10 @@ public class EvictMapPlugin extends Plugin {
             // Hub only: Discord's /ban and /unban. Started after the mirror,
             // which shares the same bot token out of the secrets file.
             discordModCommands.start();
+
+            // Hub only: the live performance table. Same bot again, and the
+            // worker rows come from the status files the duel manager polls.
+            perfReporter.start();
         }
 
         Events.on(WorldLoadEvent.class, event -> {
@@ -529,6 +567,11 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Events.run(Trigger.update, () -> {
+            // Before everything else: this measures the gap between one tick
+            // and the next, so it has to sit at the same point in every tick.
+            // One nanoTime and an array write.
+            perfSampler.update();
+
             // First, so the managers below already see pause-corrected time.
             teamManager.updatePauseTracking();
 
@@ -554,6 +597,7 @@ public class EvictMapPlugin extends Plugin {
 
                 metricsReporter.update();
                 discordStatusReporter.update();
+                perfReporter.update();
 
                 // Runs the one-off import of pre-existing bans once the admin
                 // store exists, then paces the ban log's queue.
@@ -569,7 +613,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.10.0. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.11.0. Use 'evictstatus' for commands and current settings."
         );
     }
 
@@ -638,6 +682,13 @@ public class EvictMapPlugin extends Plugin {
         settings.load();
         adminSync.load();
 
+        // Here rather than in a field initialiser: the sampler has to be handed
+        // the thread the game loop runs on, and this is the one place that is
+        // guaranteed to be running on it. Started on the hub and on a worker
+        // alike - the numbers only differ in where they end up.
+        perfSampler = new vini.evictmap.metrics.PerfSampler(Thread.currentThread());
+        perfSampler.start();
+
         // A duel worker has no player database of its own: it reads the hub's
         // (it runs in duel-workers/duel-<port>/, so the hub config is two levels
         // up) so /info, /top and /history show real numbers on a match
@@ -667,6 +718,11 @@ public class EvictMapPlugin extends Plugin {
             duelWorkerReferee.setPlaytimeSource(
                     playerDataManager::sessionPlaytimeSnapshot
             );
+
+            // Same file, same poll: this worker's tick rate travels to the hub
+            // beside its playtime, and the hub draws it into one table with
+            // every other server.
+            duelWorkerReferee.setPerfSource(perfSampler::snapshot);
 
             // After the word filter: a blocked message must be gone before
             // the ranked routing can deliver it to the spectators.

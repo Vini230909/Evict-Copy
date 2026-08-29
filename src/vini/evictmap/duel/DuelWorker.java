@@ -3,6 +3,7 @@ package vini.evictmap.duel;
 import vini.evictmap.PlayerNameFormatter;
 import vini.evictmap.duel.modes.DuelMode;
 import vini.evictmap.moderation.BanRequest;
+import vini.evictmap.metrics.PerfSnapshot;
 import vini.evictmap.moderation.WordFilterHit;
 
 import java.io.File;
@@ -75,7 +76,15 @@ public final class DuelWorker {
     // after the players have been sent back. The hub records the result on worker
     // exit, so this is what gets a finished match into /history within seconds.
     private static final int RESOLVED_GRACE_SECONDS = 5;
-    private static final int STATUS_INTERVAL_SECONDS = 2;
+    /**
+     * How often the status file is rewritten. One second rather than two since
+     * the file also carries this worker's performance numbers, which the hub
+     * renders into a table that refreshes every three: at two seconds a row
+     * could be showing a tick rate from five seconds ago, which is the wrong
+     * kind of stale for the one view you look at while a server misbehaves.
+     * The file is a few hundred bytes.
+     */
+    private static final int STATUS_INTERVAL_SECONDS = 1;
     private static final float RETURN_DELAY_TICKS = 5f * 60f;
     // An abandoned worker still being watched counts down out loud before it
     // closes: a visible 5 s ticking countdown, then a 3 s hold at zero, then it
@@ -203,6 +212,17 @@ public final class DuelWorker {
 
     public void setPlaytimeSource(Supplier<Map<String, Long>> source) {
         this.playtimeSource = source == null ? Map::of : source;
+    }
+
+    /**
+     * Source of this worker's performance numbers. They ride the status file to
+     * the hub, which is the only process that talks to Discord - a worker never
+     * reports anywhere itself.
+     */
+    private Supplier<PerfSnapshot> perfSource = PerfSnapshot::empty;
+
+    public void setPerfSource(Supplier<PerfSnapshot> source) {
+        this.perfSource = source == null ? PerfSnapshot::empty : source;
     }
 
     private boolean handshakeLoaded = false;
@@ -1686,6 +1706,11 @@ public final class DuelWorker {
         // and credits the growth - otherwise a whole match would be missing
         // from a player's total playtime.
         properties.setProperty("playtime", packPlaytime());
+        // This worker's tick rate, load and profile, for the hub's performance
+        // table. Written here rather than through a channel of its own: the hub
+        // already reads this file every poll, and one more section costs a few
+        // hundred bytes.
+        perfSource.get().write(properties);
         // Accounts banned here - by an admin or by the word filter. The hub
         // owns bans, so it applies them properly (widened, kicked everywhere,
         // announced, logged) and needs the story with them: who banned, this

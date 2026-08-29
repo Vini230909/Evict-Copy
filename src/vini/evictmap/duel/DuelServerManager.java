@@ -18,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -37,6 +38,8 @@ import mindustry.world.Block;
 import vini.evictmap.discord.ChatLogReporter;
 import vini.evictmap.discord.ChatLogTail;
 import vini.evictmap.discord.DiscordFormat;
+import vini.evictmap.metrics.PerfSnapshot;
+import vini.evictmap.metrics.ServerPerf;
 import vini.evictmap.moderation.BanOrigin;
 import vini.evictmap.moderation.BanRequest;
 import vini.evictmap.moderation.WordFilterHit;
@@ -102,6 +105,18 @@ public final class DuelServerManager {
     private volatile int cachedConnectedDuelPlayers = 0;
     private final AtomicBoolean duelPlayerCountRefreshRunning =
             new AtomicBoolean(false);
+
+    /**
+     * Port -> that worker's last performance numbers and the moment this hub
+     * read them. Filled by the same background poll that reads the status
+     * files, read by the Discord performance table on the main thread, hence
+     * the concurrent map.
+     *
+     * <p>The timestamp is taken here rather than in the worker on purpose: two
+     * processes have two clocks, and the age column exists precisely to expose
+     * a worker whose own clock has stopped moving.
+     */
+    private final Map<Integer, ServerPerf> workerPerf = new ConcurrentHashMap<>();
 
     /**
      * Port -> the per-UUID playtime already credited from that worker's status
@@ -606,6 +621,7 @@ public final class DuelServerManager {
     public int connectedDuelPlayers() {
         if (workers.isEmpty()) {
             cachedConnectedDuelPlayers = 0;
+            workerPerf.clear();
             return 0;
         }
 
@@ -635,6 +651,7 @@ public final class DuelServerManager {
                     }
 
                     cachedConnectedDuelPlayers = total;
+                    recordWorkerPerf(ports, statuses);
 
                     // The same files carry playtime and ban requests; deal
                     // with both while they are in hand.
@@ -911,6 +928,73 @@ public final class DuelServerManager {
                 );
             }
         }
+    }
+
+    /**
+     * Keeps the performance table's worker rows current: adopt what each status
+     * file carried, and forget the ports that are no longer in the pool - a
+     * finished worker's last numbers would otherwise sit in the table looking
+     * like a server that is still up.
+     */
+    private void recordWorkerPerf(
+            List<Integer> ports,
+            Map<Integer, Properties> statuses
+    ) {
+        long now = System.currentTimeMillis();
+
+        workerPerf.keySet().retainAll(ports);
+
+        for (int port : ports) {
+            Properties status = statuses.get(port);
+            PerfSnapshot perf = status == null ? null : PerfSnapshot.read(status);
+
+            // A reserved port always counts as running: a worker that is still
+            // booting has no status file yet, and drawing that as an idle slot
+            // would hide a match that is starting right now.
+            workerPerf.put(
+                    port,
+                    new ServerPerf(
+                            Integer.toString(port),
+                            true,
+                            perf,
+                            perf == null
+                                    ? 0L
+                                    : Math.max(0L, now - lastPerfReadMillis(port, now))
+                    )
+            );
+        }
+    }
+
+    /**
+     * A worker's numbers are as old as the file they came from, not as old as
+     * this poll: the poll runs on its own cadence and a worker that has stopped
+     * writing keeps handing back the same file. The file's own modification
+     * time is what turns that into a growing age.
+     */
+    private long lastPerfReadMillis(int port, long fallback) {
+        long modified = new File(workerDir(port), "status.properties").lastModified();
+
+        return modified > 0L ? modified : fallback;
+    }
+
+    /**
+     * One row per match-server slot for the performance table - running ones
+     * with their numbers, the rest marked idle. Every slot is listed whether or
+     * not a worker is in it: an empty slot is information too, and a table whose
+     * rows came and went would be unreadable.
+     */
+    public List<ServerPerf> poolPerf() {
+        List<ServerPerf> rows = new ArrayList<>();
+        int basePort = settings.duelServerPort();
+
+        for (int offset = 0; offset < settings.duelMaxWorkers(); offset++) {
+            int port = basePort + offset;
+            ServerPerf row = workerPerf.get(port);
+
+            rows.add(row == null ? ServerPerf.idle(Integer.toString(port)) : row);
+        }
+
+        return rows;
     }
 
     private Properties readStatus(int port) {

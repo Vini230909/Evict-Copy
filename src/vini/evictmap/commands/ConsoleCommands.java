@@ -13,6 +13,9 @@ import vini.evictmap.moderation.BanManager;
 import vini.evictmap.moderation.WordFilter;
 import vini.evictmap.moderation.WordMatcher;
 import vini.evictmap.discord.DiscordStatusReporter;
+import vini.evictmap.discord.PerfReporter;
+import vini.evictmap.metrics.PerfSampler;
+import vini.evictmap.metrics.PerfSnapshot;
 import vini.evictmap.duel.DuelServerManager;
 
 import arc.util.CommandHandler;
@@ -21,7 +24,10 @@ import mindustry.Vars;
 import mindustry.content.Blocks;
 import mindustry.game.Team;
 
+import java.util.List;
+import java.util.Locale;
 import java.util.function.LongConsumer;
+import java.util.function.Supplier;
 
 /**
  * All dedicated-server console commands, declared on the shared command
@@ -57,6 +63,17 @@ public final class ConsoleCommands {
     /** Null on a duel worker: only the hub answers Discord's /ban. */
     private final DiscordModCommands discordModCommands;
 
+    /** Null on a duel worker: the hub draws the performance table for all of them. */
+    private final PerfReporter perfReporter;
+
+    /**
+     * This process's own performance sampler - hub or worker, since a match
+     * server's console is exactly where you look when that match server is the
+     * slow one. A supplier because the sampler is created in bootstrap(), after
+     * the commands are constructed.
+     */
+    private final Supplier<PerfSampler> perfSampler;
+
     private final LongConsumer generate;
 
     private static final int MAX_CORECAP_INCREMENT = 10000;
@@ -76,6 +93,8 @@ public final class ConsoleCommands {
             BanManager banManager,
             ChatLogReporter chatLogReporter,
             DiscordModCommands discordModCommands,
+            PerfReporter perfReporter,
+            Supplier<PerfSampler> perfSampler,
             LongConsumer generate
     ) {
         this.runtime = runtime;
@@ -90,6 +109,8 @@ public final class ConsoleCommands {
         this.banManager = banManager;
         this.chatLogReporter = chatLogReporter;
         this.discordModCommands = discordModCommands;
+        this.perfReporter = perfReporter;
+        this.perfSampler = perfSampler;
         this.generate = generate;
     }
 
@@ -205,6 +226,19 @@ public final class ConsoleCommands {
                 .args("target:string?", "value:string?")
                 .description("Discord chat mirror: status, setup <server-id>, hub/<port> + channel id, reload, off, test.")
                 .run(ctx -> handleChatLogCommand(ctx.raw()));
+
+        commands.command("evictperf").console()
+                .args("action:string?", "value:string?", "extra:string?")
+                .description("Live performance reports in Discord: setup, rate, off, reload, test, profile on/off.")
+                .run(ctx -> handlePerfCommand(
+                        ctx.str("action", "").trim(),
+                        ctx.str("value", "").trim(),
+                        ctx.str("extra", "").trim()
+                ));
+
+        commands.command("evictprofile").console()
+                .description("What this server's tick is spending itself on, last minute.")
+                .run(ctx -> handleProfileCommand());
 
         commands.command("evictbanimport").console()
                 .args("force:string?")
@@ -387,6 +421,281 @@ public final class ConsoleCommands {
         for (String line : lines) {
             Log.info("[EvictMapGenerator] @", line);
         }
+    }
+
+    /**
+     * evictperf: the live performance table. No argument prints the checklist
+     * and this server's current numbers; 'setup' has the bot create the channel
+     * (reusing the Discord server the slash commands are already wired to, so
+     * no id has to be found twice); a channel id wires one by hand; 'off' stops
+     * it; 'reload' re-reads the bot token; 'test' refreshes right now.
+     *
+     * <p>'profile on/off' is the exception that also works on a match server:
+     * the stack profiler belongs to whichever process is asked, and a match
+     * server's own console is exactly where you stand when that match server is
+     * the slow one.
+     */
+    private void handlePerfCommand(String action, String value, String extra) {
+        if (action.equalsIgnoreCase("profile")) {
+            handleProfileToggle(value);
+            return;
+        }
+
+        if (perfReporter == null) {
+            Log.err("[EvictMapGenerator] The performance table only runs on the hub. 'evictprofile' and 'evictperf profile on/off' work here.");
+            return;
+        }
+
+        if (action.isEmpty()) {
+            Log.info("[EvictMapGenerator] Discord performance table:");
+
+            for (String line : perfReporter.statusLines()) {
+                Log.info("[EvictMapGenerator]   @", line);
+            }
+
+            Log.info("[EvictMapGenerator]   @", profilerLine());
+            Log.info("[EvictMapGenerator]   Now: @", currentPerfLine());
+            Log.info("[EvictMapGenerator] 'evictperf setup' creates the channel with the bot (needs Manage Channels). Staff-only, like the other log channels.");
+            return;
+        }
+
+        switch (action.toLowerCase(Locale.ROOT)) {
+            case "off" -> {
+                perfReporter.disable();
+                Log.info("[EvictMapGenerator] Performance table off; the channel is left in Discord.");
+            }
+            case "setup" -> handlePerfSetup(value);
+            case "rate" -> handlePerfRate(value, extra);
+            case "reload" -> {
+                if (perfReporter.reloadToken()) {
+                    Log.info("[EvictMapGenerator] Bot token loaded. The table resumes on its next refresh.");
+                } else {
+                    Log.err("[EvictMapGenerator] No bot token is set. Add it to the secrets file and run this again.");
+                }
+            }
+            case "test" -> {
+                if (!perfReporter.isConfigured()) {
+                    Log.err("[EvictMapGenerator] No channel is wired yet - run 'evictperf setup'.");
+                    return;
+                }
+
+                perfReporter.refreshAll();
+                Log.info("[EvictMapGenerator] Every report will be redrawn as the request budget allows.");
+            }
+            default -> {
+                if (!isChannelId(action)) {
+                    Log.err("[EvictMapGenerator] Use: evictperf [setup <server-id> | rate <requests> <seconds> | <channel-id> | off | reload | test | profile on/off]");
+                    return;
+                }
+
+                perfReporter.configureChannel(action);
+                Log.info("[EvictMapGenerator] Performance reports wired to channel @; one message per server will be posted there.", action);
+            }
+        }
+    }
+
+    /**
+     * The bot creates the channel itself. The Discord server is the one the
+     * slash commands already use unless another is named - the same bot in the
+     * same place, so making an admin find the id a second time would be pure
+     * friction.
+     */
+    private void handlePerfSetup(String value) {
+        String guild = value.isEmpty() ? settings.discordCommandGuild() : value;
+
+        if (guild.isBlank()) {
+            Log.err("[EvictMapGenerator] No Discord server known yet. Run 'evictdiscordcmd setup' (it finds the server itself), or pass the id: evictperf setup <server-id>.");
+            return;
+        }
+
+        Log.info("[EvictMapGenerator] Creating the performance channel in Discord; this takes a moment...");
+
+        perfReporter.setupChannel(guild, lines -> {
+            for (String line : lines) {
+                Log.info("[EvictMapGenerator] @", line);
+            }
+        });
+    }
+
+    /**
+     * evictperf rate: how many Discord requests the reports may spend, and over
+     * how long. It is the one knob that matters, because the budget is shared
+     * out between the servers that are running - raising it refreshes each of
+     * them sooner, lowering it is how you stay clear of a rate limit.
+     */
+    private void handlePerfRate(String requests, String seconds) {
+        if (requests.isEmpty() || seconds.isEmpty()) {
+            Log.info(
+                    "[EvictMapGenerator] Budget is @ request(s) per @s. Change it with 'evictperf rate <requests> <seconds>' (Discord allows about 5 per 5s in one channel).",
+                    settings.perfRateRequests(),
+                    settings.perfRateSeconds()
+            );
+            return;
+        }
+
+        int parsedRequests;
+        int parsedSeconds;
+
+        try {
+            parsedRequests = Integer.parseInt(requests);
+            parsedSeconds = Integer.parseInt(seconds);
+        } catch (NumberFormatException exception) {
+            Log.err("[EvictMapGenerator] Use: evictperf rate <requests> <seconds> - both whole numbers.");
+            return;
+        }
+
+        perfReporter.setRate(parsedRequests, parsedSeconds);
+
+        Log.info("[EvictMapGenerator] Budget is now @ request(s) per @s.",
+                settings.perfRateRequests(),
+                settings.perfRateSeconds());
+
+        for (String line : perfReporter.statusLines()) {
+            Log.info("[EvictMapGenerator]   @", line);
+        }
+    }
+
+    /** evictperf profile on/off - the stack profiler of this very process. */
+    private void handleProfileToggle(String value) {
+        PerfSampler sampler = perfSampler.get();
+
+        if (sampler == null) {
+            Log.err("[EvictMapGenerator] The performance sampler is not up yet.");
+            return;
+        }
+
+        if (value.isEmpty()) {
+            Log.info("[EvictMapGenerator] @", profilerLine());
+            return;
+        }
+
+        switch (value.toLowerCase(Locale.ROOT)) {
+            case "on" -> {
+                sampler.setProfiling(true);
+                Log.info("[EvictMapGenerator] Stack profiler on. 'evictprofile' shows what the tick is doing; give it a few seconds to fill.");
+            }
+            case "off" -> {
+                sampler.setProfiling(false);
+                Log.info("[EvictMapGenerator] Stack profiler off. Tick rate, load and memory keep being measured; only the hotspot names stop.");
+            }
+            default -> Log.err("[EvictMapGenerator] Use: evictperf profile [on/off]");
+        }
+    }
+
+    /**
+     * evictprofile: the full hotspot table for this process - the question the
+     * Discord row only has room to answer three entries deep.
+     */
+    private void handleProfileCommand() {
+        PerfSampler sampler = perfSampler.get();
+
+        if (sampler == null) {
+            Log.err("[EvictMapGenerator] The performance sampler is not up yet.");
+            return;
+        }
+
+        Log.info("[EvictMapGenerator] @", currentPerfLine());
+
+        if (!sampler.isProfiling()) {
+            Log.info("[EvictMapGenerator] The stack profiler is off - turn it on with 'evictperf profile on'.");
+            return;
+        }
+
+        List<PerfSnapshot.Hotspot> hotspots = sampler.profile(25);
+
+        if (hotspots.isEmpty()) {
+            Log.info("[EvictMapGenerator] Nothing sampled yet - the server has been idle, or the profiler has only just started.");
+            return;
+        }
+
+        Log.info(
+                "[EvictMapGenerator] Where the last minute of tick time went (@ samples, @ working):",
+                sampler.profileSamples(),
+                String.format(Locale.ROOT, "%.0f%%", sampler.snapshot().busyPercent())
+        );
+
+        // The rollup first: it is the form you can act on, and the method list
+        // below is what you read once the rollup has told you where to look.
+        Log.info("[EvictMapGenerator] By subsystem:");
+
+        for (PerfSnapshot.Hotspot subsystem : sampler.subsystemProfile(20)) {
+            Log.info(
+                    "[EvictMapGenerator]   @  @",
+                    String.format(Locale.ROOT, "%5.1f%%", subsystem.percent()),
+                    subsystem.label()
+            );
+        }
+
+        Log.info("[EvictMapGenerator] By method:");
+
+        for (PerfSnapshot.Hotspot hotspot : hotspots) {
+            Log.info(
+                    "[EvictMapGenerator]   @  @",
+                    String.format(Locale.ROOT, "%5.1f%%", hotspot.percent()),
+                    hotspot.label()
+            );
+        }
+    }
+
+    /** One line of this server's current numbers, for both perf commands. */
+    private String currentPerfLine() {
+        PerfSampler sampler = perfSampler.get();
+
+        if (sampler == null) {
+            return "no measurements yet.";
+        }
+
+        PerfSnapshot perf = sampler.snapshot();
+
+        if (!perf.hasData()) {
+            return "no measurements yet.";
+        }
+
+        return String.format(
+                Locale.ROOT,
+                "%.1f TPS (mean %.1fms, p95 %.1fms, worst %.0fms), busy %.0f%%, "
+                        + "%d units, %d buildings, %d bullets, heap %.1f/%.1fG, "
+                        + "GC %.0fms/min",
+                perf.tps(),
+                perf.tickMeanMs(),
+                perf.tickP95Ms(),
+                perf.tickWorstMs(),
+                perf.busyPercent(),
+                perf.units(),
+                perf.buildings(),
+                perf.bullets(),
+                perf.heapUsedBytes() / (1024d * 1024d * 1024d),
+                perf.heapMaxBytes() / (1024d * 1024d * 1024d),
+                perf.gcMillisPerMinute()
+        );
+    }
+
+    private String profilerLine() {
+        PerfSampler sampler = perfSampler.get();
+
+        if (sampler == null) {
+            return "Stack profiler: not up yet.";
+        }
+
+        return "Stack profiler: " + (sampler.isProfiling()
+                ? "on, " + sampler.profileSamples()
+                + " samples in the window ('evictprofile' prints them)"
+                : "off ('evictperf profile on')");
+    }
+
+    /** A Discord channel id is a snowflake: digits only, 15-22 of them. */
+    private static boolean isChannelId(String value) {
+        if (value.length() < 15 || value.length() > 22) {
+            return false;
+        }
+
+        for (int index = 0; index < value.length(); index++) {
+            if (!Character.isDigit(value.charAt(index))) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
