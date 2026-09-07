@@ -62,6 +62,7 @@ final class DiscordBotMessage {
     private volatile long lastSuccessMillis = 0L;
     private volatile long backoffUntilMillis = 0L;
     private volatile long lastRateLimitMillis = 0L;
+    private volatile int rateLimits = 0;
     private volatile int consecutiveFailures = 0;
 
     DiscordBotMessage(HttpClient client, Consumer<String> messageIdSink) {
@@ -238,6 +239,13 @@ final class DiscordBotMessage {
         setMessageId("");
     }
 
+    /**
+     * Honours a rate limit - quietly. A 429 that is waited out is backpressure
+     * working, not a failure: the caller widens its pacing and the message goes
+     * out a moment later. Logging each one filled the console with lines an
+     * admin can do nothing about, so the count is kept for {@code evictperf} to
+     * report and the caller decides whether it is worth saying anything.
+     */
     private void applyRateLimit(String body) {
         long waitMillis = DEFAULT_BACKOFF_MILLIS;
 
@@ -253,7 +261,18 @@ final class DiscordBotMessage {
 
         lastRateLimitMillis = System.currentTimeMillis();
         backoffUntilMillis = lastRateLimitMillis + waitMillis;
-        recordFailure("rate limited for " + (waitMillis / 1000L) + "s");
+        rateLimits++;
+        lastError = "rate limited for " + (waitMillis / 1000L) + "s";
+    }
+
+    /** When this sender may try again; the channel's bucket, seen from here. */
+    long backoffUntilMillis() {
+        return backoffUntilMillis;
+    }
+
+    /** How many rate limits this message has been handed, for the checklist. */
+    int rateLimits() {
+        return rateLimits;
     }
 
     private void captureMessageId(String body) {

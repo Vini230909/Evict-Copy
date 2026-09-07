@@ -58,6 +58,9 @@ public final class PerfReporter {
     /** How often the reporter looks at the fleet at all; see {@link #update()}. */
     private static final long TICK_INTERVAL_MILLIS = 250L;
 
+    /** How long one rate limit keeps the pacing widened. */
+    private static final long RATE_LIMIT_MEMORY_MILLIS = 60_000L;
+
     /** The Discord category the setup creates the channel in. */
     private static final String CATEGORY_NAME = "Evict Logs";
 
@@ -298,7 +301,27 @@ public final class PerfReporter {
         }
     }
 
-    /** True while this window still has a request left in it. */
+    /**
+     * True when a request may go out right now.
+     *
+     * <p>Three conditions, and the middle one is the one that was missing.
+     *
+     * <ol>
+     *   <li><b>The window count</b> - at most {@code requests} in the last
+     *       {@code seconds}.</li>
+     *   <li><b>Even spacing</b> - and at least {@code seconds / requests} since
+     *       the previous one. A window count alone permits the whole budget as a
+     *       burst: four requests inside one second, then four seconds idle. That
+     *       averages out on paper and is exactly what a rate limiter is built to
+     *       reject, which is why the console filled with 429s at a budget that
+     *       was well under the limit on average. The chat mirror already rides
+     *       its limit evenly for the same reason.</li>
+     *   <li><b>The channel's own backoff</b> - Discord limits edits per
+     *       <em>channel</em>, so a 429 handed to one report means every report
+     *       must hold off, not just that one. Without this the other ten keep
+     *       knocking on a bucket that has already said no.</li>
+     * </ol>
+     */
     private boolean budgetAvailable(long now) {
         long windowMillis = settings.perfRateSeconds() * 1000L;
 
@@ -306,7 +329,51 @@ public final class PerfReporter {
             recentSends.removeFirst();
         }
 
-        return recentSends.size() < settings.perfRateRequests();
+        if (recentSends.size() >= settings.perfRateRequests()) {
+            return false;
+        }
+
+        if (!recentSends.isEmpty() && now - recentSends.peekLast() < spacingMillis(now)) {
+            return false;
+        }
+
+        return now >= channelBackoffUntil();
+    }
+
+    /**
+     * The gap to leave between two requests: the budget spread evenly, and
+     * doubled for a while after Discord has pushed back. The widening is what
+     * makes the reports settle by themselves instead of needing an admin to
+     * lower the rate by hand.
+     */
+    private long spacingMillis(long now) {
+        long even = settings.perfRateSeconds() * 1000L
+                / Math.max(1, settings.perfRateRequests());
+
+        return recentlyRateLimited(now) ? even * 2L : even;
+    }
+
+    /** The furthest any report has been told to wait - the channel's bucket. */
+    private long channelBackoffUntil() {
+        long until = 0L;
+
+        for (Slot slot : slots.values()) {
+            until = Math.max(until, slot.sender.backoffUntilMillis());
+        }
+
+        return until;
+    }
+
+    private boolean recentlyRateLimited(long now) {
+        for (Slot slot : slots.values()) {
+            long last = slot.sender.lastRateLimitMillis();
+
+            if (last > 0L && now - last < RATE_LIMIT_MEMORY_MILLIS) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -519,10 +586,26 @@ public final class PerfReporter {
                 refreshSeconds(live)
         ));
 
+        int rateLimits = 0;
+
         for (Slot slot : slots.values()) {
+            rateLimits += slot.sender.rateLimits();
+
             if (slot.sender.isBroken()) {
                 lines.add("BROKEN " + slot.key + ": " + slot.sender.lastError());
             }
+        }
+
+        // Reported rather than logged: a rate limit that is waited out is not a
+        // fault, and one line per occurrence is what filled the console before.
+        // A number that keeps climbing here is the sign to lower the budget.
+        if (rateLimits > 0) {
+            lines.add("Rate limited " + rateLimits + " time(s) since startup"
+                    + (recentlyRateLimited(System.currentTimeMillis())
+                    ? " - pacing is currently doubled; lower the budget with "
+                    + "'evictperf rate " + Math.max(1, settings.perfRateRequests() - 1)
+                    + " " + settings.perfRateSeconds() + "' if it keeps happening"
+                    : ""));
         }
 
         return lines;
