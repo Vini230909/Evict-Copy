@@ -10,7 +10,6 @@ import mindustry.game.EventType.PlayerUnbanEvent;
 import mindustry.gen.Groups;
 import mindustry.net.Administration;
 import mindustry.net.Administration.PlayerInfo;
-import mindustry.net.Packets.KickReason;
 import vini.evictmap.core.text.Text;
 import vini.evictmap.core.util.PluginLog;
 import vini.evictmap.gen.EvictSettings;
@@ -70,6 +69,9 @@ public final class BanManager {
      */
     private final Consumer<String> announcementEcho;
 
+    /** What the kicked player reads - the ban plus how to appeal it. */
+    private final BanScreen screen;
+
     /**
      * True while the cascade is applying its own bans. Every
      * {@code banPlayerID} fires the event this class listens to, so without
@@ -93,12 +95,14 @@ public final class BanManager {
             EvictSettings settings,
             Consumer<BanReport> reportSink,
             Consumer<List<BanReport>> importSink,
-            Consumer<String> announcementEcho
+            Consumer<String> announcementEcho,
+            BanScreen screen
     ) {
         this.settings = settings;
         this.reportSink = reportSink;
         this.importSink = importSink;
         this.announcementEcho = announcementEcho;
+        this.screen = screen;
     }
 
     /** Hub-only: start widening bans. Safe to call once. */
@@ -359,7 +363,9 @@ public final class BanManager {
     /**
      * Throws out everyone the ban just caught. Mindustry only kicks the account
      * the admin typed; the alts it pulled in would otherwise keep playing until
-     * they next reconnected.
+     * they next reconnected. Kicked with the plugin's own screen, and first:
+     * vanilla's {@code kick(KickReason.banned)} that follows on its own paths
+     * is a no-op on a connection already kicked.
      */
     private void kickBanned(Set<String> uuids, Set<String> ips) {
         List<mindustry.gen.Player> hit = new ArrayList<>();
@@ -375,7 +381,7 @@ public final class BanManager {
         });
 
         for (mindustry.gen.Player player : hit) {
-            player.con.kick(KickReason.banned);
+            screen.kick(player.con);
         }
     }
 

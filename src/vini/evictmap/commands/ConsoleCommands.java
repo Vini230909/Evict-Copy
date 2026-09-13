@@ -253,6 +253,11 @@ public final class ConsoleCommands {
                         ctx.str("text", "")
                 ));
 
+        commands.command("evictbanappeal").console()
+                .args("url/off:string?")
+                .description("Discord invite shown on the ban screen, for appeals. 'off' removes it.")
+                .run(ctx -> handleBanAppealCommand(ctx.str("url/off", "").trim()));
+
         commands.command("evictduelstatus").console()
                 .description("List the active worker servers and who is in them.")
                 .run(ctx -> duelServerManager.logStatus());
@@ -865,6 +870,45 @@ public final class ConsoleCommands {
                     chatLogReporter.tokenKey(),
                     chatLogReporter.tokenPath()
             );
+        }
+    }
+
+    /**
+     * evictbanappeal: show, set or drop the Discord invite every ban kick screen
+     * points appeals at. The screen is a plain label the player types from, so
+     * a full invite URL is accepted but shown in its short form.
+     */
+    private void handleBanAppealCommand(String argument) {
+        switch (argument.toLowerCase()) {
+            case "" -> {
+                String url = settings.banAppealUrl();
+
+                if (url.isBlank()) {
+                    Log.info("[EvictMapGenerator] Ban appeal link: none. Banned players see the plain ban screen. Set one with 'evictbanappeal <discord-invite-url>'.");
+                } else {
+                    Log.info(
+                            "[EvictMapGenerator] Ban appeal link: @ (shown on the ban screen as @).",
+                            url,
+                            vini.evictmap.moderation.BanScreen.displayUrl(url)
+                    );
+                }
+            }
+            case "off" -> {
+                settings.setBanAppealUrl("");
+                Log.info("[EvictMapGenerator] Ban appeal link removed. Banned players see the plain ban screen from now on.");
+            }
+            default -> {
+                if (!argument.startsWith("https://") && !argument.startsWith("http://")) {
+                    Log.err("[EvictMapGenerator] That is not a URL. Paste the Discord invite, e.g. evictbanappeal https://discord.com/invite/abc123");
+                    return;
+                }
+
+                settings.setBanAppealUrl(argument);
+                Log.info(
+                        "[EvictMapGenerator] Ban appeal link set. Banned players are told to join @. Match servers pick it up on their next spawn.",
+                        vini.evictmap.moderation.BanScreen.displayUrl(argument)
+                );
+            }
         }
     }
 

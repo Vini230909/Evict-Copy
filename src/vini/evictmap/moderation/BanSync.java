@@ -5,7 +5,6 @@ import mindustry.Vars;
 import mindustry.gen.Groups;
 import mindustry.net.Administration;
 import mindustry.net.Administration.PlayerInfo;
-import mindustry.net.Packets.KickReason;
 import vini.evictmap.core.util.PluginLog;
 
 import java.io.File;
@@ -37,6 +36,9 @@ public final class BanSync {
 
     private final File file;
 
+    /** What the kicked player reads - the ban plus how to appeal it. */
+    private final BanScreen screen;
+
     private long lastPollMillis;
     private long lastModifiedMillis = Long.MIN_VALUE;
     private boolean everApplied;
@@ -48,13 +50,14 @@ public final class BanSync {
      */
     private boolean applying;
 
-    public BanSync(File file) {
+    public BanSync(File file, BanScreen screen) {
         this.file = file;
+        this.screen = screen;
     }
 
     /** Worker default: the hub's list, two directories up. */
-    public BanSync() {
-        this(BanList.WORKER_VIEW_FILE);
+    public BanSync(BanScreen screen) {
+        this(BanList.WORKER_VIEW_FILE, screen);
     }
 
     /**
@@ -222,7 +225,7 @@ public final class BanSync {
         });
 
         for (mindustry.gen.Player player : hit) {
-            player.con.kick(KickReason.banned);
+            screen.kick(player.con);
         }
 
         return hit.size();

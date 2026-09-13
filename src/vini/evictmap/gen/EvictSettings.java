@@ -236,6 +236,14 @@ public final class EvictSettings {
     private boolean wordFilterEnabled = true;
 
     /**
+     * Where a banned player is told to go to appeal - a Discord invite, shown
+     * on every ban kick screen. Blank means no appeal line. Copied into every
+     * duel worker with the rest of this file, so a match server shows the
+     * same screen.
+     */
+    private String banAppealUrl = "";
+
+    /**
      * Internal block ids players may not build (e.g. {@code router}). Stored as
      * names rather than {@code Block} objects so this class stays free of
      * Mindustry content; {@link EvictRules} resolves them at round start. Carried
@@ -458,6 +466,11 @@ public final class EvictSettings {
                     "moderation.wordFilter",
                     wordFilterEnabled
             );
+            banAppealUrl = readString(
+                    properties,
+                    "moderation.banAppealUrl",
+                    banAppealUrl
+            ).trim();
 
             setBannedBlockNamesWithoutSaving(
                     splitBannedBlockNames(
@@ -872,6 +885,22 @@ public final class EvictSettings {
         }
 
         wordFilterEnabled = enabled;
+        save();
+    }
+
+    /** The Discord invite shown on ban screens; blank when none is set. */
+    public String banAppealUrl() {
+        return banAppealUrl;
+    }
+
+    public void setBanAppealUrl(String url) {
+        String trimmed = url == null ? "" : url.trim();
+
+        if (trimmed.equals(banAppealUrl)) {
+            return;
+        }
+
+        banAppealUrl = trimmed;
         save();
     }
 
@@ -1488,6 +1517,7 @@ public final class EvictSettings {
                 "moderation.wordFilter",
                 Boolean.toString(wordFilterEnabled)
         );
+        properties.setProperty("moderation.banAppealUrl", banAppealUrl);
         properties.setProperty(
                 "rules.bannedBlocks",
                 String.join(",", bannedBlockNames)

@@ -256,6 +256,14 @@ public class EvictMapPlugin extends Plugin {
             new vini.evictmap.discord.BanLogReporter(settings);
 
     /**
+     * What a banned player reads: the ban plus the Discord invite to appeal it.
+     * Every ban kick goes through it, on the hub and on a match server, and it
+     * refuses a banned player's later join attempts with the same text.
+     */
+    private final vini.evictmap.moderation.BanScreen banScreen =
+            new vini.evictmap.moderation.BanScreen(settings::banAppealUrl);
+
+    /**
      * Widens every ban to the accounts and addresses linked to it, and writes
      * the result where the duel workers can see it. Hub only: the hub decides
      * who is banned, the workers apply it.
@@ -269,7 +277,8 @@ public class EvictMapPlugin extends Plugin {
                     // the chat mirror shows the same line.
                     line -> chatLogReporter.hubLine(
                             vini.evictmap.discord.DiscordFormat.playerText(line)
-                    )
+                    ),
+                    banScreen
             );
 
     /**
@@ -293,7 +302,7 @@ public class EvictMapPlugin extends Plugin {
 
     /** Worker only: applies the hub's ban list to this match server. */
     private final vini.evictmap.moderation.BanSync banSync =
-            new vini.evictmap.moderation.BanSync();
+            new vini.evictmap.moderation.BanSync(banScreen);
 
     /**
      * Worker only: hands a ban made here to the hub. Without it the ban lives
@@ -303,7 +312,8 @@ public class EvictMapPlugin extends Plugin {
     private final vini.evictmap.moderation.BanForwarder banForwarder =
             new vini.evictmap.moderation.BanForwarder(
                     duelWorkerReferee::requestBan,
-                    banSync::isApplying
+                    banSync::isApplying,
+                    banScreen
             );
 
     /** Bans anyone using a filtered word in chat or in their name. */
@@ -311,7 +321,8 @@ public class EvictMapPlugin extends Plugin {
             new vini.evictmap.moderation.WordFilter(
                     settings,
                     !duelWorker,
-                    this::seedBan
+                    this::seedBan,
+                    banScreen
             );
 
     private final ConsoleCommands consoleCommands =
@@ -347,6 +358,10 @@ public class EvictMapPlugin extends Plugin {
     @Override
     public void init() {
         bootstrap();
+
+        // Both roles: a banned player who comes back is refused with the
+        // appeal link, not vanilla's bare "banned" screen.
+        banScreen.install();
 
         if (duelWorker) {
             configureWorkerReferee();
@@ -613,7 +628,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.11.0. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.11.1. Use 'evictstatus' for commands and current settings."
         );
     }
 

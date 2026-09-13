@@ -34,16 +34,21 @@ public final class WordFilter {
      */
     private final String server;
 
+    /** What the kicked player reads - the filter's reason plus how to appeal. */
+    private final BanScreen screen;
+
     private boolean installed;
 
     public WordFilter(
             EvictSettings settings,
             boolean hub,
-            Consumer<BanRequest> banSeeder
+            Consumer<BanRequest> banSeeder,
+            BanScreen screen
     ) {
         this.settings = settings;
         this.hub = hub;
         this.banSeeder = banSeeder;
+        this.screen = screen;
         this.server = hub ? BanOrigin.HUB : "this match server";
     }
 
@@ -130,9 +135,7 @@ public final class WordFilter {
         // Kicked before the ban is seeded, so they get the filter's reason
         // rather than the plain "banned" screen the ban would kick them with.
         if (player.con != null && !player.con.kicked) {
-            player.con.kick(
-                    "You were banned for using a word that is not allowed on this server."
-            );
+            player.con.kick(screen.wordFilterMessage());
         }
 
         banSeeder.accept(BanRequest.wordFilter(

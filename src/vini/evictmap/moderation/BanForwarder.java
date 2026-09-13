@@ -6,7 +6,6 @@ import mindustry.game.EventType.PlayerBanEvent;
 import mindustry.game.EventType.PlayerIpBanEvent;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
-import mindustry.net.Packets.KickReason;
 import vini.evictmap.core.util.PluginLog;
 
 import java.util.function.BooleanSupplier;
@@ -38,6 +37,9 @@ public final class BanForwarder {
     /** True while {@link BanSync} is applying the hub's list. */
     private final BooleanSupplier syncing;
 
+    /** What the kicked player reads - the ban plus how to appeal it. */
+    private final BanScreen screen;
+
     /**
      * Who is banning, set for the moment a ban is seeded. Mindustry's event
      * carries the target but not the admin, so the paths that know name
@@ -47,9 +49,14 @@ public final class BanForwarder {
 
     private boolean installed;
 
-    public BanForwarder(Consumer<BanRequest> requestSink, BooleanSupplier syncing) {
+    public BanForwarder(
+            Consumer<BanRequest> requestSink,
+            BooleanSupplier syncing,
+            BanScreen screen
+    ) {
         this.requestSink = requestSink;
         this.syncing = syncing;
+        this.screen = screen;
     }
 
     /** Worker-only: start forwarding. Safe to call once. */
@@ -139,8 +146,8 @@ public final class BanForwarder {
                 player -> player != null && uuid.equals(player.uuid())
         );
 
-        if (banned != null && banned.con != null && !banned.con.kicked) {
-            banned.con.kick(KickReason.banned);
+        if (banned != null) {
+            screen.kick(banned.con);
         }
     }
 }
