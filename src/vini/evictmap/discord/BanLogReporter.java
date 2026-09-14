@@ -3,6 +3,8 @@ package vini.evictmap.discord;
 import vini.evictmap.core.util.PluginLog;
 import vini.evictmap.gen.EvictSettings;
 import vini.evictmap.moderation.BanReport;
+import vini.evictmap.moderation.VpnScanHit;
+import vini.evictmap.moderation.VpnVerdict;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -104,6 +106,33 @@ public final class BanLogReporter {
         }
 
         enqueue(BanLogMessage.payload(report, epochSeconds()));
+    }
+
+    /**
+     * Queues one VPN scan hit as a single line. Same channel as the bans,
+     * because the scan exists to inform the next ban - and the same queue,
+     * so it can never crowd a real entry out of order.
+     */
+    public void logVpnHit(VpnScanHit hit) {
+        if (hit == null || !webhook.isConfigured()) {
+            return;
+        }
+
+        enqueue(BanLogMessage.vpnScanLine(hit));
+    }
+
+    /** Queues the console test's verdict, so the test proves the channel too. */
+    public void logVpnTest(VpnVerdict verdict) {
+        if (verdict == null || !webhook.isConfigured()) {
+            return;
+        }
+
+        enqueue(BanLogMessage.vpnScanTestLine(verdict));
+    }
+
+    /** True while a webhook is set - whether or not it is currently healthy. */
+    public boolean isConfigured() {
+        return webhook.isConfigured();
     }
 
     /**

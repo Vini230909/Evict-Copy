@@ -256,6 +256,21 @@ public class EvictMapPlugin extends Plugin {
             new vini.evictmap.discord.BanLogReporter(settings);
 
     /**
+     * Hub-only VPN scan, log only: the address of every join is looked up and
+     * a VPN or proxy is written to the console and the ban log, with the
+     * account's age next to it. Decides nothing - it is the week of evidence
+     * the rule against ban evasion is to be drawn from.
+     */
+    private final vini.evictmap.moderation.VpnScan vpnScan =
+            new vini.evictmap.moderation.VpnScan(
+                    settings,
+                    banLogReporter::logVpnHit,
+                    banLogReporter::logVpnTest,
+                    banLogReporter::isConfigured,
+                    playerDataManager::findPlayerInfoByUuid
+            );
+
+    /**
      * What a banned player reads: the ban plus the Discord invite to appeal it.
      * Every ban kick goes through it, on the hub and on a match server, and it
      * refuses a banned player's later join attempts with the same text.
@@ -337,6 +352,7 @@ public class EvictMapPlugin extends Plugin {
                     duelWorker ? null : discordStatusReporter,
                     duelWorker ? null : banLogReporter,
                     duelWorker ? null : banManager,
+                    duelWorker ? null : vpnScan,
                     duelWorker ? null : chatLogReporter,
                     duelWorker ? null : discordModCommands,
                     duelWorker ? null : perfReporter,
@@ -384,6 +400,10 @@ public class EvictMapPlugin extends Plugin {
             // widens them, writes the list the workers read, and logs them.
             banLogReporter.start();
             banManager.install();
+
+            // Hub only, log only: who arrives through a VPN. Nothing is done
+            // with the answer yet except writing it down.
+            vpnScan.start();
 
             // Hub only: the Discord chat mirror. Worker chat arrives through
             // the chat.log files the duel manager tails.
@@ -485,6 +505,12 @@ public class EvictMapPlugin extends Plugin {
             // First: a hit bans and kicks, so there is nothing to onboard.
             if (wordFilter.checkName(event.player)) {
                 return;
+            }
+
+            // Hub only, log only: is this join coming through a VPN? Nothing
+            // is decided on it - the answer lands in the ban log, later.
+            if (!duelWorker) {
+                guarded("vpn scan", () -> vpnScan.handlePlayerJoin(event.player));
             }
 
             // On a duel worker, restore admin for players the hub synced over;
@@ -628,7 +654,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.11.1. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.12.0. Use 'evictstatus' for commands and current settings."
         );
     }
 

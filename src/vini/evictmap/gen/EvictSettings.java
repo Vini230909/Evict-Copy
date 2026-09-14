@@ -244,6 +244,13 @@ public final class EvictSettings {
     private String banAppealUrl = "";
 
     /**
+     * Whether the hub looks up every join's address for a VPN and writes the
+     * hits to the ban log. Log only - it decides nothing. Lands in worker
+     * folders with the rest of this file but is read by the hub alone.
+     */
+    private boolean vpnScanEnabled = true;
+
+    /**
      * Internal block ids players may not build (e.g. {@code router}). Stored as
      * names rather than {@code Block} objects so this class stays free of
      * Mindustry content; {@link EvictRules} resolves them at round start. Carried
@@ -471,6 +478,11 @@ public final class EvictSettings {
                     "moderation.banAppealUrl",
                     banAppealUrl
             ).trim();
+            vpnScanEnabled = readBoolean(
+                    properties,
+                    "moderation.vpnScan",
+                    vpnScanEnabled
+            );
 
             setBannedBlockNamesWithoutSaving(
                     splitBannedBlockNames(
@@ -901,6 +913,20 @@ public final class EvictSettings {
         }
 
         banAppealUrl = trimmed;
+        save();
+    }
+
+    /** True while the hub writes VPN joins to the ban log. */
+    public boolean vpnScanEnabled() {
+        return vpnScanEnabled;
+    }
+
+    public void setVpnScanEnabled(boolean enabled) {
+        if (vpnScanEnabled == enabled) {
+            return;
+        }
+
+        vpnScanEnabled = enabled;
         save();
     }
 
@@ -1518,6 +1544,10 @@ public final class EvictSettings {
                 Boolean.toString(wordFilterEnabled)
         );
         properties.setProperty("moderation.banAppealUrl", banAppealUrl);
+        properties.setProperty(
+                "moderation.vpnScan",
+                Boolean.toString(vpnScanEnabled)
+        );
         properties.setProperty(
                 "rules.bannedBlocks",
                 String.join(",", bannedBlockNames)

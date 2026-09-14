@@ -2,6 +2,8 @@ package vini.evictmap.discord;
 
 import vini.evictmap.moderation.BanOrigin;
 import vini.evictmap.moderation.BanReport;
+import vini.evictmap.moderation.VpnScanHit;
+import vini.evictmap.moderation.VpnVerdict;
 import vini.evictmap.moderation.WordFilterHit;
 
 import java.util.List;
@@ -76,6 +78,62 @@ final class BanLogMessage {
                 .raw("allowed_mentions", "{\"parse\":[]}")
                 .raw("embeds", new DiscordJson.Arr().add(embed).toString())
                 .toString();
+    }
+
+    /**
+     * One join through a VPN, as a single line rather than an embed: the scan
+     * decides nothing, so its entry should not look like an action. Everything
+     * the reader needs to judge it is on the line - the verdict, the network
+     * behind it, and how old the account is - and the line says on its own
+     * that nothing was done, because it sits in a channel where every other
+     * entry means something was.
+     *
+     * <p>{@code allowed_mentions.parse} is empty as everywhere else: the
+     * player's name is in the line, and the player chose it.
+     */
+    static String vpnScanLine(VpnScanHit hit) {
+        String content = "🔍 **VPN scan** · **" + DiscordFormat.playerName(hit.name())
+                + "** (`" + hit.uuid() + "`) from `" + hit.ip() + "` — **"
+                + hit.verdict().flags() + "** · "
+                + DiscordFormat.escapeMarkdown(hit.verdict().network())
+                + " · account: " + account(hit)
+                + " · log only, nothing was done";
+
+        return new DiscordJson.Obj()
+                .raw("allowed_mentions", "{\"parse\":[]}")
+                .str("content", content)
+                .toString();
+    }
+
+    /**
+     * The console test's line: the verdict for one address, marked as a test,
+     * so the admin sees in the channel that the key and the channel both work
+     * before the first real join is written there.
+     */
+    static String vpnScanTestLine(VpnVerdict verdict) {
+        String content = "🔍 **VPN scan test** · `" + verdict.ip() + "` — **"
+                + verdict.flags() + "** · "
+                + DiscordFormat.escapeMarkdown(verdict.network())
+                + (verdict.flagged()
+                ? " · a join from here is written here"
+                : " · a join from here writes nothing")
+                + " · log only, nothing was done";
+
+        return new DiscordJson.Obj()
+                .raw("allowed_mentions", "{\"parse\":[]}")
+                .str("content", content)
+                .toString();
+    }
+
+    /** {@code first seen 3 months ago, played 12 h 3 min, 41 joins}. */
+    private static String account(VpnScanHit hit) {
+        if (hit.unknownAccount()) {
+            return "not stored yet, " + hit.joins();
+        }
+
+        return "first seen " + DiscordFormat.relativeTimestamp(hit.firstSeenMillis() / 1000L)
+                + ", played " + hit.playtime()
+                + ", " + hit.joins();
     }
 
     /**

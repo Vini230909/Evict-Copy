@@ -10,6 +10,7 @@ import vini.evictmap.discord.BanLogReporter;
 import vini.evictmap.discord.ChatLogReporter;
 import vini.evictmap.discord.DiscordModCommands;
 import vini.evictmap.moderation.BanManager;
+import vini.evictmap.moderation.VpnScan;
 import vini.evictmap.moderation.WordFilter;
 import vini.evictmap.moderation.WordMatcher;
 import vini.evictmap.discord.DiscordStatusReporter;
@@ -57,6 +58,9 @@ public final class ConsoleCommands {
     /** Null on a duel worker: only the hub decides who is banned. */
     private final BanManager banManager;
 
+    /** Null on a duel worker: the hub looks every join up, log only. */
+    private final VpnScan vpnScan;
+
     /** Null on a duel worker: the hub relays worker chat into Discord. */
     private final ChatLogReporter chatLogReporter;
 
@@ -91,6 +95,7 @@ public final class ConsoleCommands {
             DiscordStatusReporter discordStatusReporter,
             BanLogReporter banLogReporter,
             BanManager banManager,
+            VpnScan vpnScan,
             ChatLogReporter chatLogReporter,
             DiscordModCommands discordModCommands,
             PerfReporter perfReporter,
@@ -107,6 +112,7 @@ public final class ConsoleCommands {
         this.discordStatusReporter = discordStatusReporter;
         this.banLogReporter = banLogReporter;
         this.banManager = banManager;
+        this.vpnScan = vpnScan;
         this.chatLogReporter = chatLogReporter;
         this.discordModCommands = discordModCommands;
         this.perfReporter = perfReporter;
@@ -257,6 +263,14 @@ public final class ConsoleCommands {
                 .args("url/off:string?")
                 .description("Discord invite shown on the ban screen, for appeals. 'off' removes it.")
                 .run(ctx -> handleBanAppealCommand(ctx.str("url/off", "").trim()));
+
+        commands.command("evictvpnscan").console()
+                .args("action:string?", "ip:string?")
+                .description("VPN scan, log only: status, on/off, reload the key, test <ip>.")
+                .run(ctx -> handleVpnScanCommand(
+                        ctx.str("action", "").trim(),
+                        ctx.str("ip", "").trim()
+                ));
 
         commands.command("evictduelstatus").console()
                 .description("List the active worker servers and who is in them.")
@@ -909,6 +923,59 @@ public final class ConsoleCommands {
                         vini.evictmap.moderation.BanScreen.displayUrl(argument)
                 );
             }
+        }
+    }
+
+    /**
+     * evictvpnscan: the log-only VPN scan. Status is the whole checklist - key,
+     * where hits go, today's spending against the daily allowance - because
+     * "is it working" has four different answers and the console should give
+     * the right one. 'test' spends one lookup, which is the point: it proves
+     * the key.
+     */
+    private void handleVpnScanCommand(String action, String ip) {
+        if (vpnScan == null) {
+            Log.err("[EvictMapGenerator] The VPN scan runs on the hub only.");
+            return;
+        }
+
+        switch (action.toLowerCase()) {
+            case "" -> {
+                for (String line : vpnScan.statusLines()) {
+                    Log.info("[EvictMapGenerator] @", line);
+                }
+            }
+            case "on" -> {
+                settings.setVpnScanEnabled(true);
+
+                if (vpnScan.hasKey()) {
+                    Log.info("[EvictMapGenerator] VPN scan on, log only: a join through a VPN or proxy is written to the console and the ban log. Nothing is blocked.");
+                } else {
+                    Log.warn("[EvictMapGenerator] VPN scan on, but no API key is loaded - add @=... to @, then 'evictvpnscan reload'.", vini.evictmap.core.io.Secrets.VPNAPI_KEY, vini.evictmap.core.io.Secrets.path());
+                }
+            }
+            case "off" -> {
+                settings.setVpnScanEnabled(false);
+                Log.info("[EvictMapGenerator] VPN scan off. Joins are not looked up until it is switched back on.");
+            }
+            case "reload" -> {
+                if (vpnScan.reloadKey()) {
+                    Log.info("[EvictMapGenerator] VPN scan: API key loaded from @. 'evictvpnscan test <ip>' proves it.", vini.evictmap.core.io.Secrets.path());
+                } else {
+                    Log.err("[EvictMapGenerator] VPN scan: @ is still not set in @.", vini.evictmap.core.io.Secrets.VPNAPI_KEY, vini.evictmap.core.io.Secrets.path());
+                }
+            }
+            case "test" -> {
+                if (ip.isBlank()) {
+                    Log.err("[EvictMapGenerator] Give an address to try: evictvpnscan test <ip>");
+                    return;
+                }
+
+                vpnScan.test(ip, line -> Log.info("[EvictMapGenerator] VPN scan test - @", line));
+            }
+            default -> Log.err(
+                    "[EvictMapGenerator] Usage: evictvpnscan [on/off/reload/test <ip>]"
+            );
         }
     }
 

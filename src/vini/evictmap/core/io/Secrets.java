@@ -22,6 +22,12 @@ public final class Secrets {
     public static final String DISCORD_CHAT_BOT_TOKEN =
             "DISCORD_CHAT_BOT_TOKEN";
 
+    /**
+     * vpnapi.io key for the VPN scan ({@code evictvpnscan}), which looks up
+     * the address of every join. Free tier: 1000 lookups a day.
+     */
+    public static final String VPNAPI_KEY = "VPNAPI_KEY";
+
     private static final String TEMPLATE = """
             # Evict server secrets. This file is only ever read by the plugin,
             # never written to - so nothing here ends up in the server log or
@@ -37,6 +43,12 @@ public final class Secrets {
             # Invite the bot with both the 'bot' and 'applications.commands'
             # scopes, or the slash commands cannot be registered.
             DISCORD_CHAT_BOT_TOKEN=
+
+            # vpnapi.io key for the VPN scan ('evictvpnscan'): the address of
+            # every join is looked up, a VPN or proxy is written to the ban log.
+            # Free tier is 1000 lookups a day; https://vpnapi.io/dashboard
+            # Reload without a restart: 'evictvpnscan reload'.
+            VPNAPI_KEY=
             """;
 
     private static final EnvFile FILE =
