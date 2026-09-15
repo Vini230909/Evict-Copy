@@ -949,9 +949,9 @@ public final class ConsoleCommands {
                 settings.setVpnScanEnabled(true);
 
                 if (vpnScan.hasKey()) {
-                    Log.info("[EvictMapGenerator] VPN scan on, log only: a join through a VPN or proxy is written to the console and the ban log. Nothing is blocked.");
+                    Log.info("[EvictMapGenerator] VPN scan on, log only (vpnapi + ip-api): a join through a VPN, proxy or hosting range is written to the console and the ban log. Nothing is blocked.");
                 } else {
-                    Log.warn("[EvictMapGenerator] VPN scan on, but no API key is loaded - add @=... to @, then 'evictvpnscan reload'.", vini.evictmap.core.io.Secrets.VPNAPI_KEY, vini.evictmap.core.io.Secrets.path());
+                    Log.info("[EvictMapGenerator] VPN scan on, log only, with ip-api only - add @=... to @ and run 'evictvpnscan reload' for vpnapi.io as the second opinion. Nothing is blocked.", vini.evictmap.core.io.Secrets.VPNAPI_KEY, vini.evictmap.core.io.Secrets.path());
                 }
             }
             case "off" -> {
@@ -962,7 +962,7 @@ public final class ConsoleCommands {
                 if (vpnScan.reloadKey()) {
                     Log.info("[EvictMapGenerator] VPN scan: API key loaded from @. 'evictvpnscan test <ip>' proves it.", vini.evictmap.core.io.Secrets.path());
                 } else {
-                    Log.err("[EvictMapGenerator] VPN scan: @ is still not set in @.", vini.evictmap.core.io.Secrets.VPNAPI_KEY, vini.evictmap.core.io.Secrets.path());
+                    Log.warn("[EvictMapGenerator] VPN scan: @ is still not set in @ - scanning with ip-api only.", vini.evictmap.core.io.Secrets.VPNAPI_KEY, vini.evictmap.core.io.Secrets.path());
                 }
             }
             case "test" -> {

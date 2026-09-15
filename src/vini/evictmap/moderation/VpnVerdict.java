@@ -1,59 +1,86 @@
 package vini.evictmap.moderation;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
- * What the VPN lookup said about one address, and when it said it.
+ * What the lookup sources said about one address, and when they said it.
  *
- * <p>Four flags, straight from vpnapi.io: {@code vpn} and {@code proxy} are
- * what ban evasion hides behind, {@code tor} is the same thing on a different
- * network, and {@code relay} is Apple's iCloud Private Relay - kept so an
- * admin reading the log can tell it apart, because a game client does not
- * come through it on purpose. The network fields are the reader's second
- * opinion: an "M247 Europe SRL" is a VPN exit, a "Deutsche Telekom AG" that
- * got flagged deserves a doubt.
+ * <p>One list of flags per source that answered, in the sources' own words:
+ * vpnapi.io's {@code vpn}, {@code proxy}, {@code tor} and {@code relay}
+ * (Apple's iCloud Private Relay, listed so it can be told apart); ip-api's
+ * {@code proxy}, {@code hosting} (a data-centre range, where every VPN exit
+ * lives whether or not a database knows the provider) and {@code mobile}. A
+ * source that was asked and found nothing is present with an empty list; a
+ * source that could not answer is absent. {@code mobile} is written down
+ * but is not a hit: a cellular address is exactly what an address-based
+ * check can never pin, and the point of listing it is to see how often that
+ * is the case.
+ *
+ * <p>The network fields are the reader's second opinion: an "M247 Europe
+ * SRL" is a VPN exit, a "Deutsche Telekom AG" that got flagged deserves a
+ * doubt.
  */
 public record VpnVerdict(
         String ip,
-        boolean vpn,
-        boolean proxy,
-        boolean tor,
-        boolean relay,
+        Map<String, List<String>> flagsBySource,
         String asn,
         String organisation,
         String countryCode,
         long checkedAtMillis
 ) {
 
-    private static final String FIELD_SEPARATOR = "\t";
+    /** Flags that make an address a hit; anything else is information only. */
+    private static final Set<String> HIT_FLAGS =
+            Set.of("vpn", "proxy", "tor", "relay", "hosting");
 
-    /** True when the address is something a client hides behind. */
-    public boolean flagged() {
-        return vpn || proxy || tor || relay;
+    private static final String FIELD_SEPARATOR = "\t";
+    private static final String SOURCE_SEPARATOR = ";";
+
+    public VpnVerdict {
+        flagsBySource = copyOf(flagsBySource);
+        asn = asn == null ? "" : asn;
+        organisation = organisation == null ? "" : organisation;
+        countryCode = countryCode == null ? "" : countryCode;
     }
 
-    /** The flags that are set, e.g. {@code vpn, proxy}; {@code clean} when none. */
+    /** True when any source set a flag that means "hidden behind something". */
+    public boolean flagged() {
+        for (List<String> flags : flagsBySource.values()) {
+            for (String flag : flags) {
+                if (HIT_FLAGS.contains(flag)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * What each source said, e.g. {@code vpnapi: clean / ip-api: proxy, hosting};
+     * {@code no answer} when no source answered at all.
+     */
     public String flags() {
-        List<String> set = new ArrayList<>(4);
-
-        if (vpn) {
-            set.add("vpn");
+        if (flagsBySource.isEmpty()) {
+            return "no answer";
         }
 
-        if (proxy) {
-            set.add("proxy");
+        List<String> parts = new ArrayList<>(flagsBySource.size());
+
+        for (Map.Entry<String, List<String>> entry : flagsBySource.entrySet()) {
+            parts.add(
+                    entry.getKey() + ": "
+                            + (entry.getValue().isEmpty()
+                            ? "clean"
+                            : String.join(", ", entry.getValue()))
+            );
         }
 
-        if (tor) {
-            set.add("tor");
-        }
-
-        if (relay) {
-            set.add("relay");
-        }
-
-        return set.isEmpty() ? "clean" : String.join(", ", set);
+        return String.join(" / ", parts);
     }
 
     /** {@code AS9009 M247 Europe SRL (RO)}, from whichever parts are known. */
@@ -84,12 +111,19 @@ public record VpnVerdict(
     }
 
     /**
-     * One cache-file value: the fields in a fixed order, tab-separated. The
-     * address is the key, so it is not repeated here.
+     * One cache-file value: the fields in a fixed order, tab-separated, the
+     * sources as {@code vpnapi=vpn,tor;ip-api=hosting}. The address is the
+     * key, so it is not repeated here.
      */
     String serialize() {
+        List<String> sources = new ArrayList<>(flagsBySource.size());
+
+        for (Map.Entry<String, List<String>> entry : flagsBySource.entrySet()) {
+            sources.add(entry.getKey() + "=" + String.join(",", entry.getValue()));
+        }
+
         return checkedAtMillis
-                + FIELD_SEPARATOR + flags()
+                + FIELD_SEPARATOR + String.join(SOURCE_SEPARATOR, sources)
                 + FIELD_SEPARATOR + clean(asn)
                 + FIELD_SEPARATOR + clean(organisation)
                 + FIELD_SEPARATOR + clean(countryCode);
@@ -115,29 +149,57 @@ public record VpnVerdict(
             return null;
         }
 
-        String flags = parts[1];
+        Map<String, List<String>> sources = new LinkedHashMap<>();
 
-        return new VpnVerdict(
-                ip,
-                hasFlag(flags, "vpn"),
-                hasFlag(flags, "proxy"),
-                hasFlag(flags, "tor"),
-                hasFlag(flags, "relay"),
-                parts[2],
-                parts[3],
-                parts[4],
-                checkedAt
-        );
+        for (String source : parts[1].split(SOURCE_SEPARATOR)) {
+            int equals = source.indexOf('=');
+
+            if (equals <= 0) {
+                continue;
+            }
+
+            sources.put(
+                    source.substring(0, equals).trim(),
+                    splitFlags(source.substring(equals + 1))
+            );
+        }
+
+        if (sources.isEmpty()) {
+            // A line written before there were two sources holds vpnapi's
+            // flags on their own; it is not worth a lookup to relearn them.
+            sources.put("vpnapi", splitFlags(parts[1]));
+        }
+
+        return new VpnVerdict(ip, sources, parts[2], parts[3], parts[4], checkedAt);
     }
 
-    private static boolean hasFlag(String flags, String flag) {
-        for (String part : flags.split(",")) {
-            if (part.trim().equals(flag)) {
-                return true;
+    private static List<String> splitFlags(String text) {
+        List<String> flags = new ArrayList<>(4);
+
+        for (String part : text.split(",")) {
+            String flag = part.trim();
+
+            if (!flag.isEmpty() && !flag.equals("clean")) {
+                flags.add(flag);
             }
         }
 
-        return false;
+        return List.copyOf(flags);
+    }
+
+    private static Map<String, List<String>> copyOf(Map<String, List<String>> source) {
+        Map<String, List<String>> copy = new LinkedHashMap<>();
+
+        if (source != null) {
+            for (Map.Entry<String, List<String>> entry : source.entrySet()) {
+                copy.put(
+                        entry.getKey(),
+                        entry.getValue() == null ? List.of() : List.copyOf(entry.getValue())
+                );
+            }
+        }
+
+        return java.util.Collections.unmodifiableMap(copy);
     }
 
     /** Keeps a stray tab or line break in an ASN name from breaking the line. */

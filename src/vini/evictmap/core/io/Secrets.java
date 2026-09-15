@@ -24,7 +24,9 @@ public final class Secrets {
 
     /**
      * vpnapi.io key for the VPN scan ({@code evictvpnscan}), which looks up
-     * the address of every join. Free tier: 1000 lookups a day.
+     * the address of every join. Optional: ip-api.com needs no key and is
+     * asked either way; this adds vpnapi.io as the second opinion. Free
+     * tier: 1000 lookups a day.
      */
     public static final String VPNAPI_KEY = "VPNAPI_KEY";
 
@@ -46,7 +48,9 @@ public final class Secrets {
 
             # vpnapi.io key for the VPN scan ('evictvpnscan'): the address of
             # every join is looked up, a VPN or proxy is written to the ban log.
-            # Free tier is 1000 lookups a day; https://vpnapi.io/dashboard
+            # Optional - ip-api.com is asked without any key; this adds
+            # vpnapi.io as the second opinion. Free tier is 1000 lookups a
+            # day; https://vpnapi.io/dashboard
             # Reload without a restart: 'evictvpnscan reload'.
             VPNAPI_KEY=
             """;

@@ -14,7 +14,9 @@ import java.net.InetAddress;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -22,8 +24,8 @@ import java.util.regex.Pattern;
 
 /**
  * Looks up the address of every join and says, in the console and the ban
- * log, when it is a VPN, a proxy or a Tor exit. Nothing else - it is a
- * measurement, not a rule.
+ * log, when it is a VPN, a proxy, a Tor exit or a data-centre range. Nothing
+ * else - it is a measurement, not a rule.
  *
  * <p>The bans a player evades with a fresh account and a VPN are the one
  * pattern the ban cascade cannot see: the account is new and the address is
@@ -35,19 +37,24 @@ import java.util.regex.Pattern;
  * server, not guessed. Until that rule exists this class blocks, kicks and
  * locks nobody, and says so on every line it writes.
  *
+ * <p>Two sources, asked side by side ({@link IpLookupSource}): no single
+ * database knows every VPN - the first address that slipped through was a
+ * proxy in a hosting range that vpnapi.io lists as clean and ip-api.com
+ * flags twice over. A hit is a hit from any source, and the line says which.
+ *
  * <p>Hub only: everyone arrives at the hub first, and a match server's
  * unrostered joiner is a spectator anyway.
  *
- * <p>Cost control, because the lookup service counts requests per day: one
- * request per <em>address</em>, remembered for a day in a file; a cap well
- * under the allowance; an hour's pause when the service says the day is
- * spent; a ceiling on lookups in flight so a join flood cannot queue a
- * hundred requests. Every one of those fails open - a join that cannot be
- * looked up is a join that is not written down, never a join that is
- * refused.
+ * <p>Cost control, because the services count requests: one lookup per
+ * <em>address</em>, the combined verdict remembered for a day in a file; a
+ * cap per source and per day, a per-minute cap where the service has one;
+ * a pause when a service says its allowance is spent; a ceiling on lookups
+ * in flight so a join flood cannot queue a hundred requests. Every one of
+ * those fails open - a join that cannot be looked up is a join that is not
+ * written down, never a join that is refused.
  *
  * <p>Every piece of state here belongs to the main thread: joins arrive on
- * it and {@link VpnApiClient} hands its answers back on it.
+ * it and every source hands its answer back on it.
  */
 public final class VpnScan {
 
@@ -56,16 +63,10 @@ public final class VpnScan {
     /** How long a verdict is trusted before the address is asked about again. */
     private static final long CACHE_TTL_MILLIS = 24L * 60L * 60L * 1000L;
 
-    /** Lookups sent per UTC day before the scan stops asking; the free tier allows 1000. */
-    private static final int DAILY_REQUEST_CAP = 900;
+    /** Lookups waiting for an answer (over all sources) before further joins are skipped. */
+    private static final int MAX_IN_FLIGHT = 50;
 
-    /** How long to stop asking after the service reports the day's quota spent. */
-    private static final long QUOTA_PAUSE_MILLIS = 60L * 60L * 1000L;
-
-    /** Lookups waiting for an answer before further joins are skipped. */
-    private static final int MAX_IN_FLIGHT = 25;
-
-    /** Failures of the "service unreachable" kind are logged at most this often. */
+    /** Failures of the "service unreachable" kind are logged at most this often, per source. */
     private static final long FAILURE_LOG_MILLIS = 60L * 1000L;
 
     /** How long a hit waits for the account's database row before it is written without it. */
@@ -91,23 +92,63 @@ public final class VpnScan {
     private final VpnVerdictCache cache =
             new VpnVerdictCache(new File(CACHE_FILE), CACHE_TTL_MILLIS);
 
-    /** Created in {@link #start}, so a worker never opens an HTTP client for it. */
-    private VpnApiClient api;
+    /** Created in {@link #start}, so a worker never opens HTTP clients for it. */
+    private VpnApiClient vpnapi;
+    private final List<SourceState> sources = new ArrayList<>();
 
     private boolean started;
 
     private String day = "";
-    private int requestsToday;
     private int cachedToday;
     private int hitsToday;
     private int cleanToday;
     private int skippedToday;
 
     private int inFlight;
-    private long quotaPausedUntilMillis;
-    private boolean keyRejected;
-    private String lastError = "";
-    private long lastFailureLogMillis;
+
+    /** One source's spending and health. Main thread only, like everything here. */
+    private static final class SourceState {
+
+        final IpLookupSource source;
+        int requestsToday;
+        int requestsThisMinute;
+        long minuteStartMillis;
+        long pausedUntilMillis;
+        boolean keyRejected;
+        String lastError = "";
+        long lastFailureLogMillis;
+
+        SourceState(IpLookupSource source) {
+            this.source = source;
+        }
+
+        /** True when a lookup may be sent now; counts it when it may. */
+        boolean take(long now) {
+            if (keyRejected || !source.ready() || now < pausedUntilMillis) {
+                return false;
+            }
+
+            if (requestsToday >= source.dailyCap()) {
+                return false;
+            }
+
+            if (source.minuteCap() > 0) {
+                if (now - minuteStartMillis >= 60_000L) {
+                    minuteStartMillis = now;
+                    requestsThisMinute = 0;
+                }
+
+                if (requestsThisMinute >= source.minuteCap()) {
+                    return false;
+                }
+
+                requestsThisMinute++;
+            }
+
+            requestsToday++;
+            return true;
+        }
+    }
 
     public VpnScan(
             EvictSettings settings,
@@ -130,7 +171,7 @@ public final class VpnScan {
         }
 
         started = true;
-        api = new VpnApiClient();
+        openSources();
         loadKey();
         cache.load();
 
@@ -139,33 +180,33 @@ public final class VpnScan {
             return;
         }
 
-        if (!api.hasKey()) {
+        if (!vpnapi.ready()) {
             PluginLog.warn(
-                    "VPN scan is on but @ is not set in @ - nothing is looked up until it is (then 'evictvpnscan reload').",
+                    "VPN scan is on with ip-api only: @ is not set in @ (optional - vpnapi.io is the second opinion; 'evictvpnscan reload' after adding it).",
                     Secrets.VPNAPI_KEY,
                     Secrets.path()
             );
-            return;
         }
 
         PluginLog.info(
-                "VPN scan is on, log only: every join's address is looked up and a VPN or proxy is written to the console and the ban log. Nothing is blocked. @ address(es) remembered from before.",
+                "VPN scan is on, log only: every join's address is looked up (@) and a VPN, proxy or hosting range is written to the console and the ban log. Nothing is blocked. @ address(es) remembered from before.",
+                sourceNames(),
                 cache.size()
         );
     }
 
-    /** Re-reads the secrets file; true when a key is now loaded. */
+    /** Re-reads the secrets file; true when a vpnapi key is now loaded. */
     public boolean reloadKey() {
-        if (api == null) {
-            api = new VpnApiClient();
+        if (vpnapi == null) {
+            openSources();
         }
 
         loadKey();
-        return api.hasKey();
+        return vpnapi.ready();
     }
 
     public boolean hasKey() {
-        return api != null && api.hasKey();
+        return vpnapi != null && vpnapi.ready();
     }
 
     /** One join. Decides nothing; at most it writes a line, and that later. */
@@ -188,56 +229,36 @@ public final class VpnScan {
 
         VpnVerdict remembered = cache.get(ip);
 
-        if (remembered != null) {
+        if (remembered != null && complete(remembered)) {
             cachedToday++;
             report(name, uuid, ip, remembered, true);
             return;
         }
 
-        if (!api.hasKey() || keyRejected) {
-            return;
-        }
-
-        if (
-                System.currentTimeMillis() < quotaPausedUntilMillis
-                        || requestsToday >= DAILY_REQUEST_CAP
-                        || inFlight >= MAX_IN_FLIGHT
-        ) {
-            skippedToday++;
-            return;
-        }
-
-        requestsToday++;
-        inFlight++;
-
-        api.lookup(ip, result -> {
-            inFlight--;
-            rollDay();
-
-            if (!result.ok()) {
-                noteFailure(ip, result);
+        boolean asked = lookup(ip, verdict -> {
+            if (verdict == null) {
                 return;
             }
 
-            lastError = "";
-            cache.put(result.verdict());
-            report(name, uuid, ip, result.verdict(), false);
+            cache.put(verdict);
+            report(name, uuid, ip, verdict, false);
         });
+
+        if (!asked) {
+            skippedToday++;
+        }
     }
 
     /**
-     * Console test: looks one address up right now (it counts against the
-     * day), says what a join from it would do, and posts the verdict into the
-     * ban log marked as a test - so one command proves the key and the
-     * channel both.
+     * Console test: looks one address up right now at every source (it counts
+     * against the day), says what each one answered and what a join from it
+     * would do, and posts the verdict into the ban log marked as a test - so
+     * one command proves the keys and the channel both.
      */
     public void test(String ip, Consumer<String> out) {
-        if (api == null || !api.hasKey()) {
-            out.accept(
-                    "No API key loaded - add " + Secrets.VPNAPI_KEY + "=... to "
-                            + Secrets.path() + ", then 'evictvpnscan reload'."
-            );
-            return;
+        if (vpnapi == null) {
+            openSources();
+            loadKey();
         }
 
         String address = ip == null ? "" : ip.trim();
@@ -248,22 +269,15 @@ public final class VpnScan {
         }
 
         rollDay();
-        requestsToday++;
 
-        api.lookup(address, result -> {
-            rollDay();
-
-            if (!result.ok()) {
-                noteFailure(address, result);
+        boolean asked = lookup(address, verdict -> {
+            if (verdict == null) {
                 out.accept(
-                        "Lookup failed (" + result.failure().name().toLowerCase()
-                                + "): " + result.message()
+                        "Lookup failed at every source - see 'evictvpnscan' for each one's last error."
                 );
                 return;
             }
 
-            lastError = "";
-            VpnVerdict verdict = result.verdict();
             cache.put(verdict);
             testLog.accept(verdict);
             out.accept(
@@ -276,6 +290,12 @@ public final class VpnScan {
                             : " The ban log is not set ('evictbanlog <url>'), so hits reach the console only.")
             );
         });
+
+        if (!asked) {
+            out.accept(
+                    "No source can be asked right now (no key, paused, or over its cap) - see 'evictvpnscan'."
+            );
+        }
     }
 
     /** The console checklist. */
@@ -289,18 +309,37 @@ public final class VpnScan {
                         : "off ('evictvpnscan on' starts it)")
         );
 
-        if (keyRejected) {
-            lines.add(
-                    "  API key: REJECTED by vpnapi.io - check " + Secrets.VPNAPI_KEY
-                            + " in " + Secrets.path() + ", then 'evictvpnscan reload'"
-            );
-        } else if (hasKey()) {
-            lines.add("  API key: loaded from " + Secrets.path());
-        } else {
-            lines.add(
-                    "  API key: NOT SET - add " + Secrets.VPNAPI_KEY + "=... to "
-                            + Secrets.path() + ", then 'evictvpnscan reload'"
-            );
+        for (SourceState state : sources) {
+            StringBuilder line = new StringBuilder("  ")
+                    .append(state.source.name()).append(": ");
+
+            if (state.keyRejected) {
+                line.append("KEY REJECTED - check ").append(Secrets.VPNAPI_KEY)
+                        .append(" in ").append(Secrets.path())
+                        .append(", then 'evictvpnscan reload'");
+            } else {
+                line.append(state.source.setupLine());
+            }
+
+            line.append("; today (UTC) ").append(state.requestsToday)
+                    .append(" lookup(s) sent, cap ").append(state.source.dailyCap());
+
+            if (state.source.minuteCap() > 0) {
+                line.append(" a day / ").append(state.source.minuteCap()).append(" a minute");
+            }
+
+            long pauseLeft = state.pausedUntilMillis - System.currentTimeMillis();
+
+            if (pauseLeft > 0L) {
+                line.append("; PAUSED for another ")
+                        .append(Math.max(1L, pauseLeft / 1000L)).append(" s (allowance spent)");
+            }
+
+            if (!state.lastError.isEmpty()) {
+                line.append("; last error: ").append(state.lastError);
+            }
+
+            lines.add(line.toString());
         }
 
         lines.add(
@@ -310,10 +349,9 @@ public final class VpnScan {
         );
 
         lines.add(
-                "  Today (UTC): " + requestsToday + " lookup(s) sent (cap " + DAILY_REQUEST_CAP
-                        + "), " + cachedToday + " answered from the cache, "
+                "  Today (UTC): " + cachedToday + " join(s) answered from the cache, "
                         + hitsToday + " hit(s), " + cleanToday + " clean, "
-                        + skippedToday + " skipped"
+                        + skippedToday + " skipped (no source could be asked)"
         );
 
         lines.add(
@@ -321,26 +359,148 @@ public final class VpnScan {
                         + ", each kept " + (CACHE_TTL_MILLIS / 3_600_000L) + " h"
         );
 
-        long pauseLeft = quotaPausedUntilMillis - System.currentTimeMillis();
-
-        if (pauseLeft > 0L) {
-            lines.add(
-                    "  Quota: the day's lookups are used up - paused for another "
-                            + Math.max(1L, pauseLeft / 60_000L) + " min"
-            );
-        }
-
-        if (!lastError.isEmpty()) {
-            lines.add("  Last error: " + lastError);
-        }
-
         return lines;
+    }
+
+    /**
+     * True when every source that can be asked today has had its say in this
+     * verdict. A verdict remembered from before a source existed - or from a
+     * day the vpnapi key was missing - is not worth trusting for another day
+     * when the missing source could answer now.
+     */
+    private boolean complete(VpnVerdict verdict) {
+        for (SourceState state : sources) {
+            if (
+                    state.source.ready()
+                            && !state.keyRejected
+                            && !verdict.flagsBySource().containsKey(state.source.name())
+            ) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void openSources() {
+        vpnapi = new VpnApiClient();
+        sources.clear();
+        sources.add(new SourceState(vpnapi));
+        sources.add(new SourceState(new IpApiClient()));
     }
 
     private void loadKey() {
         Secrets.reload();
-        api.setKey(Secrets.get(Secrets.VPNAPI_KEY));
-        keyRejected = false;
+        vpnapi.setKey(Secrets.get(Secrets.VPNAPI_KEY));
+
+        for (SourceState state : sources) {
+            state.keyRejected = false;
+        }
+    }
+
+    private String sourceNames() {
+        List<String> names = new ArrayList<>(sources.size());
+
+        for (SourceState state : sources) {
+            if (state.source.ready()) {
+                names.add(state.source.name());
+            }
+        }
+
+        return String.join(" + ", names);
+    }
+
+    /**
+     * Asks every source that can be asked and hands the combined verdict to
+     * {@code done} once the last answer is in - null when no source answered.
+     * Returns false, without calling {@code done}, when no source could be
+     * asked at all.
+     */
+    private boolean lookup(String ip, Consumer<VpnVerdict> done) {
+        long now = System.currentTimeMillis();
+
+        if (inFlight >= MAX_IN_FLIGHT) {
+            return false;
+        }
+
+        List<SourceState> asked = new ArrayList<>(sources.size());
+
+        for (SourceState state : sources) {
+            if (state.take(now)) {
+                asked.add(state);
+            }
+        }
+
+        if (asked.isEmpty()) {
+            return false;
+        }
+
+        Map<String, IpLookupResult> answers = new LinkedHashMap<>();
+        int[] pending = {asked.size()};
+        inFlight += asked.size();
+
+        for (SourceState state : asked) {
+            state.source.lookup(ip, result -> {
+                inFlight--;
+                rollDay();
+                answers.put(state.source.name(), result);
+
+                if (result.ok()) {
+                    state.lastError = "";
+                } else {
+                    noteFailure(state, ip, result);
+                }
+
+                if (--pending[0] == 0) {
+                    done.accept(combine(ip, answers));
+                }
+            });
+        }
+
+        return true;
+    }
+
+    /** The verdict from whatever answered; null when nothing did. */
+    private static VpnVerdict combine(String ip, Map<String, IpLookupResult> answers) {
+        Map<String, List<String>> flags = new LinkedHashMap<>();
+        String asn = "";
+        String organisation = "";
+        String countryCode = "";
+
+        for (Map.Entry<String, IpLookupResult> entry : answers.entrySet()) {
+            IpLookupResult result = entry.getValue();
+
+            if (!result.ok()) {
+                continue;
+            }
+
+            flags.put(entry.getKey(), result.answer().flags());
+
+            if (asn.isEmpty()) {
+                asn = result.answer().asn();
+            }
+
+            if (organisation.isEmpty()) {
+                organisation = result.answer().organisation();
+            }
+
+            if (countryCode.isEmpty()) {
+                countryCode = result.answer().countryCode();
+            }
+        }
+
+        if (flags.isEmpty()) {
+            return null;
+        }
+
+        return new VpnVerdict(
+                ip,
+                flags,
+                asn,
+                organisation,
+                countryCode,
+                System.currentTimeMillis()
+        );
     }
 
     /**
@@ -405,38 +565,47 @@ public final class VpnScan {
         }
     }
 
-    private void noteFailure(String ip, VpnApiClient.Result result) {
-        lastError = result.message();
+    private static void noteFailure(SourceState state, String ip, IpLookupResult result) {
+        state.lastError = result.message();
         long now = System.currentTimeMillis();
+        String source = state.source.name();
 
         switch (result.failure()) {
             case QUOTA -> {
-                quotaPausedUntilMillis = now + QUOTA_PAUSE_MILLIS;
+                state.pausedUntilMillis = now + state.source.quotaPauseMillis();
                 PluginLog.warn(
-                        "VPN scan: the day's lookups are used up (@). Pausing for an hour; joins are not looked up meanwhile.",
-                        result.message()
+                        "VPN scan: @ says its allowance is spent (@). Not asking it for @ s.",
+                        source,
+                        result.message(),
+                        state.source.quotaPauseMillis() / 1000L
                 );
             }
             case KEY_REJECTED -> {
-                keyRejected = true;
+                state.keyRejected = true;
                 PluginLog.err(
-                        "VPN scan: vpnapi.io rejected the API key (@). Nothing is looked up until a working @ is in @ and 'evictvpnscan reload' ran.",
+                        "VPN scan: @ rejected the API key (@). Not asking it until a working @ is in @ and 'evictvpnscan reload' ran.",
+                        source,
                         result.message(),
                         Secrets.VPNAPI_KEY,
                         Secrets.path()
                 );
             }
             case INVALID_ADDRESS -> PluginLog.warn(
-                    "VPN scan: @ could not be looked up: @",
+                    "VPN scan: @ could not look up @: @",
+                    source,
                     ip,
                     result.message()
             );
+            case NOT_READY -> {
+                // Asked while not ready cannot happen through take(); quiet.
+            }
             default -> {
                 // A service outage would otherwise write a warning per join.
-                if (now - lastFailureLogMillis >= FAILURE_LOG_MILLIS) {
-                    lastFailureLogMillis = now;
+                if (now - state.lastFailureLogMillis >= FAILURE_LOG_MILLIS) {
+                    state.lastFailureLogMillis = now;
                     PluginLog.warn(
-                            "VPN scan: lookup failed (@). Joins are not looked up while it keeps failing.",
+                            "VPN scan: @ lookup failed (@). Its answers are missing while it keeps failing.",
+                            source,
                             result.message()
                     );
                 }
@@ -461,15 +630,18 @@ public final class VpnScan {
         }
 
         day = today;
-        requestsToday = 0;
         cachedToday = 0;
         hitsToday = 0;
         cleanToday = 0;
         skippedToday = 0;
+
+        for (SourceState state : sources) {
+            state.requestsToday = 0;
+        }
     }
 
     /**
-     * Loopback, LAN and link-local addresses: the service cannot say anything
+     * Loopback, LAN and link-local addresses: no service can say anything
      * about them and a request would be wasted. Anything that is not an
      * address literal is treated the same way rather than resolved.
      */
