@@ -1,4 +1,11 @@
-package vini.evictmap.moderation;
+package vini.evictmap.moderation.words;
+
+import vini.evictmap.moderation.ban.BanForwarder;
+import vini.evictmap.moderation.ban.BanManager;
+import vini.evictmap.moderation.ban.BanOrigin;
+import vini.evictmap.moderation.ban.BanRequest;
+import vini.evictmap.moderation.ban.BanScreen;
+import vini.evictmap.moderation.ban.WordFilterHit;
 
 import mindustry.Vars;
 import mindustry.gen.Player;

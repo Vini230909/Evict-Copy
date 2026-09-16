@@ -55,6 +55,7 @@ public final class HelpCommands {
             "top",
             "a",
             "ban",
+            "free",
             "js"
     );
 

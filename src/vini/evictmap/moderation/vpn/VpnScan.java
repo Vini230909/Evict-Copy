@@ -1,4 +1,6 @@
-package vini.evictmap.moderation;
+package vini.evictmap.moderation.vpn;
+
+import vini.evictmap.moderation.lock.LockGate;
 
 import arc.util.Time;
 import mindustry.Vars;
@@ -20,6 +22,7 @@ import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 /**
@@ -105,6 +108,14 @@ public final class VpnScan {
     private int skippedToday;
 
     private int inFlight;
+
+    /**
+     * Addresses with a lookup in flight, and who is waiting for it. The
+     * connection prefetch and the join that follows it ask about the same
+     * address seconds apart; the second asker joins the first request
+     * instead of spending another.
+     */
+    private final Map<String, List<Consumer<VpnVerdict>>> waitingByIp = new LinkedHashMap<>();
 
     /** One source's spending and health. Main thread only, like everything here. */
     private static final class SourceState {
@@ -209,15 +220,51 @@ public final class VpnScan {
         return vpnapi != null && vpnapi.ready();
     }
 
-    /** One join. Decides nothing; at most it writes a line, and that later. */
-    public void handlePlayerJoin(Player player) {
-        if (!started || player == null || !settings.vpnScanEnabled()) {
+    /**
+     * A connection just opened: start the lookup now, while the client is
+     * still downloading the world, so the verdict is in the cache by the time
+     * the join event fires and the lock gate never has to hold anyone. Costs
+     * nothing extra - the join would have asked about the same address, and
+     * asks the same request instead.
+     */
+    public void prefetch(String ip) {
+        if (!started || !settings.vpnScanEnabled() || ip == null || ip.isBlank() || isLocal(ip)) {
+            return;
+        }
+
+        rollDay();
+
+        VpnVerdict remembered = cache.get(ip);
+
+        if (remembered != null && complete(remembered)) {
+            return;
+        }
+
+        lookup(ip, verdict -> {
+            if (verdict != null) {
+                cache.put(verdict);
+            }
+        });
+    }
+
+    /**
+     * One join. Writes a hit down - and hands the verdict to {@code decision}
+     * when there is one to hand: the {@link LockGate} decides on it. The
+     * decision is called exactly once, with null when nothing could be
+     * learned (scan off, local address, no source to ask, every source
+     * failed), so a caller holding a player for the answer is never left
+     * holding. When the decision returns true it has written the join up
+     * itself (the lock's own line) and the scan's hit line is left out.
+     */
+    public void handlePlayerJoin(Player player, Function<VpnVerdict, Boolean> decision) {
+        if (player == null) {
             return;
         }
 
         String ip = player.con == null ? "" : player.con.address;
 
-        if (ip == null || ip.isBlank() || isLocal(ip)) {
+        if (!started || !settings.vpnScanEnabled() || ip == null || ip.isBlank() || isLocal(ip)) {
+            decide(decision, null);
             return;
         }
 
@@ -231,21 +278,41 @@ public final class VpnScan {
 
         if (remembered != null && complete(remembered)) {
             cachedToday++;
-            report(name, uuid, ip, remembered, true);
+
+            if (!decide(decision, remembered)) {
+                report(name, uuid, ip, remembered, true);
+            }
+
             return;
         }
 
         boolean asked = lookup(ip, verdict -> {
-            if (verdict == null) {
-                return;
+            if (verdict != null) {
+                cache.put(verdict);
             }
 
-            cache.put(verdict);
-            report(name, uuid, ip, verdict, false);
+            if (!decide(decision, verdict) && verdict != null) {
+                report(name, uuid, ip, verdict, false);
+            }
         });
 
         if (!asked) {
             skippedToday++;
+            decide(decision, null);
+        }
+    }
+
+    /** Runs the decision, if any; true when it took the join over. */
+    private static boolean decide(Function<VpnVerdict, Boolean> decision, VpnVerdict verdict) {
+        if (decision == null) {
+            return false;
+        }
+
+        try {
+            return Boolean.TRUE.equals(decision.apply(verdict));
+        } catch (Exception exception) {
+            PluginLog.err("VPN scan: the lock decision failed: @", exception.toString());
+            return false;
         }
     }
 
@@ -417,6 +484,15 @@ public final class VpnScan {
      * asked at all.
      */
     private boolean lookup(String ip, Consumer<VpnVerdict> done) {
+        List<Consumer<VpnVerdict>> waiting = waitingByIp.get(ip);
+
+        if (waiting != null) {
+            // Already being asked about - the prefetch, or another join from
+            // the same address a moment ago. One request, every asker told.
+            waiting.add(done);
+            return true;
+        }
+
         long now = System.currentTimeMillis();
 
         if (inFlight >= MAX_IN_FLIGHT) {
@@ -435,6 +511,10 @@ public final class VpnScan {
             return false;
         }
 
+        List<Consumer<VpnVerdict>> askers = new ArrayList<>(2);
+        askers.add(done);
+        waitingByIp.put(ip, askers);
+
         Map<String, IpLookupResult> answers = new LinkedHashMap<>();
         int[] pending = {asked.size()};
         inFlight += asked.size();
@@ -452,7 +532,16 @@ public final class VpnScan {
                 }
 
                 if (--pending[0] == 0) {
-                    done.accept(combine(ip, answers));
+                    waitingByIp.remove(ip);
+                    VpnVerdict verdict = combine(ip, answers);
+
+                    for (Consumer<VpnVerdict> asker : askers) {
+                        try {
+                            asker.accept(verdict);
+                        } catch (Exception exception) {
+                            PluginLog.err("VPN scan: a verdict handler failed: @", exception.toString());
+                        }
+                    }
                 }
             });
         }

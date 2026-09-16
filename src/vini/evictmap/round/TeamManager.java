@@ -293,6 +293,15 @@ public final class TeamManager {
      * the match across a regenerate.
      */
     public void assignConnectedPlayers(Predicate<Player> spectator) {
+        assignConnectedPlayers(spectator, null);
+    }
+
+    /**
+     * As above, plus a second predicate for players the lock holds: they are
+     * parked on the Fallen team instead, so a round reset never hands a
+     * locked (or not-yet-checked) account a personal team and a hex.
+     */
+    public void assignConnectedPlayers(Predicate<Player> spectator, Predicate<Player> locked) {
         if (!roundActive || resetting) {
             return;
         }
@@ -312,6 +321,8 @@ public final class TeamManager {
 
             if (spectator != null && spectator.test(player)) {
             assignSpectator(player);
+            } else if (locked != null && locked.test(player)) {
+            assignLocked(player);
             } else {
             handlePlayerJoin(player);
             }
@@ -331,6 +342,41 @@ public final class TeamManager {
 
         teamIdByPlayerUuid.put(player.uuid(), Team.derelict.id);
         assignPlayerToTeam(player, Team.derelict);
+    }
+
+    /**
+     * Parks a player on the Fallen team without a starting hex: the lock's
+     * home for a locked account, and for a first join still waiting for its
+     * VPN verdict. Registered like a spectator, so the connected-player scan
+     * leaves them there. Fallen rather than derelict because Fallen has cores
+     * to spawn at - a locked player still flies, only slowly.
+     */
+    public void assignLocked(Player player) {
+        if (player == null) {
+            return;
+        }
+
+        teamIdByPlayerUuid.put(player.uuid(), FALLEN_TEAM_ID);
+        assignPlayerToTeam(player, FALLEN_TEAM);
+    }
+
+    /**
+     * The opposite: forgets the Fallen parking and onboards the player as a
+     * fresh join would - a personal team and a starting hex when the round is
+     * running, or nothing yet, in which case the next round's scan does it.
+     */
+    public void releaseLocked(Player player) {
+        if (player == null) {
+            return;
+        }
+
+        Integer teamId = teamIdByPlayerUuid.get(player.uuid());
+
+        if (teamId != null && teamId == FALLEN_TEAM_ID) {
+            teamIdByPlayerUuid.remove(player.uuid());
+        }
+
+        handlePlayerJoin(player);
     }
 
     public void handlePlayerJoin(Player player) {

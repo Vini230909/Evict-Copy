@@ -1,4 +1,4 @@
-package vini.evictmap.moderation;
+package vini.evictmap.moderation.vpn;
 
 import arc.Core;
 import arc.util.serialization.Jval;

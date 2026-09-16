@@ -189,8 +189,23 @@ public final class ChatLogCapture {
         return false;
     }
 
-    private static String name(Player player) {
-        return DiscordFormat.playerName(player.name);
+    /**
+     * Who to mark as locked in the mirror. A locked player's lines still
+     * appear - staff read what they tried to say - but carry a padlock, so
+     * a "please free me" is told apart from the chat around it.
+     */
+    public void setLockMarker(java.util.function.Predicate<Player> locked) {
+        this.locked = locked;
+    }
+
+    private java.util.function.Predicate<Player> locked = player -> false;
+
+    private String name(Player player) {
+        String name = DiscordFormat.playerName(
+                vini.evictmap.moderation.lock.PlayerLock.stripPrefix(player.name)
+        );
+
+        return locked.test(player) ? "🔒 " + name : name;
     }
 
     private void emit(String line) {

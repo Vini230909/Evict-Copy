@@ -1,4 +1,4 @@
-package vini.evictmap.moderation;
+package vini.evictmap.moderation.ban;
 
 import java.util.List;
 

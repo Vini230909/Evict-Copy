@@ -1,4 +1,4 @@
-package vini.evictmap.moderation;
+package vini.evictmap.moderation.ban;
 
 import arc.util.Strings;
 import mindustry.Vars;

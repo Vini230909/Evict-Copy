@@ -1,4 +1,4 @@
-package vini.evictmap.moderation;
+package vini.evictmap.moderation.ban;
 
 /**
  * One account to ban, with why and where it was decided.

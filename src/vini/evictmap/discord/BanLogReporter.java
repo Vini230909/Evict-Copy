@@ -2,9 +2,10 @@ package vini.evictmap.discord;
 
 import vini.evictmap.core.util.PluginLog;
 import vini.evictmap.gen.EvictSettings;
-import vini.evictmap.moderation.BanReport;
-import vini.evictmap.moderation.VpnScanHit;
-import vini.evictmap.moderation.VpnVerdict;
+import vini.evictmap.moderation.ban.BanReport;
+import vini.evictmap.moderation.lock.LockEvent;
+import vini.evictmap.moderation.vpn.VpnScanHit;
+import vini.evictmap.moderation.vpn.VpnVerdict;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -119,6 +120,15 @@ public final class BanLogReporter {
         }
 
         enqueue(BanLogMessage.vpnScanLine(hit));
+    }
+
+    /** Queues a lock or a free as one line. */
+    public void logLock(LockEvent event) {
+        if (event == null || !webhook.isConfigured()) {
+            return;
+        }
+
+        enqueue(BanLogMessage.lockLine(event));
     }
 
     /** Queues the console test's verdict, so the test proves the channel too. */

@@ -1,4 +1,4 @@
-package vini.evictmap.moderation;
+package vini.evictmap.moderation.ban;
 
 /**
  * What the word filter saw: which entry tripped, where it stood and the

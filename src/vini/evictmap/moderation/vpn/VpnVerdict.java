@@ -1,4 +1,4 @@
-package vini.evictmap.moderation;
+package vini.evictmap.moderation.vpn;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

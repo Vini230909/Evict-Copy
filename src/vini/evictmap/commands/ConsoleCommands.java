@@ -9,10 +9,11 @@ import vini.evictmap.core.io.Secrets;
 import vini.evictmap.discord.BanLogReporter;
 import vini.evictmap.discord.ChatLogReporter;
 import vini.evictmap.discord.DiscordModCommands;
-import vini.evictmap.moderation.BanManager;
-import vini.evictmap.moderation.VpnScan;
-import vini.evictmap.moderation.WordFilter;
-import vini.evictmap.moderation.WordMatcher;
+import vini.evictmap.moderation.ban.BanManager;
+import vini.evictmap.moderation.lock.PlayerLock;
+import vini.evictmap.moderation.vpn.VpnScan;
+import vini.evictmap.moderation.words.WordFilter;
+import vini.evictmap.moderation.words.WordMatcher;
 import vini.evictmap.discord.DiscordStatusReporter;
 import vini.evictmap.discord.PerfReporter;
 import vini.evictmap.metrics.PerfSampler;
@@ -61,6 +62,9 @@ public final class ConsoleCommands {
     /** Null on a duel worker: the hub looks every join up, log only. */
     private final VpnScan vpnScan;
 
+    /** Null on a duel worker: the hub owns the lock list. */
+    private final PlayerLock playerLock;
+
     /** Null on a duel worker: the hub relays worker chat into Discord. */
     private final ChatLogReporter chatLogReporter;
 
@@ -96,6 +100,7 @@ public final class ConsoleCommands {
             BanLogReporter banLogReporter,
             BanManager banManager,
             VpnScan vpnScan,
+            PlayerLock playerLock,
             ChatLogReporter chatLogReporter,
             DiscordModCommands discordModCommands,
             PerfReporter perfReporter,
@@ -113,6 +118,7 @@ public final class ConsoleCommands {
         this.banLogReporter = banLogReporter;
         this.banManager = banManager;
         this.vpnScan = vpnScan;
+        this.playerLock = playerLock;
         this.chatLogReporter = chatLogReporter;
         this.discordModCommands = discordModCommands;
         this.perfReporter = perfReporter;
@@ -265,12 +271,17 @@ public final class ConsoleCommands {
                 .run(ctx -> handleBanAppealCommand(ctx.str("url/off", "").trim()));
 
         commands.command("evictvpnscan").console()
-                .args("action:string?", "ip:string?")
-                .description("VPN scan, log only: status, on/off, reload the key, test <ip>.")
+                .args("action:string?", "value:string?")
+                .description("VPN scan: status, on/off, lock on/off, reload the key, test <ip>.")
                 .run(ctx -> handleVpnScanCommand(
                         ctx.str("action", "").trim(),
-                        ctx.str("ip", "").trim()
+                        ctx.str("value", "").trim()
                 ));
+
+        commands.command("evictfree").console()
+                .args("target:text?")
+                .description("Free a locked account by name or UUID; no argument lists the locked ones.")
+                .run(ctx -> handleFreeCommand(ctx.str("target", "").trim()));
 
         commands.command("evictduelstatus").console()
                 .description("List the active worker servers and who is in them.")
@@ -903,7 +914,7 @@ public final class ConsoleCommands {
                     Log.info(
                             "[EvictMapGenerator] Ban appeal link: @ (shown on the ban screen as @).",
                             url,
-                            vini.evictmap.moderation.BanScreen.displayUrl(url)
+                            vini.evictmap.moderation.ban.BanScreen.displayUrl(url)
                     );
                 }
             }
@@ -920,7 +931,7 @@ public final class ConsoleCommands {
                 settings.setBanAppealUrl(argument);
                 Log.info(
                         "[EvictMapGenerator] Ban appeal link set. Banned players are told to join @. Match servers pick it up on their next spawn.",
-                        vini.evictmap.moderation.BanScreen.displayUrl(argument)
+                        vini.evictmap.moderation.ban.BanScreen.displayUrl(argument)
                 );
             }
         }
@@ -943,6 +954,21 @@ public final class ConsoleCommands {
             case "" -> {
                 for (String line : vpnScan.statusLines()) {
                     Log.info("[EvictMapGenerator] @", line);
+                }
+
+                Log.info("[EvictMapGenerator] @", lockStatusLine());
+            }
+            case "lock" -> {
+                switch (ip.toLowerCase()) {
+                    case "on" -> {
+                        settings.setVpnLockEnabled(true);
+                        Log.info("[EvictMapGenerator] Lock on: an account's first join through a VPN, proxy or hosting range is held on the Fallen team until an admin frees it ('evictfree', /free, Discord /free).");
+                    }
+                    case "off" -> {
+                        settings.setVpnLockEnabled(false);
+                        Log.info("[EvictMapGenerator] Lock off: joins are only written down again. Accounts already locked stay locked until freed.");
+                    }
+                    default -> Log.info("[EvictMapGenerator] @ Usage: evictvpnscan lock on/off", lockStatusLine());
                 }
             }
             case "on" -> {
@@ -974,8 +1000,90 @@ public final class ConsoleCommands {
                 vpnScan.test(ip, line -> Log.info("[EvictMapGenerator] VPN scan test - @", line));
             }
             default -> Log.err(
-                    "[EvictMapGenerator] Usage: evictvpnscan [on/off/reload/test <ip>]"
+                    "[EvictMapGenerator] Usage: evictvpnscan [on/off/lock on/off/reload/test <ip>]"
             );
+        }
+    }
+
+    private String lockStatusLine() {
+        if (playerLock == null) {
+            return "  Lock: decided on the hub.";
+        }
+
+        return "  Lock: " + (settings.vpnLockEnabled()
+                ? "on - a first join through a VPN is held for an admin"
+                : "off - log only")
+                + "; " + playerLock.lockedCount() + " locked, "
+                + playerLock.verifiedCount() + " verified ('evictfree' lists and frees)";
+    }
+
+    /**
+     * evictfree: frees a locked account from the console - by UUID, or by a
+     * part of the name when it matches exactly one. No argument lists them.
+     */
+    private void handleFreeCommand(String target) {
+        if (playerLock == null) {
+            Log.err("[EvictMapGenerator] Locks are freed on the hub.");
+            return;
+        }
+
+        java.util.List<vini.evictmap.moderation.lock.LockList.Entry> entries = playerLock.lockedEntries();
+
+        if (target.isEmpty()) {
+            if (entries.isEmpty()) {
+                Log.info("[EvictMapGenerator] No account is locked.");
+                return;
+            }
+
+            Log.info("[EvictMapGenerator] @ locked account(s):", entries.size());
+
+            for (vini.evictmap.moderation.lock.LockList.Entry entry : entries) {
+                Log.info(
+                        "[EvictMapGenerator]   @ (@) from @ - @",
+                        arc.util.Strings.stripColors(entry.name()),
+                        entry.uuid(),
+                        entry.ip(),
+                        entry.reason()
+                );
+            }
+
+            return;
+        }
+
+        java.util.List<vini.evictmap.moderation.lock.LockList.Entry> matches = new java.util.ArrayList<>();
+        String needle = target.toLowerCase(java.util.Locale.ROOT);
+
+        for (vini.evictmap.moderation.lock.LockList.Entry entry : entries) {
+            if (
+                    entry.uuid().equals(target)
+                            || arc.util.Strings.stripColors(entry.name())
+                            .toLowerCase(java.util.Locale.ROOT).contains(needle)
+            ) {
+                matches.add(entry);
+            }
+        }
+
+        if (matches.isEmpty()) {
+            Log.err("[EvictMapGenerator] No locked account matches '@'. 'evictfree' lists them.", target);
+            return;
+        }
+
+        if (matches.size() > 1) {
+            Log.err("[EvictMapGenerator] '@' matches @ locked accounts - give the UUID:", target, matches.size());
+
+            for (vini.evictmap.moderation.lock.LockList.Entry entry : matches) {
+                Log.info("[EvictMapGenerator]   @ (@)", arc.util.Strings.stripColors(entry.name()), entry.uuid());
+            }
+
+            return;
+        }
+
+        PlayerLock.FreeResult result = playerLock.free(matches.get(0).uuid(), "the console");
+
+        if (result.freed()) {
+            Log.info("[EvictMapGenerator] @", result.line());
+        } else {
+            Log.err("[EvictMapGenerator] @", result.line());
         }
     }
 
@@ -1107,11 +1215,11 @@ public final class ConsoleCommands {
                 return;
             }
 
-            banManager.ban(vini.evictmap.moderation.BanRequest.admin(
+            banManager.ban(vini.evictmap.moderation.ban.BanRequest.admin(
                     target.uuid(),
-                    vini.evictmap.moderation.BanOrigin.now(
+                    vini.evictmap.moderation.ban.BanOrigin.now(
                             "the console",
-                            vini.evictmap.moderation.BanOrigin.HUB
+                            vini.evictmap.moderation.ban.BanOrigin.HUB
                     )
             ));
 

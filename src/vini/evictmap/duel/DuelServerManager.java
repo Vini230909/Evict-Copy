@@ -40,9 +40,9 @@ import vini.evictmap.discord.ChatLogTail;
 import vini.evictmap.discord.DiscordFormat;
 import vini.evictmap.metrics.PerfSnapshot;
 import vini.evictmap.metrics.ServerPerf;
-import vini.evictmap.moderation.BanOrigin;
-import vini.evictmap.moderation.BanRequest;
-import vini.evictmap.moderation.WordFilterHit;
+import vini.evictmap.moderation.ban.BanOrigin;
+import vini.evictmap.moderation.ban.BanRequest;
+import vini.evictmap.moderation.ban.WordFilterHit;
 
 /**
  * On-demand 1v1 worker orchestration for the hub server.

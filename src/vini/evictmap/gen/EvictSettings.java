@@ -251,6 +251,13 @@ public final class EvictSettings {
     private boolean vpnScanEnabled = true;
 
     /**
+     * Whether a first join through a VPN is locked until an admin frees it,
+     * or only written down. Decided on the hub alone; the enforcement on a
+     * match server follows the hub's list either way.
+     */
+    private boolean vpnLockEnabled = true;
+
+    /**
      * Internal block ids players may not build (e.g. {@code router}). Stored as
      * names rather than {@code Block} objects so this class stays free of
      * Mindustry content; {@link EvictRules} resolves them at round start. Carried
@@ -482,6 +489,11 @@ public final class EvictSettings {
                     properties,
                     "moderation.vpnScan",
                     vpnScanEnabled
+            );
+            vpnLockEnabled = readBoolean(
+                    properties,
+                    "moderation.vpnLock",
+                    vpnLockEnabled
             );
 
             setBannedBlockNamesWithoutSaving(
@@ -927,6 +939,20 @@ public final class EvictSettings {
         }
 
         vpnScanEnabled = enabled;
+        save();
+    }
+
+    /** True while a first join through a VPN is locked rather than only logged. */
+    public boolean vpnLockEnabled() {
+        return vpnLockEnabled;
+    }
+
+    public void setVpnLockEnabled(boolean enabled) {
+        if (vpnLockEnabled == enabled) {
+            return;
+        }
+
+        vpnLockEnabled = enabled;
         save();
     }
 
@@ -1547,6 +1573,10 @@ public final class EvictSettings {
         properties.setProperty(
                 "moderation.vpnScan",
                 Boolean.toString(vpnScanEnabled)
+        );
+        properties.setProperty(
+                "moderation.vpnLock",
+                Boolean.toString(vpnLockEnabled)
         );
         properties.setProperty(
                 "rules.bannedBlocks",

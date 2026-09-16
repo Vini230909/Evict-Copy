@@ -1,4 +1,4 @@
-package vini.evictmap.moderation;
+package vini.evictmap.moderation.vpn;
 
 import vini.evictmap.core.io.PropertiesFile;
 import vini.evictmap.core.util.PluginLog;

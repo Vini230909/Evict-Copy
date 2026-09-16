@@ -1,10 +1,11 @@
 package vini.evictmap.discord;
 
-import vini.evictmap.moderation.BanOrigin;
-import vini.evictmap.moderation.BanReport;
-import vini.evictmap.moderation.VpnScanHit;
-import vini.evictmap.moderation.VpnVerdict;
-import vini.evictmap.moderation.WordFilterHit;
+import vini.evictmap.moderation.ban.BanOrigin;
+import vini.evictmap.moderation.ban.BanReport;
+import vini.evictmap.moderation.lock.LockEvent;
+import vini.evictmap.moderation.vpn.VpnScanHit;
+import vini.evictmap.moderation.vpn.VpnVerdict;
+import vini.evictmap.moderation.ban.WordFilterHit;
 
 import java.util.List;
 
@@ -118,6 +119,32 @@ final class BanLogMessage {
                 ? " · a join from here is written here"
                 : " · a join from here writes nothing")
                 + " · log only, nothing was done";
+
+        return new DiscordJson.Obj()
+                .raw("allowed_mentions", "{\"parse\":[]}")
+                .str("content", content)
+                .toString();
+    }
+
+    /**
+     * A lock or a free, as one line in the same channel: the lock line
+     * carries the UUID in a code span because it is what the admin pastes
+     * into Discord's {@code /free}.
+     */
+    static String lockLine(LockEvent event) {
+        String content;
+
+        if (event.kind() == LockEvent.Kind.LOCKED) {
+            content = "🔒 **Locked** · **" + DiscordFormat.playerName(event.name())
+                    + "** (`" + event.uuid() + "`) from `" + event.ip() + "` — **"
+                    + (event.verdict() == null ? "VPN" : event.verdict().flags()) + "**"
+                    + (event.verdict() == null ? "" : " · " + DiscordFormat.escapeMarkdown(event.verdict().network()))
+                    + " · first join · can watch and /s only · free with `/free " + event.uuid() + "`";
+        } else {
+            content = "🔓 **Freed** · **" + DiscordFormat.playerName(event.name())
+                    + "** (`" + event.uuid() + "`) · by " + DiscordFormat.escapeMarkdown(event.actor())
+                    + " · verified from now on";
+        }
 
         return new DiscordJson.Obj()
                 .raw("allowed_mentions", "{\"parse\":[]}")

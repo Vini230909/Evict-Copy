@@ -1345,11 +1345,22 @@ public final class DuelCommands {
         cancelDraft(draft, "not everyone accepted in time");
     }
 
+    /**
+     * Players never offered in a picker - the locked ones. A locked player
+     * cannot type /play, but an invite is a menu, and a locked account rostered
+     * into a Teams match would sit in it unable to build or talk.
+     */
+    public void excludeFromPickers(java.util.function.Predicate<Player> excluded) {
+        this.excludedFromPickers = excluded;
+    }
+
+    private java.util.function.Predicate<Player> excludedFromPickers = player -> false;
+
     private List<Player> otherOnlinePlayers(Player self) {
         List<Player> players = new ArrayList<>();
 
         Groups.player.each(player -> {
-            if (player != null && player != self) {
+            if (player != null && player != self && !excludedFromPickers.test(player)) {
                 players.add(player);
             }
         });

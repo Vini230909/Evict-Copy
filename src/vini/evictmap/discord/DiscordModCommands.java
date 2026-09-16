@@ -18,8 +18,8 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * {@code /ban} and {@code /unban} as Discord slash commands, for staff who are
- * not at the console.
+ * {@code /ban}, {@code /unban} and {@code /free} as Discord slash commands,
+ * for staff who are not at the console.
  *
  * <p>Hub only, like every other moderation path: the hub is the single writer
  * of bans, and the commands go through exactly the same {@code BanRequest} and
@@ -47,12 +47,14 @@ public final class DiscordModCommands {
 
     private static final String COMMAND_BAN = "ban";
     private static final String COMMAND_UNBAN = "unban";
+    private static final String COMMAND_FREE = "free";
 
     private final EvictSettings settings;
 
     /** (target, actor) - the reply line. Run on the main thread. */
     private final BinaryOperator<String> ban;
     private final BinaryOperator<String> unban;
+    private final BinaryOperator<String> free;
 
     /**
      * Separate clients on purpose: the gateway holds one connection open for
@@ -80,11 +82,13 @@ public final class DiscordModCommands {
     public DiscordModCommands(
             EvictSettings settings,
             BinaryOperator<String> ban,
-            BinaryOperator<String> unban
+            BinaryOperator<String> unban,
+            BinaryOperator<String> free
     ) {
         this.settings = settings;
         this.ban = ban;
         this.unban = unban;
+        this.free = free;
     }
 
     /**
@@ -161,7 +165,7 @@ public final class DiscordModCommands {
         lastRegistration = error;
 
         if (error.isBlank()) {
-            lines.add("/ban and /unban registered. They are usable in Discord now.");
+            lines.add("/ban, /unban and /free registered. They are usable in Discord now.");
         } else {
             lines.add("The commands could not be registered: " + error);
             return;
@@ -278,7 +282,7 @@ public final class DiscordModCommands {
                 if (role.id().equals(wanted)
                         || role.name().equalsIgnoreCase(wanted)) {
                     lines.add("Only " + role.name()
-                            + " may use /ban and /unban from now on.");
+                            + " may use /ban, /unban and /free from now on.");
                     return role.id();
                 }
             }
@@ -429,7 +433,7 @@ public final class DiscordModCommands {
         lastRegistration = error;
 
         if (error.isBlank()) {
-            PluginLog.info("Discord commands /ban and /unban registered.");
+            PluginLog.info("Discord commands /ban, /unban and /free registered.");
         } else {
             PluginLog.err("Discord commands could not be registered: @", error);
         }
@@ -466,6 +470,7 @@ public final class DiscordModCommands {
         String reply = switch (interaction.command()) {
             case COMMAND_BAN -> onMainThread(() -> ban.apply(target, actor));
             case COMMAND_UNBAN -> onMainThread(() -> unban.apply(target, actor));
+            case COMMAND_FREE -> onMainThread(() -> free.apply(target, actor));
             default -> "That command is not handled by this server.";
         };
 

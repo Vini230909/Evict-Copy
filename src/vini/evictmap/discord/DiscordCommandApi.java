@@ -314,21 +314,32 @@ final class DiscordCommandApi {
         );
     }
 
-    /** The two commands, exactly as Discord should show them. */
+    /** The three commands, exactly as Discord should show them. */
     private static String definitions() {
         return new DiscordJson.Arr()
                 .add(definition(
                         "ban",
-                        "Ban a player UUID or an IP address from the server."
+                        "Ban a player UUID or an IP address from the server.",
+                        ARGUMENT_DESCRIPTION
                 ))
                 .add(definition(
                         "unban",
-                        "Lift a ban on a player UUID or an IP address."
+                        "Lift a ban on a player UUID or an IP address.",
+                        ARGUMENT_DESCRIPTION
+                ))
+                .add(definition(
+                        "free",
+                        "Free a locked account (new account that joined through a VPN).",
+                        "The account's UUID, from the lock line in the ban log."
                 ))
                 .toString();
     }
 
-    private static DiscordJson.Obj definition(String name, String description) {
+    private static DiscordJson.Obj definition(
+            String name,
+            String description,
+            String argumentDescription
+    ) {
         return new DiscordJson.Obj()
                 .str("name", name)
                 .str("description", description)
@@ -338,7 +349,7 @@ final class DiscordCommandApi {
                 .raw("options", new DiscordJson.Arr()
                         .add(new DiscordJson.Obj()
                                 .str("name", "target")
-                                .str("description", ARGUMENT_DESCRIPTION)
+                                .str("description", argumentDescription)
                                 .num("type", STRING_OPTION)
                                 .raw("required", "true"))
                         .toString());

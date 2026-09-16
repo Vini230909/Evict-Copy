@@ -2,8 +2,8 @@ package vini.evictmap.commands;
 
 import vini.evictmap.PlayerNameFormatter;
 import vini.evictmap.data.PlayerDataManager;
-import vini.evictmap.moderation.BanOrigin;
-import vini.evictmap.moderation.BanRequest;
+import vini.evictmap.moderation.ban.BanOrigin;
+import vini.evictmap.moderation.ban.BanRequest;
 
 import arc.util.CommandHandler;
 import mindustry.Vars;

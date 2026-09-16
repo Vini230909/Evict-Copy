@@ -261,8 +261,8 @@ public class EvictMapPlugin extends Plugin {
      * account's age next to it. Decides nothing - it is the week of evidence
      * the rule against ban evasion is to be drawn from.
      */
-    private final vini.evictmap.moderation.VpnScan vpnScan =
-            new vini.evictmap.moderation.VpnScan(
+    private final vini.evictmap.moderation.vpn.VpnScan vpnScan =
+            new vini.evictmap.moderation.vpn.VpnScan(
                     settings,
                     banLogReporter::logVpnHit,
                     banLogReporter::logVpnTest,
@@ -271,20 +271,51 @@ public class EvictMapPlugin extends Plugin {
             );
 
     /**
+     * The lock itself, both roles: what a locked account cannot do, and who
+     * is locked. The hub owns the list and writes it; a worker follows it.
+     */
+    private final vini.evictmap.moderation.lock.PlayerLock playerLock =
+            new vini.evictmap.moderation.lock.PlayerLock(
+                    !duelWorker,
+                    settings::banAppealUrl,
+                    // A freed player who is online gets their team and hex
+                    // the way a fresh join would.
+                    teamManager::releaseLocked,
+                    duelWorker ? null : banLogReporter::logLock
+            );
+
+    /**
+     * Hub only: the decision at the door - a first join through a VPN is
+     * parked until its verdict is in and locked when the verdict says so.
+     */
+    private final vini.evictmap.moderation.lock.LockGate lockGate =
+            new vini.evictmap.moderation.lock.LockGate(
+                    settings::vpnLockEnabled,
+                    playerLock,
+                    vpnScan,
+                    teamManager::assignLocked,
+                    teamManager::releaseLocked
+            );
+
+    /** /free: the in-game way to free a locked account, with /ban's picker UX. */
+    private final vini.evictmap.commands.FreeCommands freeCommands =
+            new vini.evictmap.commands.FreeCommands(playerLock);
+
+    /**
      * What a banned player reads: the ban plus the Discord invite to appeal it.
      * Every ban kick goes through it, on the hub and on a match server, and it
      * refuses a banned player's later join attempts with the same text.
      */
-    private final vini.evictmap.moderation.BanScreen banScreen =
-            new vini.evictmap.moderation.BanScreen(settings::banAppealUrl);
+    private final vini.evictmap.moderation.ban.BanScreen banScreen =
+            new vini.evictmap.moderation.ban.BanScreen(settings::banAppealUrl);
 
     /**
      * Widens every ban to the accounts and addresses linked to it, and writes
      * the result where the duel workers can see it. Hub only: the hub decides
      * who is banned, the workers apply it.
      */
-    private final vini.evictmap.moderation.BanManager banManager =
-            new vini.evictmap.moderation.BanManager(
+    private final vini.evictmap.moderation.ban.BanManager banManager =
+            new vini.evictmap.moderation.ban.BanManager(
                     settings,
                     banLogReporter::log,
                     banLogReporter::logImport,
@@ -300,8 +331,8 @@ public class EvictMapPlugin extends Plugin {
      * Turns a Discord {@code /ban} or {@code /unban} into an ordinary ban, so
      * it is widened, kicked, synced, announced and logged like any other.
      */
-    private final vini.evictmap.moderation.RemoteBan remoteBan =
-            new vini.evictmap.moderation.RemoteBan(this::seedBan);
+    private final vini.evictmap.moderation.ban.RemoteBan remoteBan =
+            new vini.evictmap.moderation.ban.RemoteBan(this::seedBan);
 
     /**
      * Hub-only Discord slash commands. The hub is the single writer of bans,
@@ -312,28 +343,29 @@ public class EvictMapPlugin extends Plugin {
             new vini.evictmap.discord.DiscordModCommands(
                     settings,
                     remoteBan::ban,
-                    remoteBan::unban
+                    remoteBan::unban,
+                    (target, actor) -> playerLock.free(target.trim(), actor).line()
             );
 
     /** Worker only: applies the hub's ban list to this match server. */
-    private final vini.evictmap.moderation.BanSync banSync =
-            new vini.evictmap.moderation.BanSync(banScreen);
+    private final vini.evictmap.moderation.ban.BanSync banSync =
+            new vini.evictmap.moderation.ban.BanSync(banScreen);
 
     /**
      * Worker only: hands a ban made here to the hub. Without it the ban lives
      * only in this worker's throwaway admin store, is lifted again by the next
      * sync, and never reaches the hub, the other match servers or the log.
      */
-    private final vini.evictmap.moderation.BanForwarder banForwarder =
-            new vini.evictmap.moderation.BanForwarder(
+    private final vini.evictmap.moderation.ban.BanForwarder banForwarder =
+            new vini.evictmap.moderation.ban.BanForwarder(
                     duelWorkerReferee::requestBan,
                     banSync::isApplying,
                     banScreen
             );
 
     /** Bans anyone using a filtered word in chat or in their name. */
-    private final vini.evictmap.moderation.WordFilter wordFilter =
-            new vini.evictmap.moderation.WordFilter(
+    private final vini.evictmap.moderation.words.WordFilter wordFilter =
+            new vini.evictmap.moderation.words.WordFilter(
                     settings,
                     !duelWorker,
                     this::seedBan,
@@ -353,6 +385,7 @@ public class EvictMapPlugin extends Plugin {
                     duelWorker ? null : banLogReporter,
                     duelWorker ? null : banManager,
                     duelWorker ? null : vpnScan,
+                    duelWorker ? null : playerLock,
                     duelWorker ? null : chatLogReporter,
                     duelWorker ? null : discordModCommands,
                     duelWorker ? null : perfReporter,
@@ -379,6 +412,12 @@ public class EvictMapPlugin extends Plugin {
         // appeal link, not vanilla's bare "banned" screen.
         banScreen.install();
 
+        // Both roles: a locked account can watch and nothing else - the hub
+        // decides who, every server enforces it off the hub's list. The
+        // chat mirror marks their lines with a padlock.
+        playerLock.install();
+        chatLogCapture.setLockMarker(player -> playerLock.isLocked(player.uuid()));
+
         if (duelWorker) {
             configureWorkerReferee();
 
@@ -401,9 +440,15 @@ public class EvictMapPlugin extends Plugin {
             banLogReporter.start();
             banManager.install();
 
-            // Hub only, log only: who arrives through a VPN. Nothing is done
-            // with the answer yet except writing it down.
+            // Hub only: who arrives through a VPN. The lookup starts the
+            // moment a connection opens, so the verdict is in before the
+            // join and the lock gate never has to make a newcomer wait.
             vpnScan.start();
+            Events.on(mindustry.game.EventType.ConnectionEvent.class, event -> {
+                if (event.connection != null) {
+                    guarded("vpn prefetch", () -> vpnScan.prefetch(event.connection.address));
+                }
+            });
 
             // Hub only: the Discord chat mirror. Worker chat arrives through
             // the chat.log files the duel manager tails.
@@ -507,16 +552,14 @@ public class EvictMapPlugin extends Plugin {
                 return;
             }
 
-            // Hub only, log only: is this join coming through a VPN? Nothing
-            // is decided on it - the answer lands in the ban log, later.
-            if (!duelWorker) {
-                guarded("vpn scan", () -> vpnScan.handlePlayerJoin(event.player));
-            }
-
             // On a duel worker, restore admin for players the hub synced over;
             // the worker has no access to the hub's own admin list.
             if (duelWorker) {
                 adminSync.markSyncedAdmin(event.player);
+
+                // A locked player who hopped over to watch is reminded here
+                // too; the list came from the hub.
+                guarded("lock join", () -> playerLock.handlePlayerJoin(event.player));
             }
 
             // On the hub: a player who is mid-duel is bounced straight back to
@@ -525,6 +568,8 @@ public class EvictMapPlugin extends Plugin {
                     !duelWorker
                             && duelServerManager.tryReturnToActiveDuel(event.player)
             ) {
+                // Still written down if they came through a VPN.
+                guarded("vpn scan", () -> vpnScan.handlePlayerJoin(event.player, null));
                 return;
             }
 
@@ -573,7 +618,21 @@ public class EvictMapPlugin extends Plugin {
             // which has to see every join or a paused match never resumes.
             guarded("playerData join", () -> playerDataManager.handlePlayerJoin(event.player));
             guarded("roundTime join", () -> roundTimeCommands.handlePlayerJoin(event.player));
-            guarded("teamManager join", () -> teamManager.handlePlayerJoin(event.player));
+
+            // Hub: the lock gate looks at the join first. A locked account
+            // stays on the Fallen team; a first join through a VPN is parked
+            // until its verdict is in; everyone else is onboarded right away.
+            // The gate also hands the join to the VPN scan for its line.
+            boolean[] onboardNow = {true};
+
+            if (!duelWorker) {
+                guarded("lock gate", () -> onboardNow[0] = lockGate.handlePlayerJoin(event.player));
+            }
+
+            if (onboardNow[0]) {
+                guarded("teamManager join", () -> teamManager.handlePlayerJoin(event.player));
+            }
+
             guarded("duelWorker join", () -> duelWorkerReferee.handlePlayerJoin(event.player));
         });
 
@@ -584,6 +643,7 @@ public class EvictMapPlugin extends Plugin {
             guarded("history leave", () -> historyCommands.handlePlayerLeave(event.player));
             guarded("info leave", () -> infoCommands.handlePlayerLeave(event.player));
             guarded("ban leave", () -> banCommands.handlePlayerLeave(event.player));
+            guarded("free leave", () -> freeCommands.handlePlayerLeave(event.player));
             guarded("duelWorker leave", () -> duelWorkerReferee.handlePlayerLeave(event.player));
         });
 
@@ -620,6 +680,10 @@ public class EvictMapPlugin extends Plugin {
             // this trigger because it fires even while the game is paused.
             duelWorkerReferee.update();
 
+            // Both roles: a worker follows the hub's lock list, and locked
+            // players are kept slow.
+            playerLock.update();
+
             attritionManager.update();
             attackManager.update();
             waveExtinction.update();
@@ -654,7 +718,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.12.1. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.13.1. Use 'evictstatus' for commands and current settings."
         );
     }
 
@@ -701,7 +765,7 @@ public class EvictMapPlugin extends Plugin {
      * <p>The request carries who decided the ban and, for the word filter, what
      * it saw, so the log entry says more than "an account was banned".
      */
-    private void seedBan(vini.evictmap.moderation.BanRequest request) {
+    private void seedBan(vini.evictmap.moderation.ban.BanRequest request) {
         if (request == null || request.isEmpty()) {
             return;
         }
@@ -865,6 +929,11 @@ public class EvictMapPlugin extends Plugin {
     @Override
     public void registerClientCommands(CommandHandler handler) {
         clientCommands.register(handler);
+
+        // /free, and no locked account in any /play picker (an invite is a
+        // menu, which the lock's command gate cannot refuse).
+        freeCommands.registerClientCommands(handler);
+        duelCommands.excludeFromPickers(player -> playerLock.isLocked(player.uuid()));
 
         // On a duel worker, replace vanilla /t so a ranked match can invert it
         // for casting admins. The hub keeps vanilla /t untouched. Registering
@@ -1061,7 +1130,14 @@ public class EvictMapPlugin extends Plugin {
 
     private void assignConnectedPlayersAndRecordStats() {
         roundTimeCommands.rememberConnectedPlayers();
-        teamManager.assignConnectedPlayers(this::isDuelSpectator);
+        teamManager.assignConnectedPlayers(this::isDuelSpectator, this::isLockedOrHeld);
+    }
+
+    /** On the hub, a locked account - or one still waiting for its verdict - stays on Fallen. */
+    private boolean isLockedOrHeld(Player player) {
+        return !duelWorker
+                && player != null
+                && (playerLock.isLocked(player.uuid()) || lockGate.isHeld(player.uuid()));
     }
 
     /**

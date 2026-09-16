@@ -2,9 +2,9 @@ package vini.evictmap.duel;
 
 import vini.evictmap.PlayerNameFormatter;
 import vini.evictmap.duel.modes.DuelMode;
-import vini.evictmap.moderation.BanRequest;
+import vini.evictmap.moderation.ban.BanRequest;
 import vini.evictmap.metrics.PerfSnapshot;
-import vini.evictmap.moderation.WordFilterHit;
+import vini.evictmap.moderation.ban.WordFilterHit;
 
 import java.io.File;
 import java.io.FileInputStream;
