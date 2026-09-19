@@ -53,6 +53,35 @@ what it does.
   only when the owner asks, in a commit that changes nothing else. A diff that
   touches them unasked is a mistake, not a fix.
 
+## Moving a feature into the new shape
+
+The owner says "Move <feature> into the new shape." and nothing more. The
+session works out the rest from this recipe:
+
+1. Find every piece of it: its files (usually one old package), its keys in
+   `EvictSettings`, its commands in `ConsoleCommands`/`*Commands`, its wiring in
+   `EvictMapPlugin`, its `docs/GAMEPLAY.md` section.
+2. Write it in the new shape: a file per thing at `src/Extinction/`, its settings
+   as fields in `Config`, its commands as entries in `commands/Console` (or
+   `Player`/`Admin`), its events wired in `EvictMapPlugin`.
+3. Delete the old pieces. Old files shrink or vanish, never grow — the check
+   counts each file on its own. If a move truly needs an old file to grow, stop
+   and tell the owner instead of working around the check.
+4. Same behaviour: same log lines, same command output, same properties keys,
+   same order of chat filters and event handlers.
+5. `./gradlew jar` green, `./check.sh` green, `./check.sh --update`.
+6. Tell the owner in one line what to try on the server to see it still works.
+
+`Config` and the old `EvictSettings` share one properties file. `Config` reads the
+file, sets its own keys and writes it back, so it never drops a key it does not
+know — and `EvictSettings.save()` must do the same. The first move fixes that.
+
+## What the owner types
+
+- `Move <feature> into the new shape.` — this recipe.
+- `Add <feature>: <what it should do>.` — new code, new shape, rule 6.
+- `Garden.` — no feature: pick the oldest file, move or shrink one piece of it.
+
 ## What "done" means
 
 For a session: build green, check green, and the owner can open the file tree
