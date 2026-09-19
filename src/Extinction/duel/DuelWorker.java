@@ -3,7 +3,6 @@ package Extinction.duel;
 import Extinction.PlayerNameFormatter;
 import Extinction.duel.modes.DuelMode;
 import Extinction.moderation.ban.BanRequest;
-import Extinction.metrics.PerfSnapshot;
 import Extinction.moderation.ban.WordFilterHit;
 
 import java.io.File;
@@ -76,14 +75,7 @@ public final class DuelWorker {
     // after the players have been sent back. The hub records the result on worker
     // exit, so this is what gets a finished match into /history within seconds.
     private static final int RESOLVED_GRACE_SECONDS = 5;
-    /**
-     * How often the status file is rewritten. One second rather than two since
-     * the file also carries this worker's performance numbers, which the hub
-     * renders into a table that refreshes every three: at two seconds a row
-     * could be showing a tick rate from five seconds ago, which is the wrong
-     * kind of stale for the one view you look at while a server misbehaves.
-     * The file is a few hundred bytes.
-     */
+    // How often the status file is rewritten; the hub polls it once a second.
     private static final int STATUS_INTERVAL_SECONDS = 1;
     private static final float RETURN_DELAY_TICKS = 5f * 60f;
     // An abandoned worker still being watched counts down out loud before it
@@ -138,13 +130,6 @@ public final class DuelWorker {
      * class under {@code Extinction.duel.modes}.
      */
     private DuelMode duelMode = mode.duel();
-
-    /**
-     * The rebalance patch this match plays with, from the hub handshake. The
-     * plugin applies it to this process's content once the handshake is
-     * loaded; a worker hosts one match and exits, so it is never undone.
-     */
-    private MatchPatch patch = MatchPatch.NONE;
     private final List<List<String>> rosterTeams = new ArrayList<>();
     private final Set<String> participantUuids = new LinkedHashSet<>();
 
@@ -212,17 +197,6 @@ public final class DuelWorker {
 
     public void setPlaytimeSource(Supplier<Map<String, Long>> source) {
         this.playtimeSource = source == null ? Map::of : source;
-    }
-
-    /**
-     * Source of this worker's performance numbers. They ride the status file to
-     * the hub, which is the only process that talks to Discord - a worker never
-     * reports anywhere itself.
-     */
-    private Supplier<PerfSnapshot> perfSource = PerfSnapshot::empty;
-
-    public void setPerfSource(Supplier<PerfSnapshot> source) {
-        this.perfSource = source == null ? PerfSnapshot::empty : source;
     }
 
     private boolean handshakeLoaded = false;
@@ -333,21 +307,6 @@ public final class DuelWorker {
 
     public MatchMode matchMode() {
         return mode;
-    }
-
-    /** The rebalance patch this worker's match runs with. */
-    public MatchPatch matchPatch() {
-        return patch;
-    }
-
-    /**
-     * The mode as players read it, patch included ("Teams, Nerf") - so the
-     * worker's own messages name the rebalance the same way the hub did.
-     */
-    public String modeLabel() {
-        return patch.isNone()
-                ? mode.label()
-                : mode.label() + ", " + patch.label();
     }
 
     /**
@@ -728,19 +687,6 @@ public final class DuelWorker {
             return;
         }
 
-        // Everyone who arrives is told the balance is not vanilla - the hub's
-        // announcement is gone with the server switch, and a changed overdrive
-        // or reconstructor cost is not something to discover mid-build.
-        if (player != null && !patch.isNone()) {
-            player.sendMessage(
-                    "[orange]This match runs the " + patch.label()
-                            + " rebalance:[] overdrive projectors and domes,"
-                            + " T5 reconstructors, phase weavers, surge"
-                            + " smelters, navanax, quasar and vela are"
-                            + " changed."
-            );
-        }
-
         if (
                 player != null
                         && handshakeLoaded
@@ -799,7 +745,7 @@ public final class DuelWorker {
      */
     private void welcomeSpectator(Player player) {
         String message = "[accent]You are now spectating this "
-                + modeLabel()
+                + mode.label()
                 + " match. Use /s to switch matches or return to the lobby.[]";
 
         if (duelMode.allowsSpectatorInvites()) {
@@ -939,7 +885,7 @@ public final class DuelWorker {
 
         Call.sendMessage(
                 "[accent]" + winnerName
-                        + "[accent] won the " + modeLabel()
+                        + "[accent] won the " + mode.label()
                         + ". Returning to the lobby in 5 seconds...[]"
         );
 
@@ -1045,7 +991,7 @@ public final class DuelWorker {
         writeResult(new ArrayList<>(), allRosterUuids, reason);
 
         Call.sendMessage(
-                "[accent]The " + modeLabel()
+                "[accent]The " + mode.label()
                         + " session is over. Returning to the lobby in 5 seconds...[]"
         );
 
@@ -1706,11 +1652,6 @@ public final class DuelWorker {
         // and credits the growth - otherwise a whole match would be missing
         // from a player's total playtime.
         properties.setProperty("playtime", packPlaytime());
-        // This worker's tick rate, load and profile, for the hub's performance
-        // table. Written here rather than through a channel of its own: the hub
-        // already reads this file every poll, and one more section costs a few
-        // hundred bytes.
-        perfSource.get().write(properties);
         // Accounts banned here - by an admin or by the word filter. The hub
         // owns bans, so it applies them properly (widened, kicked everywhere,
         // announced, logged) and needs the story with them: who banned, this
@@ -1840,9 +1781,6 @@ public final class DuelWorker {
                     properties.getProperty("mode", "1v1").trim()
             );
             duelMode = mode.duel();
-            patch = MatchPatch.fromId(
-                    properties.getProperty("patch", MatchPatch.NONE.id()).trim()
-            );
 
             rosterTeams.clear();
             participantUuids.clear();
@@ -1899,11 +1837,10 @@ public final class DuelWorker {
             }
 
             Log.info(
-                    "[EvictMapGenerator] Duel worker loaded handshake: hub=@:@ mode=@ patch=@ teams=@ players=@.",
+                    "[EvictMapGenerator] Duel worker loaded handshake: hub=@:@ mode=@ teams=@ players=@.",
                     hubIp,
                     hubPort,
                     mode.id(),
-                    patch.id(),
                     rosterTeams.size(),
                     String.join(",", participantUuids)
             );

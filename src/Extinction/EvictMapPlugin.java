@@ -26,13 +26,11 @@ import mindustry.world.blocks.storage.CoreBlock;
 import Extinction.gameplay.AttritionManager;
 import Extinction.gameplay.RulesApplier;
 import Extinction.gameplay.AttackManager;
-import Extinction.gameplay.NerfPatch;
 import Extinction.gameplay.WaveExtinction;
 import Extinction.discord.DiscordStatusReporter;
 import Extinction.duel.DuelChat;
 import Extinction.duel.DuelServerManager;
 import Extinction.duel.DuelWorker;
-import Extinction.duel.MatchPatch;
 import Extinction.duel.modes.DuelMode;
 import Extinction.commands.*;
 import Extinction.core.util.MessageIdFilter;
@@ -54,10 +52,8 @@ public class EvictMapPlugin extends Plugin {
     /**
      * How often the worker status files are polled. Named for the advertised
      * player count it was written for, but that poll is now what carries every
-     * worker's chat, playtime, ban requests and performance numbers to the hub,
-     * and the performance table redraws every three seconds - so it runs once a
-     * second rather than twice as slowly as the thing reading it. The reads sit
-     * on a background thread and cover at most ten small files.
+     * worker's chat, playtime and ban requests to the hub. The reads sit on a
+     * background thread and cover at most ten small files.
      */
     private static final long ADVERTISED_COUNT_REFRESH_MILLIS = 1000L;
 
@@ -150,30 +146,6 @@ public class EvictMapPlugin extends Plugin {
             new Extinction.metrics.MetricsReporter(
                     () -> duelServerManager.activeDuels().size(),
                     duelServerManager::connectedDuelPlayers
-            );
-
-    /**
-     * Measures this process's tick rate, load and hotspots. Runs on the hub and
-     * on every match server alike - it reads the game's own groups and touches
-     * no gameplay - which is what lets one Discord table compare all of them.
-     * Created in bootstrap() rather than here, because it has to capture the
-     * game thread and only bootstrap() is guaranteed to be running on it.
-     */
-    private Extinction.metrics.PerfSampler perfSampler;
-
-    /**
-     * Hub-only live performance table in Discord: one message showing the hub
-     * and every match-server slot, refreshed every few seconds. Constructed on
-     * a worker too (inert until started), but only the hub ever starts it - a
-     * worker publishes its numbers through its status file and reports nowhere.
-     */
-    private final Extinction.discord.PerfReporter perfReporter =
-            new Extinction.discord.PerfReporter(
-                    settings,
-                    () -> perfSampler == null
-                            ? Extinction.metrics.PerfSnapshot.empty()
-                            : perfSampler.snapshot(),
-                    duelServerManager::poolPerf
             );
 
     private final DuelCommands duelCommands =
@@ -382,8 +354,6 @@ public class EvictMapPlugin extends Plugin {
                     duelWorker ? null : playerLock,
                     duelWorker ? null : chatLogReporter,
                     duelWorker ? null : discordModCommands,
-                    duelWorker ? null : perfReporter,
-                    () -> perfSampler,
                     // oregen gen regenerates the live map in place with no fresh snapshot,
                     // so connected clients only see the new terrain via the per-tile sync.
                     seed -> generate(seed, true)
@@ -451,10 +421,6 @@ public class EvictMapPlugin extends Plugin {
             // Hub only: Discord's /ban and /unban. Started after the mirror,
             // which shares the same bot token out of the secrets file.
             discordModCommands.start();
-
-            // Hub only: the live performance table. Same bot again, and the
-            // worker rows come from the status files the duel manager polls.
-            perfReporter.start();
         }
 
         Events.on(WorldLoadEvent.class, event -> {
@@ -492,15 +458,6 @@ public class EvictMapPlugin extends Plugin {
 
             if (duelWorker) {
                 duelWorkerReferee.begin();
-
-                // The handshake is loaded now, so the referee knows whether
-                // this match was started as /play nerf. The patch mutates
-                // shared content objects; a worker hosts one match and exits,
-                // so it is applied here and never undone. The hub, which
-                // hosts round after round, never applies it.
-                if (duelWorkerReferee.matchPatch() == MatchPatch.NERF) {
-                    NerfPatch.apply();
-                }
 
                 // The handshake is loaded now, so the referee knows the mode:
                 // gate the victory check on the full roster count, and open
@@ -662,11 +619,6 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Events.run(Trigger.update, () -> {
-            // Before everything else: this measures the gap between one tick
-            // and the next, so it has to sit at the same point in every tick.
-            // One nanoTime and an array write.
-            perfSampler.update();
-
             // First, so the managers below already see pause-corrected time.
             teamManager.updatePauseTracking();
 
@@ -696,7 +648,6 @@ public class EvictMapPlugin extends Plugin {
 
                 metricsReporter.update();
                 discordStatusReporter.update();
-                perfReporter.update();
 
                 // Runs the one-off import of pre-existing bans once the admin
                 // store exists, then paces the ban log's queue.
@@ -712,7 +663,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.13.2. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.14.0. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
@@ -782,13 +733,6 @@ public class EvictMapPlugin extends Plugin {
         Config.load();
         adminSync.load();
 
-        // Here rather than in a field initialiser: the sampler has to be handed
-        // the thread the game loop runs on, and this is the one place that is
-        // guaranteed to be running on it. Started on the hub and on a worker
-        // alike - the numbers only differ in where they end up.
-        perfSampler = new Extinction.metrics.PerfSampler(Thread.currentThread());
-        perfSampler.start();
-
         // A duel worker has no player database of its own: it reads the hub's
         // (it runs in duel-workers/duel-<port>/, so the hub config is two levels
         // up) so /info, /top and /history show real numbers on a match
@@ -818,11 +762,6 @@ public class EvictMapPlugin extends Plugin {
             duelWorkerReferee.setPlaytimeSource(
                     playerDataManager::sessionPlaytimeSnapshot
             );
-
-            // Same file, same poll: this worker's tick rate travels to the hub
-            // beside its playtime, and the hub draws it into one table with
-            // every other server.
-            duelWorkerReferee.setPerfSource(perfSampler::snapshot);
 
             // After the word filter: a blocked message must be gone before
             // the ranked routing can deliver it to the spectators.

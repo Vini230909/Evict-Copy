@@ -177,57 +177,11 @@ public final class EvictSettings {
     private static final String CHAT_LOG_PORT_SUFFIX = ".channel";
 
     /**
-     * Discord channel holding the live performance reports, and the message
-     * each server owns in it, keyed by {@code hub} or by worker port. A blank
-     * channel means the feature is off; the ids are cleared with the channel,
-     * because a message id only means anything in the channel it was created
-     * in. Created by the bot, so this is a channel id rather than a webhook -
-     * and the bot token is not here for the same reason it is nowhere else in
-     * this file.
-     */
-    private String perfChannel = "";
-    private final TreeMap<String, String> perfMessages = new TreeMap<>();
-
-    /**
-     * How many Discord requests the performance feature may spend, and over how
-     * many seconds. Adjustable because it is the one number that decides how
-     * fresh the reports are: the budget is shared out between the servers that
-     * are actually running, so raising it refreshes each of them more often and
-     * lowering it is how you stay clear of a rate limit. Discord allows roughly
-     * five requests per five seconds per channel, so the default leaves a
-     * request of headroom.
-     */
-    private int perfRateRequests = DEFAULT_PERF_RATE_REQUESTS;
-    private int perfRateSeconds = DEFAULT_PERF_RATE_SECONDS;
-
-    private static final int DEFAULT_PERF_RATE_REQUESTS = 4;
-    private static final int DEFAULT_PERF_RATE_SECONDS = 5;
-    private static final int MIN_PERF_RATE_REQUESTS = 1;
-    private static final int MAX_PERF_RATE_REQUESTS = 10;
-    private static final int MIN_PERF_RATE_SECONDS = 1;
-    private static final int MAX_PERF_RATE_SECONDS = 300;
-
-    private static final String PERF_CHANNEL_KEY = "discord.perf.channel";
-    private static final String PERF_MESSAGE_PREFIX = "discord.perf.message.";
-    private static final String PERF_RATE_REQUESTS_KEY =
-            "discord.perf.rate.requests";
-    private static final String PERF_RATE_SECONDS_KEY =
-            "discord.perf.rate.seconds";
-
-    /**
      * Set once the bans that existed before this feature have been run through
      * the cascade. Without it every restart would re-import and re-post the
      * whole back catalogue.
      */
     private boolean banBackfillDone = false;
-
-    /**
-     * Set once an admin has had the existing bans written up in the ban log.
-     * That write-up is a one-off by nature - running it twice posts the whole
-     * back catalogue a second time - so the command refuses to repeat itself
-     * unless it is explicitly forced.
-     */
-    private boolean banImportLogged = false;
 
     /**
      * Where a banned player is told to go to appeal - a Discord invite, shown
@@ -457,17 +411,11 @@ public final class EvictSettings {
                             DISCORD_COMMAND_ROLE_KEY,
                             discordCommandRole
                     ).trim();
-            readPerfSettings(properties);
             readChatLogSettings(properties);
             banBackfillDone = readBoolean(
                     properties,
                     "moderation.banBackfillDone",
                     banBackfillDone
-            );
-            banImportLogged = readBoolean(
-                    properties,
-                    "moderation.banImportLogged",
-                    banImportLogged
             );
             banAppealUrl = readString(
                     properties,
@@ -649,119 +597,6 @@ public final class EvictSettings {
         save();
     }
 
-    /** Discord channel the performance reports live in; blank means off. */
-    public String perfChannel() {
-        return perfChannel;
-    }
-
-    /**
-     * The message each server owns, keyed by {@code hub} or worker port, so a
-     * restart keeps editing the messages that are already in the channel
-     * instead of posting a second set below them.
-     */
-    public Map<String, String> perfMessages() {
-        return new TreeMap<>(perfMessages);
-    }
-
-    /** How many Discord requests the reports may spend per window. */
-    public int perfRateRequests() {
-        return perfRateRequests;
-    }
-
-    /** The window those requests are spread over, in seconds. */
-    public int perfRateSeconds() {
-        return perfRateSeconds;
-    }
-
-    /**
-     * Points the performance reports at a channel. The message ids go with it:
-     * they were created in the old channel and mean nothing in a new one.
-     */
-    public void setPerfChannel(String channelId) {
-        perfChannel = channelId == null ? "" : channelId.trim();
-        perfMessages.clear();
-        save();
-    }
-
-    /** Remembers the message one server owns, across restarts. */
-    public void setPerfMessage(String key, String messageId) {
-        String cleanedKey = key == null ? "" : key.trim();
-        String cleaned = messageId == null ? "" : messageId.trim();
-
-        if (cleanedKey.isEmpty()) {
-            return;
-        }
-
-        if (cleaned.equals(perfMessages.getOrDefault(cleanedKey, ""))) {
-            return;
-        }
-
-        if (cleaned.isEmpty()) {
-            perfMessages.remove(cleanedKey);
-        } else {
-            perfMessages.put(cleanedKey, cleaned);
-        }
-
-        save();
-    }
-
-    /** Turns the reports off and forgets the channel and its messages. */
-    public void clearPerf() {
-        perfChannel = "";
-        perfMessages.clear();
-        save();
-    }
-
-    /** Sets the Discord request budget; both values are clamped to sane range. */
-    public void setPerfRate(int requests, int seconds) {
-        perfRateRequests = validateIntRange(
-                "Performance requests",
-                requests,
-                MIN_PERF_RATE_REQUESTS,
-                MAX_PERF_RATE_REQUESTS
-        );
-        perfRateSeconds = validateIntRange(
-                "Performance window",
-                seconds,
-                MIN_PERF_RATE_SECONDS,
-                MAX_PERF_RATE_SECONDS
-        );
-        save();
-    }
-
-    /**
-     * Reads the performance wiring. The message ids are stored one key at a
-     * time ({@code discord.perf.message.<hub|port>}) so a new pool size adds
-     * keys instead of rewriting one packed value.
-     */
-    private void readPerfSettings(Properties properties) {
-        perfChannel = readString(properties, PERF_CHANNEL_KEY, perfChannel).trim();
-        perfRateRequests = readInt(
-                properties,
-                PERF_RATE_REQUESTS_KEY,
-                perfRateRequests
-        );
-        perfRateSeconds = readInt(
-                properties,
-                PERF_RATE_SECONDS_KEY,
-                perfRateSeconds
-        );
-        perfMessages.clear();
-
-        for (String key : properties.stringPropertyNames()) {
-            if (!key.startsWith(PERF_MESSAGE_PREFIX)) {
-                continue;
-            }
-
-            String slot = key.substring(PERF_MESSAGE_PREFIX.length()).trim();
-            String messageId = properties.getProperty(key, "").trim();
-
-            if (!slot.isEmpty() && !messageId.isEmpty()) {
-                perfMessages.put(slot, messageId);
-            }
-        }
-    }
-
     public String discordBanLogWebhookUrl() {
         return discordBanLogWebhookUrl;
     }
@@ -871,20 +706,6 @@ public final class EvictSettings {
      */
     public boolean banBackfillDone() {
         return banBackfillDone;
-    }
-
-    /** True once the existing bans have been written up in the ban log. */
-    public boolean banImportLogged() {
-        return banImportLogged;
-    }
-
-    public void markBanImportLogged() {
-        if (banImportLogged) {
-            return;
-        }
-
-        banImportLogged = true;
-        save();
     }
 
 
@@ -1509,22 +1330,6 @@ public final class EvictSettings {
         );
         properties.setProperty(DISCORD_COMMAND_GUILD_KEY, discordCommandGuild);
         properties.setProperty(DISCORD_COMMAND_ROLE_KEY, discordCommandRole);
-        properties.setProperty(PERF_CHANNEL_KEY, perfChannel);
-        properties.setProperty(
-                PERF_RATE_REQUESTS_KEY,
-                Integer.toString(perfRateRequests)
-        );
-        properties.setProperty(
-                PERF_RATE_SECONDS_KEY,
-                Integer.toString(perfRateSeconds)
-        );
-
-        for (Map.Entry<String, String> entry : perfMessages.entrySet()) {
-            properties.setProperty(
-                    PERF_MESSAGE_PREFIX + entry.getKey(),
-                    entry.getValue()
-            );
-        }
         properties.setProperty(CHAT_LOG_HUB_KEY, chatLogHubChannel);
 
         for (Map.Entry<Integer, String> entry : chatLogPortChannels.entrySet()) {
@@ -1537,10 +1342,6 @@ public final class EvictSettings {
         properties.setProperty(
                 "moderation.banBackfillDone",
                 Boolean.toString(banBackfillDone)
-        );
-        properties.setProperty(
-                "moderation.banImportLogged",
-                Boolean.toString(banImportLogged)
         );
         properties.setProperty("moderation.banAppealUrl", banAppealUrl);
         properties.setProperty(

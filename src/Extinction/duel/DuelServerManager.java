@@ -18,7 +18,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -38,8 +37,6 @@ import mindustry.world.Block;
 import Extinction.discord.ChatLogReporter;
 import Extinction.discord.ChatLogTail;
 import Extinction.discord.DiscordFormat;
-import Extinction.metrics.PerfSnapshot;
-import Extinction.metrics.ServerPerf;
 import Extinction.moderation.ban.BanOrigin;
 import Extinction.moderation.ban.BanRequest;
 import Extinction.moderation.ban.WordFilterHit;
@@ -107,18 +104,6 @@ public final class DuelServerManager {
             new AtomicBoolean(false);
 
     /**
-     * Port -> that worker's last performance numbers and the moment this hub
-     * read them. Filled by the same background poll that reads the status
-     * files, read by the Discord performance table on the main thread, hence
-     * the concurrent map.
-     *
-     * <p>The timestamp is taken here rather than in the worker on purpose: two
-     * processes have two clocks, and the age column exists precisely to expose
-     * a worker whose own clock has stopped moving.
-     */
-    private final Map<Integer, ServerPerf> workerPerf = new ConcurrentHashMap<>();
-
-    /**
      * Port -> the per-UUID playtime already credited from that worker's status
      * file. Workers publish a running total, so the hub credits the difference
      * and stays correct across missed and repeated polls. Main-thread only.
@@ -177,17 +162,11 @@ public final class DuelServerManager {
     /**
      * Reserves a worker and, once it is hosting, redirects every rostered
      * player to it. Each inner list is one match team (FFA passes N teams of
-     * one player, Training/Sandbox a single team). The patch is the optional
-     * rebalance the match plays with ({@code /play nerf}); the worker applies
-     * it, the hub never does. Returns false immediately if the feature is
-     * unconfigured or all worker slots are in use; the caller is responsible
-     * for notifying the players in that case.
+     * one player, Training/Sandbox a single team). Returns false immediately
+     * if the feature is unconfigured or all worker slots are in use; the
+     * caller is responsible for notifying the players in that case.
      */
-    public boolean requestMatch(
-            MatchMode mode,
-            MatchPatch patch,
-            List<List<Player>> rosterTeams
-    ) {
+    public boolean requestMatch(MatchMode mode, List<List<Player>> rosterTeams) {
         if (!isConfigured() || rosterTeams == null || rosterTeams.isEmpty()) {
             return false;
         }
@@ -200,7 +179,6 @@ public final class DuelServerManager {
 
         WorkerHandle handle = new WorkerHandle(port);
         handle.mode = mode;
-        handle.patch = patch == null ? MatchPatch.NONE : patch;
 
         List<List<String>> rosterUuids = new ArrayList<>();
 
@@ -220,7 +198,7 @@ public final class DuelServerManager {
             rosterUuids.add(uuids);
         }
 
-        handle.label = matchLabel(mode, handle.patch, rosterTeams);
+        handle.label = matchLabel(mode, rosterTeams);
         handle.adminUuids = snapshotAdminUuids();
         handle.bannedBlocks = snapshotBannedBlockNames();
 
@@ -239,8 +217,8 @@ public final class DuelServerManager {
 
         workers.put(port, handle);
 
-        announceMatchStart(mode, handle.patch, handle.label);
-        chatLog.matchStarted(port, handle.modeLabel(), rosterNames(handle));
+        announceMatchStart(mode, handle.label);
+        chatLog.matchStarted(port, mode.label(), rosterNames(handle));
 
         spawnExecutor.submit(() -> spawnAndRedirect(handle, rosterUuids));
 
@@ -264,7 +242,6 @@ public final class DuelServerManager {
      */
     private static String matchLabel(
             MatchMode mode,
-            MatchPatch patch,
             List<List<Player>> rosterTeams
     ) {
         String label;
@@ -304,47 +281,23 @@ public final class DuelServerManager {
             label = String.join(" [white]vs[] ", teamNames);
         }
 
-        if (labelCarriesMode(mode, patch)) {
-            label += " [lightgray](" + modeLabel(mode, patch) + ")[]";
+        if (mode != MatchMode.ONE_VS_ONE) {
+            label += " [lightgray](" + mode.label() + ")[]";
         }
 
         return label;
     }
 
     /**
-     * "Teams", or "Teams, Nerf" when the match runs a rebalance patch. The
-     * patch is worth spelling out everywhere the mode is: it changes how the
-     * match plays, so a spectator picking a match or a Discord reader should
-     * not have to guess.
-     */
-    private static String modeLabel(MatchMode mode, MatchPatch patch) {
-        return patch == null || patch.isNone()
-                ? mode.label()
-                : mode.label() + ", " + patch.label();
-    }
-
-    /**
-     * Whether {@link #matchLabel} already spelled the mode out. A plain
-     * unpatched 1v1 is the one match whose label stays just the two names.
-     */
-    private static boolean labelCarriesMode(MatchMode mode, MatchPatch patch) {
-        return mode != MatchMode.ONE_VS_ONE || (patch != null && !patch.isNone());
-    }
-
-    /**
      * Tells everyone still in the hub that a match is starting, right after
      * every rostered player accepted and just before they are redirected to
-     * the worker. The label carries the mode for every match except a plain
-     * 1v1 (see {@link #matchLabel}), which appends it here.
+     * the worker. The label carries the mode for every mode except 1v1 (see
+     * {@link #matchLabel}), so 1v1 appends it here.
      */
-    private static void announceMatchStart(
-            MatchMode mode,
-            MatchPatch patch,
-            String label
-    ) {
-        String announcement = labelCarriesMode(mode, patch)
-                ? label
-                : label + " [lightgray](" + modeLabel(mode, patch) + ")[]";
+    private static void announceMatchStart(MatchMode mode, String label) {
+        String announcement = mode == MatchMode.ONE_VS_ONE
+                ? label + " [lightgray](" + mode.label() + ")[]"
+                : label;
 
         Call.sendMessage("[accent]Match starting:[] " + announcement);
     }
@@ -430,7 +383,7 @@ public final class DuelServerManager {
         for (Player player : players) {
             player.sendMessage(
                     "[accent]Connecting you to your "
-                            + handle.modeLabel() + "...[]"
+                            + handle.mode.label() + "...[]"
             );
             activeDuelByUuid.put(player.uuid(), handle.port);
             Call.connect(player.con, ip, handle.port);
@@ -583,7 +536,7 @@ public final class DuelServerManager {
 
             statuses.add(new MatchStatus(
                     handle.port - settings.duelServerPort() + 1,
-                    handle.modeLabel(),
+                    handle.mode.label(),
                     rosterNames(handle),
                     (now - handle.spawnedAtMillis) / 1000L
             ));
@@ -621,7 +574,6 @@ public final class DuelServerManager {
     public int connectedDuelPlayers() {
         if (workers.isEmpty()) {
             cachedConnectedDuelPlayers = 0;
-            workerPerf.clear();
             return 0;
         }
 
@@ -651,7 +603,6 @@ public final class DuelServerManager {
                     }
 
                     cachedConnectedDuelPlayers = total;
-                    recordWorkerPerf(ports, statuses);
 
                     // The same files carry playtime and ban requests; deal
                     // with both while they are in hand.
@@ -857,7 +808,7 @@ public final class DuelServerManager {
         }
 
         viewer.sendMessage(
-                "[accent]Connecting you to the " + handle.modeLabel()
+                "[accent]Connecting you to the " + handle.mode.label()
                         + " as a spectator...[]"
         );
         Call.sendMessage(
@@ -928,73 +879,6 @@ public final class DuelServerManager {
                 );
             }
         }
-    }
-
-    /**
-     * Keeps the performance table's worker rows current: adopt what each status
-     * file carried, and forget the ports that are no longer in the pool - a
-     * finished worker's last numbers would otherwise sit in the table looking
-     * like a server that is still up.
-     */
-    private void recordWorkerPerf(
-            List<Integer> ports,
-            Map<Integer, Properties> statuses
-    ) {
-        long now = System.currentTimeMillis();
-
-        workerPerf.keySet().retainAll(ports);
-
-        for (int port : ports) {
-            Properties status = statuses.get(port);
-            PerfSnapshot perf = status == null ? null : PerfSnapshot.read(status);
-
-            // A reserved port always counts as running: a worker that is still
-            // booting has no status file yet, and drawing that as an idle slot
-            // would hide a match that is starting right now.
-            workerPerf.put(
-                    port,
-                    new ServerPerf(
-                            Integer.toString(port),
-                            true,
-                            perf,
-                            perf == null
-                                    ? 0L
-                                    : Math.max(0L, now - lastPerfReadMillis(port, now))
-                    )
-            );
-        }
-    }
-
-    /**
-     * A worker's numbers are as old as the file they came from, not as old as
-     * this poll: the poll runs on its own cadence and a worker that has stopped
-     * writing keeps handing back the same file. The file's own modification
-     * time is what turns that into a growing age.
-     */
-    private long lastPerfReadMillis(int port, long fallback) {
-        long modified = new File(workerDir(port), "status.properties").lastModified();
-
-        return modified > 0L ? modified : fallback;
-    }
-
-    /**
-     * One row per match-server slot for the performance table - running ones
-     * with their numbers, the rest marked idle. Every slot is listed whether or
-     * not a worker is in it: an empty slot is information too, and a table whose
-     * rows came and went would be unreadable.
-     */
-    public List<ServerPerf> poolPerf() {
-        List<ServerPerf> rows = new ArrayList<>();
-        int basePort = settings.duelServerPort();
-
-        for (int offset = 0; offset < settings.duelMaxWorkers(); offset++) {
-            int port = basePort + offset;
-            ServerPerf row = workerPerf.get(port);
-
-            rows.add(row == null ? ServerPerf.idle(Integer.toString(port)) : row);
-        }
-
-        return rows;
     }
 
     private Properties readStatus(int port) {
@@ -1299,8 +1183,6 @@ public final class DuelServerManager {
     ) throws IOException {
         Properties properties = new Properties();
         properties.setProperty("mode", handle.mode.id());
-        // The rebalance the worker applies to its content before the round.
-        properties.setProperty("patch", handle.patch.id());
         // The display label ("A vs B (Teams)") is repeated in the handshake so
         // sibling workers can list this match in their own /s hop menu.
         properties.setProperty("label", handle.label);
@@ -1528,7 +1410,7 @@ public final class DuelServerManager {
 
         chatLog.matchEnded(
                 handle.port,
-                modeLabel(mode, handle.patch),
+                mode.label(),
                 solo ? null : chatNames(handle, result.winnerUuids()),
                 solo ? null : chatNames(handle, result.loserUuids()),
                 matchDurationSeconds(handle),
@@ -1717,7 +1599,7 @@ public final class DuelServerManager {
                 handle.endReported = true;
                 chatLog.matchEnded(
                         handle.port,
-                        handle.modeLabel(),
+                        handle.mode.label(),
                         null,
                         null,
                         matchDurationSeconds(handle),
@@ -1864,10 +1746,6 @@ public final class DuelServerManager {
         final long spawnedAtMillis = System.currentTimeMillis();
         volatile Process process;
         MatchMode mode = MatchMode.ONE_VS_ONE;
-
-        /** The rebalance this match plays with; applied by the worker. */
-        MatchPatch patch = MatchPatch.NONE;
-
         String label = "?";
         final List<Participant> participants = new ArrayList<>();
         List<String> adminUuids = new ArrayList<>();
@@ -1881,11 +1759,6 @@ public final class DuelServerManager {
 
         WorkerHandle(int port) {
             this.port = port;
-        }
-
-        /** The mode as players read it, patch included. */
-        String modeLabel() {
-            return DuelServerManager.modeLabel(mode, patch);
         }
     }
 }

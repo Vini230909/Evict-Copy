@@ -91,7 +91,7 @@ final class LockCommandGate extends CommandHandler {
         return delegate.getCommandList();
     }
 
-    /** {@code /play nerf} → {@code play}, lower-case. */
+    /** {@code /play foo} → {@code play}, lower-case. */
     private String commandName(String message) {
         String rest = message.substring(delegate.getPrefix().length()).trim();
         int space = rest.indexOf(' ');

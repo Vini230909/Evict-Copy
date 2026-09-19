@@ -19,7 +19,6 @@ import Extinction.PlayerNameFormatter;
 import Extinction.duel.DuelServerManager;
 import Extinction.duel.DuelWorker;
 import Extinction.duel.MatchMode;
-import Extinction.duel.MatchPatch;
 
 /**
  * /play (alias /p) match-making.
@@ -39,11 +38,6 @@ import Extinction.duel.MatchPatch;
  * recorded.
  * - Sandbox: like Training but with infinite resources, and spectators may
  * /invite to ask to join.
- * The command takes one optional option word ("/play nerf"), which is not a
- * mode but a rebalance every mode can be played with: it is carried through
- * the whole setup - menus, challenge, invites - into the launched match, where
- * the worker applies it (see {@code Extinction.duel.MatchPatch} and
- * {@code Extinction.gameplay.NerfPatch}).
  * This hub server only sends the players to a match worker instance. Map/mode
  * rules and the match itself live on that separate instance, because a single
  * Mindustry server process can only host one game at a time.
@@ -103,16 +97,6 @@ public final class DuelCommands {
     private final int viewMenuId;
 
     /**
-     * Challenger UUID -> the rebalance patch their current /play run was
-     * started with, so the menus that follow the mode menu know it without
-     * pushing it through every menu id. Overwritten by their next /play and
-     * dropped when they leave; a setup already under way keeps its own copy,
-     * so a second /play never changes a match that is already being built.
-     */
-    private final Map<String, MatchPatch> patchByChallengerUuid =
-            new HashMap<>();
-
-    /**
      * Challenger UUID -> the mode they chose and the ordered opponent UUIDs
      * shown in their 1v1/Ranked selection menu.
      */
@@ -169,18 +153,14 @@ public final class DuelCommands {
     void registerClientCommands(CommandHandler handler) {
         handler.<Player>register(
                 "play",
-                "[option]",
-                "Start a match: Unranked, 1v1, Teams, Random Teams, FFA, "
-                        + "Training or Sandbox. Add 'nerf' to play it with the "
-                        + "rebalance patch.",
-                (args, player) -> handlePlayCommand(args, player)
+                "Start a match: Unranked, 1v1, Teams, Random Teams, FFA, Training or Sandbox.",
+                (args, player) -> openModeMenu(player)
         );
 
         handler.<Player>register(
                 "p",
-                "[option]",
                 "Alias for /play.",
-                (args, player) -> handlePlayCommand(args, player)
+                (args, player) -> openModeMenu(player)
         );
 
         handler.<Player>register(
@@ -208,7 +188,6 @@ public final class DuelCommands {
 
         String uuid = player.uuid();
 
-        patchByChallengerUuid.remove(uuid);
         selectionByChallengerUuid.remove(uuid);
         challengeByOpponentUuid.remove(uuid);
         challengeByOpponentUuid.values().removeIf(
@@ -229,33 +208,7 @@ public final class DuelCommands {
         }
     }
 
-    /**
-     * /play, with the optional rebalance word after it. The option is not a
-     * mode of its own: it is carried through the whole setup and every game
-     * mode can be played with it, so "/play nerf" opens the same menu and the
-     * match it ends in runs the patch.
-     */
-    private void handlePlayCommand(String[] args, Player player) {
-        if (player == null) {
-            return;
-        }
-
-        String option = args.length > 0 ? args[0] : "";
-        MatchPatch patch = MatchPatch.fromOption(option);
-
-        if (patch == null) {
-            player.sendMessage(
-                    "[scarlet]'" + option
-                            + "' is not a /play option. Available: []"
-                            + MatchPatch.optionList()
-            );
-            return;
-        }
-
-        openModeMenu(player, patch);
-    }
-
-    private void openModeMenu(Player player, MatchPatch patch) {
+    private void openModeMenu(Player player) {
         if (player == null) {
             return;
         }
@@ -267,16 +220,11 @@ public final class DuelCommands {
             return;
         }
 
-        patchByChallengerUuid.put(player.uuid(), patch);
-
         Call.menu(
                 player.con,
                 modeMenuId,
-                "[accent]Play" + patchTitleSuffix(patch),
-                patch.isNone()
-                        ? "Select a game mode."
-                        : "Select a game mode. Every mode is played with the "
-                                + patch.label() + " rebalance.",
+                "[accent]Play",
+                "Select a game mode.",
                 new String[][]{
                         {"Unranked", "1v1"},
                         {"Teams", "Random Teams"},
@@ -293,54 +241,18 @@ public final class DuelCommands {
         }
 
         MatchMode mode = MODE_MENU_OPTIONS[option];
-        MatchPatch patch = currentPatch(player);
 
         switch (mode) {
-            case ONE_VS_ONE, RANKED -> openSelectionMenu(player, mode, patch);
-            case TEAMS, FFA -> beginDraft(player, mode, patch, 0);
-            case RANDOM_TEAMS -> openTeamCountMenu(player, patch);
-            case TRAINING, SANDBOX -> startSoloMatch(player, mode, patch);
+            case ONE_VS_ONE, RANKED -> openSelectionMenu(player, mode);
+            case TEAMS, FFA -> beginDraft(player, mode, 0);
+            case RANDOM_TEAMS -> openTeamCountMenu(player);
+            case TRAINING, SANDBOX -> startSoloMatch(player, mode);
         }
-    }
-
-    /**
-     * The rebalance the player's current /play run chose. Vanilla balance for
-     * a menu that outlived its /play (a restart, or a stale menu clicked long
-     * after the fact) - the safe answer is the normal game.
-     */
-    private MatchPatch currentPatch(Player player) {
-        return patchByChallengerUuid
-                .getOrDefault(player.uuid(), MatchPatch.NONE);
-    }
-
-    /** " [scarlet](Nerf)[]" for a patched setup, nothing for a vanilla one. */
-    private static String patchTitleSuffix(MatchPatch patch) {
-        return patch == null || patch.isNone()
-                ? ""
-                : " [scarlet](" + patch.label() + ")[]";
-    }
-
-    /**
-     * The red warning an accept/decline menu carries when the match is not
-     * vanilla balance, and nothing at all when it is. Someone answering a
-     * challenge or an invite is agreeing to the match right there, so the one
-     * thing that changes how it plays has to be on that menu - a player who
-     * does not want the rebalance can only decline if they were told.
-     */
-    private static String patchWarning(MatchPatch patch) {
-        if (patch == null || patch.isNone()) {
-            return "";
-        }
-
-        return "\n\n[scarlet]This match runs the " + patch.label()
-                + " rebalance:[] overdrive projectors and domes, T5"
-                + " reconstructors, phase weavers, surge smelters, navanax,"
-                + " quasar and vela are changed.";
     }
 
     // --- Random Teams (team count first, then one FFA-style player pool) ---
 
-    private void openTeamCountMenu(Player player, MatchPatch patch) {
+    private void openTeamCountMenu(Player player) {
         if (otherOnlinePlayers(player).isEmpty()) {
             player.sendMessage("[scarlet]No other players are online.[]");
             return;
@@ -349,7 +261,7 @@ public final class DuelCommands {
         Call.menu(
                 player.con,
                 teamCountMenuId,
-                "[accent]Random Teams" + patchTitleSuffix(patch),
+                "[accent]Random Teams",
                 "How many teams should the players be shuffled into?\n"
                         + "Teams are drawn randomly once everyone accepted.",
                 new String[][]{
@@ -377,23 +289,18 @@ public final class DuelCommands {
             return;
         }
 
-        beginDraft(
-                player,
-                MatchMode.RANDOM_TEAMS,
-                currentPatch(player),
-                teamCount
-        );
+        beginDraft(player, MatchMode.RANDOM_TEAMS, teamCount);
     }
 
     /**
      * Starts a Training or Sandbox session immediately: the requester is the
      * only rostered player, so there is nobody to pick or invite.
      */
-    private void startSoloMatch(Player player, MatchMode mode, MatchPatch patch) {
+    private void startSoloMatch(Player player, MatchMode mode) {
         List<List<Player>> rosters = new ArrayList<>();
         rosters.add(List.of(player));
 
-        if (!duelManager.requestMatch(mode, patch, rosters)) {
+        if (!duelManager.requestMatch(mode, rosters)) {
             player.sendMessage(
                     "[scarlet]All match servers are busy right now. Try again shortly.[]"
             );
@@ -403,11 +310,7 @@ public final class DuelCommands {
     // --- 1v1 / Ranked (pick one opponent, accept/decline; same flow, the mode
     //     is carried through so only the launched match differs) ---
 
-    private void openSelectionMenu(
-            Player player,
-            MatchMode mode,
-            MatchPatch patch
-    ) {
+    private void openSelectionMenu(Player player, MatchMode mode) {
         List<Player> opponents = otherOnlinePlayers(player);
 
         if (opponents.isEmpty()) {
@@ -436,27 +339,16 @@ public final class DuelCommands {
         rows.add(new String[]{"[red]Cancel"});
         selectionByChallengerUuid.put(
                 player.uuid(),
-                new Selection(mode, patch, targetUuids)
+                new Selection(mode, targetUuids)
         );
 
         Call.menu(
                 player.con,
                 selectionMenuId,
-                "[accent]" + mode.label() + patchTitleSuffix(patch),
-                "Select a player to challenge to a "
-                        + matchDescription(mode, patch) + ".",
+                "[accent]" + mode.label(),
+                "Select a player to challenge to a " + mode.label() + ".",
                 rows.toArray(new String[0][])
         );
-    }
-
-    /**
-     * "Teams match" / "Teams match with the Nerf rebalance" - what a player is
-     * being invited to, in a sentence.
-     */
-    private static String matchDescription(MatchMode mode, MatchPatch patch) {
-        return patch == null || patch.isNone()
-                ? mode.label()
-                : mode.label() + " with the " + patch.label() + " rebalance";
     }
 
     private void handleSelection(Player player, int option) {
@@ -476,7 +368,6 @@ public final class DuelCommands {
         }
 
         MatchMode mode = selection.mode();
-        MatchPatch patch = selection.patch();
         Player opponent =
                 onlinePlayerByUuid(selection.targetUuids().get(option));
 
@@ -501,7 +392,7 @@ public final class DuelCommands {
 
         challengeByOpponentUuid.put(
                 opponentUuid,
-                new PendingChallenge(player.uuid(), mode, patch, serial)
+                new PendingChallenge(player.uuid(), mode, serial)
         );
         Time.run(
                 PENDING_RESPONSE_TIMEOUT_TICKS,
@@ -517,12 +408,10 @@ public final class DuelCommands {
         Call.menu(
                 opponent.con,
                 challengeMenuId,
-                "[accent]" + mode.label() + " Challenge"
-                        + patchTitleSuffix(patch),
+                "[accent]" + mode.label() + " Challenge",
                 PlayerNameFormatter.displayName(player)
                         + "[white] has challenged you to a "
-                        + matchDescription(mode, patch) + "."
-                        + patchWarning(patch),
+                        + mode.label() + ".",
                 new String[][]{
                         {"[green]Accept"},
                         {"[red]Decline"}
@@ -580,7 +469,7 @@ public final class DuelCommands {
         rosters.add(List.of(challenger));
         rosters.add(List.of(opponent));
 
-        if (!duelManager.requestMatch(mode, pending.patch(), rosters)) {
+        if (!duelManager.requestMatch(mode, rosters)) {
             challenger.sendMessage(
                     "[scarlet]All match servers are busy right now. Try again shortly.[]"
             );
@@ -592,12 +481,7 @@ public final class DuelCommands {
 
     // --- Teams / FFA drafts (pick menus only, no typed input) ---
 
-    private void beginDraft(
-            Player challenger,
-            MatchMode mode,
-            MatchPatch patch,
-            int teamCount
-    ) {
+    private void beginDraft(Player challenger, MatchMode mode, int teamCount) {
         if (otherOnlinePlayers(challenger).isEmpty()) {
             challenger.sendMessage("[scarlet]No other players are online.[]");
             return;
@@ -620,8 +504,7 @@ public final class DuelCommands {
                     .removeIf(challenger.uuid()::equals);
         }
 
-        MatchDraft draft =
-                new MatchDraft(mode, patch, challenger.uuid(), teamCount);
+        MatchDraft draft = new MatchDraft(mode, challenger.uuid(), teamCount);
         draftsByChallengerUuid.put(challenger.uuid(), draft);
         openPickMenu(challenger, draft);
     }
@@ -865,13 +748,10 @@ public final class DuelCommands {
             Call.menu(
                     invitee.con,
                     inviteMenuId,
-                    "[accent]" + draft.mode.label() + " invite"
-                            + patchTitleSuffix(draft.patch),
+                    "[accent]" + draft.mode.label() + " invite",
                     PlayerNameFormatter.displayName(challenger)
                             + "[white] invited you to a "
-                            + matchDescription(draft.mode, draft.patch)
-                            + " match.\n\n" + summary
-                            + patchWarning(draft.patch),
+                            + draft.mode.label() + " match.\n\n" + summary,
                     new String[][]{
                             {"[green]Accept"},
                             {"[red]Decline"}
@@ -986,7 +866,7 @@ public final class DuelCommands {
                 ? MatchMode.TEAMS
                 : draft.mode;
 
-        if (!duelManager.requestMatch(wireMode, draft.patch, rosters)) {
+        if (!duelManager.requestMatch(wireMode, rosters)) {
             for (List<Player> roster : rosters) {
                 for (Player player : roster) {
                     player.sendMessage(
@@ -1388,13 +1268,6 @@ public final class DuelCommands {
      */
     private static final class MatchDraft {
         final MatchMode mode;
-
-        /**
-         * The rebalance the challenger started this setup with, copied here so
-         * a later /play of theirs cannot change the match being assembled.
-         */
-        final MatchPatch patch;
-
         final String challengerUuid;
 
         /**
@@ -1426,14 +1299,8 @@ public final class DuelCommands {
         List<String> candidateUuids = new ArrayList<>();
         final Set<String> pendingInviteeUuids = new HashSet<>();
 
-        MatchDraft(
-                MatchMode mode,
-                MatchPatch patch,
-                String challengerUuid,
-                int teamCount
-        ) {
+        MatchDraft(MatchMode mode, String challengerUuid, int teamCount) {
             this.mode = mode;
-            this.patch = patch == null ? MatchPatch.NONE : patch;
             this.challengerUuid = challengerUuid;
             this.teamCount = teamCount;
 
@@ -1468,26 +1335,20 @@ public final class DuelCommands {
     }
 
     /**
-     * A challenger's open 1v1/Ranked selection menu: the mode and rebalance
-     * they picked and the ordered opponents shown, so the clicked option
-     * resolves to the right player and the challenge launches in the right
-     * mode.
+     * A challenger's open 1v1/Ranked selection menu: the mode they picked and
+     * the ordered opponents shown, so the clicked option resolves to the right
+     * player and the challenge launches in the right mode.
      */
-    private record Selection(
-            MatchMode mode,
-            MatchPatch patch,
-            List<String> targetUuids
-    ) {
+    private record Selection(MatchMode mode, List<String> targetUuids) {
     }
 
     /**
-     * An outstanding 1v1/Ranked challenge: who sent it, in which mode and
-     * rebalance, and the serial its expiry task was armed with.
+     * An outstanding 1v1/Ranked challenge: who sent it, in which mode, and the
+     * serial its expiry task was armed with.
      */
     private record PendingChallenge(
             String challengerUuid,
             MatchMode mode,
-            MatchPatch patch,
             int serial
     ) {
     }
