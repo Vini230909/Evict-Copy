@@ -23,7 +23,7 @@ Deploy: copy the jar into the server's `config/mods/` and restart — nothing el
 - The hub is the single DB writer. Workers report results via files and never touch SQLite.
 - Before declaring a version finished: clean build, startup revision matches `plugin.json`, every changed and newly required file included.
 
-## Code map (`src/vini/evictmap/`)
+## Code map (`src/Extinction/`)
 
 Package layout (reorganised in 1.4.0): `core/` shared infrastructure, `gen/`
 generation + settings, `round/` team/round systems, `data/` persistence, `gameplay/`,
