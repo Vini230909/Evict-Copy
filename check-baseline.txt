@@ -1,9 +1,9 @@
-src/Extinction/EvictMapPlugin.java 1183
+src/Extinction/EvictMapPlugin.java 1179
 src/Extinction/PlayerNameFormatter.java 75
 src/Extinction/RestartManager.java 294
 src/Extinction/commands/BanCommands.java 289
 src/Extinction/commands/ClientCommands.java 69
-src/Extinction/commands/ConsoleCommands.java 1624
+src/Extinction/commands/ConsoleCommands.java 1560
 src/Extinction/commands/DuelCommands.java 1494
 src/Extinction/commands/FreeCommands.java 195
 src/Extinction/commands/HelpCommands.java 266
@@ -77,7 +77,7 @@ src/Extinction/gameplay/RulesApplier.java 183
 src/Extinction/gameplay/WaveExtinction.java 646
 src/Extinction/gen/CoreMarkerFloor.java 33
 src/Extinction/gen/EvictRuntimeState.java 40
-src/Extinction/gen/EvictSettings.java 1648
+src/Extinction/gen/EvictSettings.java 1621
 src/Extinction/gen/EvictTerrainGenerator.java 1498
 src/Extinction/gen/HexGrid.java 27
 src/Extinction/gen/ResourceGenerator.java 990
@@ -114,9 +114,6 @@ src/Extinction/moderation/vpn/VpnScan.java 752
 src/Extinction/moderation/vpn/VpnScanHit.java 91
 src/Extinction/moderation/vpn/VpnVerdict.java 209
 src/Extinction/moderation/vpn/VpnVerdictCache.java 116
-src/Extinction/moderation/words/BannedWords.java 73
-src/Extinction/moderation/words/WordFilter.java 168
-src/Extinction/moderation/words/WordMatcher.java 305
 src/Extinction/round/CoreCapture.java 530
 src/Extinction/round/HexGeometry.java 179
 src/Extinction/round/HexSlot.java 34

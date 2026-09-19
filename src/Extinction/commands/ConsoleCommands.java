@@ -12,8 +12,6 @@ import Extinction.discord.DiscordModCommands;
 import Extinction.moderation.ban.BanManager;
 import Extinction.moderation.lock.PlayerLock;
 import Extinction.moderation.vpn.VpnScan;
-import Extinction.moderation.words.WordFilter;
-import Extinction.moderation.words.WordMatcher;
 import Extinction.discord.DiscordStatusReporter;
 import Extinction.discord.PerfReporter;
 import Extinction.metrics.PerfSampler;
@@ -256,14 +254,6 @@ public final class ConsoleCommands {
                 .args("force:string?")
                 .description("Post every existing ban to the ban log. One-off; 'force' repeats it.")
                 .run(ctx -> handleBanImportCommand(ctx.str("force", "").trim()));
-
-        commands.command("evictwordfilter").console()
-                .args("action:string?", "text:text?")
-                .description("Banned-word filter: status, on/off, or test a line.")
-                .run(ctx -> handleWordFilterCommand(
-                        ctx.str("action", "").trim(),
-                        ctx.str("text", "")
-                ));
 
         commands.command("evictbanappeal").console()
                 .args("url/off:string?")
@@ -1084,60 +1074,6 @@ public final class ConsoleCommands {
             Log.info("[EvictMapGenerator] @", result.line());
         } else {
             Log.err("[EvictMapGenerator] @", result.line());
-        }
-    }
-
-    /**
-     * evictwordfilter: show or switch the filter, or try a line against it. The
-     * test matters - the filter bans by itself, so an entry that also fires on
-     * an ordinary sentence hands out permanent bans for nothing.
-     */
-    private void handleWordFilterCommand(String action, String text) {
-        switch (action.toLowerCase()) {
-            case "" -> Log.info(
-                    "[EvictMapGenerator] Word filter: @, watching @ word(s) everywhere plus @ banned in names only. Bans on chat and on names. Edit the lists in BannedWords.java and rebuild; 'evictwordfilter test <text>' tries a line.",
-                    settings.wordFilterEnabled() ? "on" : "off",
-                    WordMatcher.wordCount(),
-                    WordMatcher.nameWordCount()
-            );
-            case "on" -> {
-                settings.setWordFilterEnabled(true);
-                Log.info("[EvictMapGenerator] Word filter on: a filtered word now bans automatically.");
-            }
-            case "off" -> {
-                settings.setWordFilterEnabled(false);
-                Log.info("[EvictMapGenerator] Word filter off. Nothing is filtered until it is switched back on.");
-            }
-            case "test" -> {
-                if (text.isBlank()) {
-                    Log.err("[EvictMapGenerator] Give the text to try: evictwordfilter test <text>");
-                    return;
-                }
-
-                String word = WordFilter.test(text);
-
-                if (word != null) {
-                    Log.info(
-                            "[EvictMapGenerator] Would ban in chat and as a name: matches '@' from the word list.",
-                            word
-                    );
-                    return;
-                }
-
-                String name = WordFilter.testName(text);
-
-                if (name == null) {
-                    Log.info("[EvictMapGenerator] Clean - no ban.");
-                } else {
-                    Log.info(
-                            "[EvictMapGenerator] Would ban as a player name only: matches '@' from the name list. The same text in chat passes.",
-                            name
-                    );
-                }
-            }
-            default -> Log.err(
-                    "[EvictMapGenerator] Usage: evictwordfilter [on/off/test <text>]"
-            );
         }
     }
 

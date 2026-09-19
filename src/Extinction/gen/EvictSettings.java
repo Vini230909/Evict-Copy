@@ -1,6 +1,7 @@
 package Extinction.gen;
 
 import arc.util.Log;
+import Extinction.core.io.PropertiesFile;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -227,13 +228,6 @@ public final class EvictSettings {
      * unless it is explicitly forced.
      */
     private boolean banImportLogged = false;
-
-    /**
-     * Whether the banned-word filter bans automatically. Carried into every
-     * duel worker with the rest of this file, so a match server filters what
-     * the hub filters.
-     */
-    private boolean wordFilterEnabled = true;
 
     /**
      * Where a banned player is told to go to appeal - a Discord invite, shown
@@ -474,11 +468,6 @@ public final class EvictSettings {
                     properties,
                     "moderation.banImportLogged",
                     banImportLogged
-            );
-            wordFilterEnabled = readBoolean(
-                    properties,
-                    "moderation.wordFilter",
-                    wordFilterEnabled
             );
             banAppealUrl = readString(
                     properties,
@@ -898,19 +887,6 @@ public final class EvictSettings {
         save();
     }
 
-    /** True while the banned-word filter bans automatically. */
-    public boolean wordFilterEnabled() {
-        return wordFilterEnabled;
-    }
-
-    public void setWordFilterEnabled(boolean enabled) {
-        if (wordFilterEnabled == enabled) {
-            return;
-        }
-
-        wordFilterEnabled = enabled;
-        save();
-    }
 
     /** The Discord invite shown on ban screens; blank when none is set. */
     public String banAppealUrl() {
@@ -1469,7 +1445,8 @@ public final class EvictSettings {
             return;
         }
 
-        Properties properties = new Properties();
+        // Starts from the file so keys owned by Config (or unknown here) are never dropped.
+        Properties properties = PropertiesFile.load(SETTINGS_FILE);
         properties.setProperty(
                 "attrition.core.tier1To3Percent",
                 Double.toString(coreAttritionTier1To3Percent)
@@ -1564,10 +1541,6 @@ public final class EvictSettings {
         properties.setProperty(
                 "moderation.banImportLogged",
                 Boolean.toString(banImportLogged)
-        );
-        properties.setProperty(
-                "moderation.wordFilter",
-                Boolean.toString(wordFilterEnabled)
         );
         properties.setProperty("moderation.banAppealUrl", banAppealUrl);
         properties.setProperty(

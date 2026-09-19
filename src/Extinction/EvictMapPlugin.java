@@ -364,13 +364,7 @@ public class EvictMapPlugin extends Plugin {
             );
 
     /** Bans anyone using a filtered word in chat or in their name. */
-    private final Extinction.moderation.words.WordFilter wordFilter =
-            new Extinction.moderation.words.WordFilter(
-                    settings,
-                    !duelWorker,
-                    this::seedBan,
-                    banScreen
-            );
+    private final WordFilter wordFilter = new WordFilter(!duelWorker, this::seedBan, banScreen);
 
     private final ConsoleCommands consoleCommands =
             new ConsoleCommands(
@@ -718,7 +712,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.13.1. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.13.2. Use 'evictstatus' for commands and current settings."
         );
     }
 
@@ -785,6 +779,7 @@ public class EvictMapPlugin extends Plugin {
         MessageIdFilter.install();
 
         settings.load();
+        Config.load();
         adminSync.load();
 
         // Here rather than in a field initialiser: the sampler has to be handed
@@ -946,6 +941,7 @@ public class EvictMapPlugin extends Plugin {
     @Override
     public void registerServerCommands(CommandHandler handler) {
         consoleCommands.register(handler);
+        Console.register(handler);
     }
 
     /**
