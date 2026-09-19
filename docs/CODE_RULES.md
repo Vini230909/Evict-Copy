@@ -19,7 +19,9 @@ what it does.
 2. **Commands are data, in one place.** Every command is one entry in
    `commands/Player`, `commands/Admin` or `commands/Console` — args,
    description, permission, handler. A command is never its own class. A
-   command file contains commands and nothing else.
+   command file contains commands and nothing else. A console command exists
+   only for something an admin changes while the server runs; a value set
+   once lives in the properties file, without a command.
 
 3. **One config, no getters.** All settings are fields of one config object
    that reads and writes the properties file. Adding a setting adds one field.
