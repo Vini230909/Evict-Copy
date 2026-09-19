@@ -131,7 +131,7 @@ public final class ChatLogReporter {
 
     /**
      * The bot token as last read from the secrets file. Cached so a send does
-     * not touch the disk; {@code evictchatlog reload} re-reads it.
+     * not touch the disk; {@code chatlog reload} re-reads it.
      */
     private volatile String token = "";
 
@@ -377,7 +377,7 @@ public final class ChatLogReporter {
                 "bot token: " + (hasToken()
                         ? "loaded from " + Secrets.path()
                         : "NOT SET - set " + Secrets.DISCORD_CHAT_BOT_TOKEN
-                        + " in " + Secrets.path() + ", then 'evictchatlog reload'")
+                        + " in " + Secrets.path() + ", then 'chatlog reload'")
         );
         lines.add("hub: " + describe(hub));
 
@@ -632,7 +632,7 @@ public final class ChatLogReporter {
         if (!hasToken()) {
             report.accept(List.of(
                     "No bot token is loaded. Set " + Secrets.DISCORD_CHAT_BOT_TOKEN
-                            + " in " + Secrets.path() + " and run 'evictchatlog reload'."
+                            + " in " + Secrets.path() + " and run 'chatlog reload'."
             ));
             return;
         }
@@ -709,7 +709,7 @@ public final class ChatLogReporter {
             lines.add(
                     "Wired up " + result.idsByKey().size()
                             + " channel(s). They are hidden from @everyone - give "
-                            + "your staff role access. 'evictchatlog test' checks them."
+                            + "your staff role access. 'chatlog test' checks them."
             );
         } else {
             lines.add("Stopped: " + result.error());

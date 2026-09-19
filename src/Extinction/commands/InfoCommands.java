@@ -23,7 +23,7 @@ import java.util.Map;
  * searches the stored players by name. UUIDs are never shown to normal players
  * - unlike the old admin-only /info, this is public, so it exposes stats but
  * not identifiers. A server admin additionally sees the subject's UUID (never
- * the IP - that stays console-only via evictplayerinfo).
+ * the IP - that stays console-only via playerinfo).
  */
 public final class InfoCommands {
 
@@ -230,7 +230,7 @@ public final class InfoCommands {
     /**
      * @param showUuid whether the viewer is a server admin; only then is the
      *                 subject's UUID included (IPs are never shown here - the
-     *                 console's evictplayerinfo is the only place for those).
+     *                 console's playerinfo is the only place for those).
      */
     private static String formatPlayerInfo(
             PlayerDataManager.PlayerInfo info,

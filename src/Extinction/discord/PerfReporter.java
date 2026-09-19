@@ -32,7 +32,7 @@ import java.util.function.Supplier;
  * limited per <em>channel</em>, at roughly five requests per five seconds, and
  * eleven messages refreshing every three seconds would be four times over it.
  * So sends are not scheduled per message - they are drawn from one shared
- * budget ({@code evictperf rate}, four requests per five seconds by default)
+ * budget ({@code perf rate}, four requests per five seconds by default)
  * and handed out round-robin to whichever report has something new to say.
  *
  * <p>That makes the refresh rate degrade honestly instead of failing: with the
@@ -489,16 +489,16 @@ public final class PerfReporter {
         if (!hasToken()) {
             report.accept(List.of(
                     "No bot token is loaded. Set " + Secrets.DISCORD_CHAT_BOT_TOKEN
-                            + " in " + Secrets.path() + " and run 'evictperf reload'."
+                            + " in " + Secrets.path() + " and run 'perf reload'."
             ));
             return;
         }
 
         if (!isSnowflake(guildId)) {
             report.accept(List.of(
-                    "That is not a Discord server id. Run 'evictdiscordcmd setup' "
+                    "That is not a Discord server id. Run 'discordcommands setup' "
                             + "first - it finds the server itself - or pass the id: "
-                            + "'evictperf setup <server-id>'."
+                            + "'perf setup <server-id>'."
             ));
             return;
         }
@@ -566,7 +566,7 @@ public final class PerfReporter {
                 + Secrets.path() + ")"));
 
         if (!isConfigured()) {
-            lines.add("Channel: not set - run 'evictperf setup' to have the bot "
+            lines.add("Channel: not set - run 'perf setup' to have the bot "
                     + "create it.");
             return lines;
         }
@@ -603,7 +603,7 @@ public final class PerfReporter {
             lines.add("Rate limited " + rateLimits + " time(s) since startup"
                     + (recentlyRateLimited(System.currentTimeMillis())
                     ? " - pacing is currently doubled; lower the budget with "
-                    + "'evictperf rate " + Math.max(1, settings.perfRateRequests() - 1)
+                    + "'perf rate " + Math.max(1, settings.perfRateRequests() - 1)
                     + " " + settings.perfRateSeconds() + "' if it keeps happening"
                     : ""));
         }

@@ -46,7 +46,7 @@ No quotes needed, no spaces around the `=`.
 
 > **Never type the token into the server console.** Everything typed there is
 > written to the server log and the start script's screen log permanently.
-> That is why there is no `evictchatlog token …` command.
+> That is why there is no `chatlog token …` command.
 
 ## 3. Invite the bot
 
@@ -71,9 +71,9 @@ Unlike the token, this is not a secret, so the console is fine for it.
 ## 5. Three console commands
 
 ```
-evictchatlog reload
-evictchatlog setup <server-id>
-evictchatlog test
+chatlog reload
+chatlog setup <server-id>
+chatlog test
 ```
 
 * `reload` reads the token from `config/evict.env`.
@@ -97,7 +97,7 @@ roles is the staff role.
 
 ## Checking the wiring
 
-`evictchatlog` with no argument is the checklist:
+`chatlog` with no argument is the checklist:
 
 ```
 bot token: loaded from config/evict.env
@@ -111,7 +111,7 @@ port-6569: NOT SET
 
 | Symptom | Cause |
 |---|---|
-| `token: NOT SET` | Value missing in `evict.env`, or `evictchatlog reload` not run |
+| `token: NOT SET` | Value missing in `evict.env`, or `chatlog reload` not run |
 | setup: "bot token was rejected (401)" | Token mistyped, or reset in the portal since |
 | setup: "may not manage channels (403)" | Bot was invited without **Manage Channels** |
 | setup: "no such server (404)" | Wrong server id, or the bot is not a member of it |
@@ -120,16 +120,16 @@ port-6569: NOT SET
 
 ## Later on
 
-* **More ports** (`evictduelserver` with a higher `maxWorkers`): run
-  `evictchatlog setup <server-id>` again. Existing channels are adopted; only
+* **More ports** (a higher `duel.maxWorkers` in the properties file): run
+  `chatlog setup <server-id>` again. Existing channels are adopted; only
   the missing ones are created.
-* **Rotate the token**: new value in `evict.env`, then `evictchatlog reload`.
+* **Rotate the token**: new value in `evict.env`, then `chatlog reload`.
   Channels disabled by the old token start working again immediately, without
   a restart.
-* **Wire a single channel by hand**: `evictchatlog hub <channel-id>` or
-  `evictchatlog 6568 <channel-id>` (channel id via Developer Mode →
+* **Wire a single channel by hand**: `chatlog hub <channel-id>` or
+  `chatlog 6568 <channel-id>` (channel id via Developer Mode →
   Copy Channel ID).
-* **Switch everything off**: `evictchatlog off`. Drops the channel wiring;
+* **Switch everything off**: `chatlog off`. Drops the channel wiring;
   leaves the secrets file and the Discord channels alone.
 
 ## What ends up in the channels

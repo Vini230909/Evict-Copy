@@ -23,7 +23,7 @@ public final class Secrets {
             "DISCORD_CHAT_BOT_TOKEN";
 
     /**
-     * vpnapi.io key for the VPN scan ({@code evictvpnscan}), which looks up
+     * vpnapi.io key for the VPN scan ({@code vpn}), which looks up
      * the address of every join. Optional: ip-api.com needs no key and is
      * asked either way; this adds vpnapi.io as the second opinion. Free
      * tier: 1000 lookups a day.
@@ -37,21 +37,21 @@ public final class Secrets {
             #
             # Format: KEY=value, one per line. Paste the value after the "=".
             # Lines starting with # are ignored, an empty value counts as unset.
-            # Reload without a restart: 'evictchatlog reload'.
+            # Reload without a restart: 'chatlog reload'.
 
             # Discord bot: mirrors chat into the staff channels, and answers
-            # the /ban and /unban slash commands ('evictdiscordcmd').
+            # the /ban and /unban slash commands ('discordcommands').
             # Discord Developer Portal > your app > Bot > Reset Token.
             # Invite the bot with both the 'bot' and 'applications.commands'
             # scopes, or the slash commands cannot be registered.
             DISCORD_CHAT_BOT_TOKEN=
 
-            # vpnapi.io key for the VPN scan ('evictvpnscan'): the address of
+            # vpnapi.io key for the VPN scan ('vpn'): the address of
             # every join is looked up, a VPN or proxy is written to the ban log.
             # Optional - ip-api.com is asked without any key; this adds
             # vpnapi.io as the second opinion. Free tier is 1000 lookups a
             # day; https://vpnapi.io/dashboard
-            # Reload without a restart: 'evictvpnscan reload'.
+            # Reload without a restart: 'vpn reload'.
             VPNAPI_KEY=
             """;
 

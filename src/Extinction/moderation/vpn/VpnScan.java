@@ -187,13 +187,13 @@ public final class VpnScan {
         cache.load();
 
         if (!settings.vpnScanEnabled()) {
-            PluginLog.info("VPN scan is off ('evictvpnscan on' starts it).");
+            PluginLog.info("VPN scan is off ('vpn on' starts it).");
             return;
         }
 
         if (!vpnapi.ready()) {
             PluginLog.warn(
-                    "VPN scan is on with ip-api only: @ is not set in @ (optional - vpnapi.io is the second opinion; 'evictvpnscan reload' after adding it).",
+                    "VPN scan is on with ip-api only: @ is not set in @ (optional - vpnapi.io is the second opinion; 'vpn reload' after adding it).",
                     Secrets.VPNAPI_KEY,
                     Secrets.path()
             );
@@ -331,7 +331,7 @@ public final class VpnScan {
         String address = ip == null ? "" : ip.trim();
 
         if (address.isEmpty() || !ADDRESS_LITERAL.matcher(address).matches()) {
-            out.accept("Give an IP address to try: evictvpnscan test 1.2.3.4");
+            out.accept("Give an IP address to try: vpn test 1.2.3.4");
             return;
         }
 
@@ -340,7 +340,7 @@ public final class VpnScan {
         boolean asked = lookup(address, verdict -> {
             if (verdict == null) {
                 out.accept(
-                        "Lookup failed at every source - see 'evictvpnscan' for each one's last error."
+                        "Lookup failed at every source - see 'vpn' for each one's last error."
                 );
                 return;
             }
@@ -354,13 +354,13 @@ public final class VpnScan {
                             : " - a join from here passes without a line.")
                             + (logConfigured.getAsBoolean()
                             ? " A test line is on its way to the ban log channel."
-                            : " The ban log is not set ('evictbanlog <url>'), so hits reach the console only.")
+                            : " The ban log is not set ('banlog <url>'), so hits reach the console only.")
             );
         });
 
         if (!asked) {
             out.accept(
-                    "No source can be asked right now (no key, paused, or over its cap) - see 'evictvpnscan'."
+                    "No source can be asked right now (no key, paused, or over its cap) - see 'vpn'."
             );
         }
     }
@@ -373,7 +373,7 @@ public final class VpnScan {
         lines.add(
                 "VPN scan: " + (settings.vpnScanEnabled()
                         ? "on, log only - nothing is blocked, kicked or locked"
-                        : "off ('evictvpnscan on' starts it)")
+                        : "off ('vpn on' starts it)")
         );
 
         for (SourceState state : sources) {
@@ -383,7 +383,7 @@ public final class VpnScan {
             if (state.keyRejected) {
                 line.append("KEY REJECTED - check ").append(Secrets.VPNAPI_KEY)
                         .append(" in ").append(Secrets.path())
-                        .append(", then 'evictvpnscan reload'");
+                        .append(", then 'vpn reload'");
             } else {
                 line.append(state.source.setupLine());
             }
@@ -412,7 +412,7 @@ public final class VpnScan {
         lines.add(
                 "  Hits go to: " + (logConfigured.getAsBoolean()
                         ? "the console and the ban log"
-                        : "the console only - the ban log is not set ('evictbanlog <url>')")
+                        : "the console only - the ban log is not set ('banlog <url>')")
         );
 
         lines.add(
@@ -672,7 +672,7 @@ public final class VpnScan {
             case KEY_REJECTED -> {
                 state.keyRejected = true;
                 PluginLog.err(
-                        "VPN scan: @ rejected the API key (@). Not asking it until a working @ is in @ and 'evictvpnscan reload' ran.",
+                        "VPN scan: @ rejected the API key (@). Not asking it until a working @ is in @ and 'vpn reload' ran.",
                         source,
                         result.message(),
                         Secrets.VPNAPI_KEY,

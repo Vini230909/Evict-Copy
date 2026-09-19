@@ -234,7 +234,7 @@ final class DiscordWebhook {
         switch (status) {
             case 401, 403 -> breakWebhook(
                     "Discord rejected the webhook (HTTP " + status
-                            + "). Set a new one with 'evictdiscord <url>'."
+                            + "). Set a new one with 'discordstatus <url>'."
             );
             case 404 -> handleNotFound(edit);
             case 429 -> applyRateLimit(body);
@@ -252,7 +252,7 @@ final class DiscordWebhook {
         if (!edit || messageId.isEmpty()) {
             breakWebhook(
                     "The Discord webhook no longer exists (HTTP 404). "
-                            + "Create a new one and set it with 'evictdiscord <url>'."
+                            + "Create a new one and set it with 'discordstatus <url>'."
             );
             return;
         }

@@ -127,104 +127,68 @@ public final class ConsoleCommands {
     public void register(CommandHandler handler) {
         Commands commands = new Commands();
 
-        commands.command("evictgen").console()
-                .args("seed:string?")
-                .description("Generate Evict terrain on the loaded map now.")
-                .run(ctx -> generateTerrain(ctx.raw()));
+        commands.command("oregen").console()
+                .args("action:string?", "value:string?")
+                .description("Terrain generator: status, gen [seed], seed <n/random>, auto on/off.")
+                .run(ctx -> handleOreGenCommand(
+                        ctx.str("action", "").trim().toLowerCase(),
+                        ctx.str("value", "").trim()
+                ));
 
-        commands.command("evictauto").console()
-                .args("on/off:bool")
-                .description("Generate terrain whenever a map is hosted. Default on.")
+        commands.command("round").console()
+                .args("action:string?", "value:string?")
+                .description("This round: team assignment and elapsed time; 'time <seconds>' sets the time.")
+                .run(ctx -> handleRoundCommand(
+                        ctx.str("action", "").trim().toLowerCase(),
+                        ctx.str("value", "").trim()
+                ));
+
+        commands.command("matchstatus").console()
+                .description("The worker pool: its settings, the active match servers and who is in them.")
                 .run(ctx -> {
-                    runtime.autoGenerate = ctx.getBool("on/off", true);
-                    Log.info("[EvictMapGenerator] Automatic generation is now @.", runtime.autoGenerate ? "ON" : "OFF");
+                    Log.info("[EvictMapGenerator] duel server: @", settings.compactDuelServerSettings());
+                    duelServerManager.logStatus();
                 });
 
-        commands.command("evictseed").console()
-                .args("seed:string?")
-                .description("Seed for the next generated map.")
-                .run(ctx -> setSeed(ctx.raw()));
-
-        commands.command("evictstatus").console()
-                .description("Generator settings and required base-map size.")
-                .run(ctx -> showStatus());
-
-        commands.command("evictteamstatus").console()
-                .description("Fallen-team spawn assignment for this round.")
-                .run(ctx -> teamManager.logStatus());
-
-        commands.command("evictbuildspeed").console()
-                .args("multiplier:string?")
-                .description("Unit factory build-speed multiplier. Applies next match.")
-                .run(ctx -> setBuildSpeed(ctx.raw()));
-
-        commands.command("evictwater").console()
-                .args("tries-per-hex:string?", "normal-patch-tiles:string?", "large-patch-percent:string?", "large-patch-tiles:string?")
-                .description("Water patch tries per hex, sizes and large-patch chance.")
-                .run(ctx -> configureWater(ctx.raw()));
-
-        registerOre(commands, "evictcopper", EvictSettings.OreKind.COPPER);
-        registerOre(commands, "evictlead", EvictSettings.OreKind.LEAD);
-        registerOre(commands, "evictcoal", EvictSettings.OreKind.COAL);
-        registerOre(commands, "evicttitanium", EvictSettings.OreKind.TITANIUM);
-        registerOre(commands, "evictthorium", EvictSettings.OreKind.THORIUM);
-        registerOre(commands, "evictscrap", EvictSettings.OreKind.SCRAP);
-
-        commands.command("evictorestatus").console()
-                .description("All ore settings for the next generated match.")
-                .run(ctx -> Log.info("[EvictMapGenerator] ores: @", settings.compactOreSettings()));
-
-        commands.command("evictplayerinfo").console()
+        commands.command("playerinfo").console()
                 .args("query:text?")
                 .description("Look up a stored player by name or UUID; no argument lists all.")
                 .run(ctx -> showStoredPlayerInfo(ctx.str("query", "").trim()));
 
-        commands.command("evictban").console()
+        commands.command("banplayer").console()
                 .args("name/uuid:text")
                 .description("Ban a stored player by name or UUID, online or not.")
                 .run(ctx -> handleBanCommand(ctx.str("name/uuid", "").trim()));
 
-        commands.command("evictelo").console()
+        commands.command("elo").console()
                 .args("name/uuid:string", "value:string")
                 .description("Set a stored player's ranked ELO.")
                 .run(ctx -> handleEloCommand(ctx.raw()));
 
-        commands.command("evictwall").console()
-                .args("full-wall:string?", "small-wall:string?", "open:string?", "passage:string?")
-                .description("Wall-template percentages.")
-                .run(ctx -> configureWalls(ctx.raw()));
-
-        commands.command("evictcorecap").console()
+        commands.command("corecap").console()
                 .args("additional-per-core:int")
                 .description("Add unit-cap capacity to every core.")
                 .run(ctx -> addCoreCap(ctx.raw()));
 
-        commands.command("evictattritioncore").console()
-                .args("t1-3:string?", "t4:string?", "t5:string?")
-                .description("Capture attrition percentages per tier.")
-                .run(ctx -> configureCoreAttrition(ctx.raw()));
-
-        commands.command("evictattritionrange").console()
-                .args("percent:string?")
-                .description("Flat range attrition percentage.")
-                .run(ctx -> configureRangeAttrition(ctx.raw()));
-
-        commands.command("evictduelserver").console()
-                .args("ip:string?", "basePort:string?", "maxWorkers:string?", "map:string?")
-                .description("Worker pool /play uses: ip, first port, how many, map.")
-                .run(ctx -> configureDuelServer(ctx.raw()));
-
-        commands.command("evictdiscord").console()
+        commands.command("discordstatus").console()
                 .args("url/off/test:string?")
                 .description("Discord webhook for the live status message.")
                 .run(ctx -> handleDiscordCommand(ctx.str("url/off/test", "").trim()));
 
-        commands.command("evictbanlog").console()
-                .args("url/off/test:string?")
-                .description("Discord webhook for the ban log. Staff-only: it posts IPs.")
-                .run(ctx -> handleBanLogCommand(ctx.str("url/off/test", "").trim()));
+        commands.command("banlog").console()
+                .args("action:string?", "force:string?")
+                .description("Discord ban log: status, <webhook-url>, off, test, import [force]. Staff-only: it posts IPs.")
+                .run(ctx -> {
+                    String action = ctx.str("action", "").trim();
 
-        commands.command("evictdiscordcmd").console()
+                    if (action.equalsIgnoreCase("import")) {
+                        handleBanImportCommand(ctx.str("force", "").trim());
+                    } else {
+                        handleBanLogCommand(action);
+                    }
+                });
+
+        commands.command("discordcommands").console()
                 .args("action:string?", "value:text?")
                 .description("Discord /ban and /unban: setup, role <name>, reload, off.")
                 .run(ctx -> handleDiscordCommandsCommand(
@@ -232,35 +196,34 @@ public final class ConsoleCommands {
                         ctx.str("value", "").trim()
                 ));
 
-        commands.command("evictchatlog").console()
+        commands.command("chatlog").console()
                 .args("target:string?", "value:string?")
                 .description("Discord chat mirror: status, setup <server-id>, hub/<port> + channel id, reload, off, test.")
                 .run(ctx -> handleChatLogCommand(ctx.raw()));
 
-        commands.command("evictperf").console()
+        commands.command("perf").console()
                 .args("action:string?", "value:string?", "extra:string?")
-                .description("Live performance reports in Discord: setup, rate, off, reload, test, profile on/off.")
+                .description("Live performance reports in Discord: setup, rate, off, reload, test.")
                 .run(ctx -> handlePerfCommand(
                         ctx.str("action", "").trim(),
                         ctx.str("value", "").trim(),
                         ctx.str("extra", "").trim()
                 ));
 
-        commands.command("evictprofile").console()
-                .description("What this server's tick is spending itself on, last minute.")
-                .run(ctx -> handleProfileCommand());
+        commands.command("profile").console()
+                .args("on/off:string?")
+                .description("What this server's tick is spending itself on, last minute; 'on'/'off' switch the profiler.")
+                .run(ctx -> {
+                    String value = ctx.str("on/off", "").trim();
 
-        commands.command("evictbanimport").console()
-                .args("force:string?")
-                .description("Post every existing ban to the ban log. One-off; 'force' repeats it.")
-                .run(ctx -> handleBanImportCommand(ctx.str("force", "").trim()));
+                    if (value.isEmpty()) {
+                        handleProfileCommand();
+                    } else {
+                        handleProfileToggle(value);
+                    }
+                });
 
-        commands.command("evictbanappeal").console()
-                .args("url/off:string?")
-                .description("Discord invite shown on the ban screen, for appeals. 'off' removes it.")
-                .run(ctx -> handleBanAppealCommand(ctx.str("url/off", "").trim()));
-
-        commands.command("evictvpnscan").console()
+        commands.command("vpn").console()
                 .args("action:string?", "value:string?")
                 .description("VPN scan: status, on/off, lock on/off, reload the key, test <ip>.")
                 .run(ctx -> handleVpnScanCommand(
@@ -268,21 +231,12 @@ public final class ConsoleCommands {
                         ctx.str("value", "").trim()
                 ));
 
-        commands.command("evictfree").console()
+        commands.command("free").console()
                 .args("target:text?")
                 .description("Free a locked account by name or UUID; no argument lists the locked ones.")
                 .run(ctx -> handleFreeCommand(ctx.str("target", "").trim()));
 
-        commands.command("evictduelstatus").console()
-                .description("List the active worker servers and who is in them.")
-                .run(ctx -> duelServerManager.logStatus());
-
-        commands.command("evicttime").console()
-                .args("time:string?")
-                .description("Show or set the elapsed round time in seconds.")
-                .run(ctx -> handleSetTimeCommand(ctx.raw()));
-
-        commands.command("evictrestart").console()
+        commands.command("restart").console()
                 .args("action:string?")
                 .description("Queue a graceful restart; 'cancel' drops it, 'now' exits.")
                 .run(ctx -> handleRestartCommand(ctx.str("action", "").trim().toLowerCase()));
@@ -290,15 +244,44 @@ public final class ConsoleCommands {
         commands.installConsole(handler);
     }
 
-    private void registerOre(Commands commands, String name, EvictSettings.OreKind oreKind) {
-        commands.command(name).console()
-                .args("scale:string?", "threshold:string?", "octaves:string?", "falloff:string?")
-                .description("Ore noise settings for the next generated match.")
-                .run(ctx -> configureOre(ctx.raw(), name, oreKind));
+    /** oregen: no argument is the status; gen, seed and auto are the old separate commands. */
+    private void handleOreGenCommand(String action, String value) {
+        String[] args = value.isEmpty() ? new String[0] : new String[]{value};
+
+        switch (action) {
+            case "" -> showStatus();
+            case "gen" -> generateTerrain(args);
+            case "seed" -> setSeed(args);
+            case "auto" -> {
+                switch (value.toLowerCase()) {
+                    case "on", "true" -> runtime.autoGenerate = true;
+                    case "off", "false" -> runtime.autoGenerate = false;
+                    default -> {
+                        Log.err("[EvictMapGenerator] Use: oregen auto on/off");
+                        return;
+                    }
+                }
+
+                Log.info("[EvictMapGenerator] Automatic generation is now @.", runtime.autoGenerate ? "ON" : "OFF");
+            }
+            default -> Log.err("[EvictMapGenerator] Use: oregen [gen [seed] | seed <n/random> | auto on/off]");
+        }
+    }
+
+    /** round: no argument prints the team assignment and the elapsed time; 'time <seconds>' sets it. */
+    private void handleRoundCommand(String action, String value) {
+        switch (action) {
+            case "" -> {
+                teamManager.logStatus();
+                handleSetTimeCommand(new String[0]);
+            }
+            case "time" -> handleSetTimeCommand(value.isEmpty() ? new String[0] : new String[]{value});
+            default -> Log.err("[EvictMapGenerator] Use: round [time <seconds>]");
+        }
     }
 
     /**
-     * evictdiscord: no argument reports the current wiring, a URL adopts a new
+     * discordstatus: no argument reports the current wiring, a URL adopts a new
      * webhook, 'off' takes the message offline and stops, 'test' forces an
      * immediate refresh.
      */
@@ -332,7 +315,7 @@ public final class ConsoleCommands {
     }
 
     /**
-     * evictbanlog: no argument reports the current wiring, a URL adopts a new
+     * banlog: no argument reports the current wiring, a URL adopts a new
      * webhook, 'off' stops logging, 'test' posts a sample entry.
      */
     private void handleBanLogCommand(String argument) {
@@ -368,7 +351,7 @@ public final class ConsoleCommands {
     }
 
     /**
-     * evictdiscordcmd: the wiring for Discord's /ban and /unban. No argument
+     * discordcommands: the wiring for Discord's /ban and /unban. No argument
      * prints the checklist; a server id (with an optional role id) wires them
      * up and registers the commands; 'reload' re-reads the token file after a
      * rotation; 'off' stops answering.
@@ -392,7 +375,7 @@ public final class ConsoleCommands {
                 }
 
                 if (!discordModCommands.isConfigured()) {
-                    Log.info("[EvictMapGenerator] Run 'evictdiscordcmd setup' - it finds the Discord server itself, no ids to copy. ('evictchatlog setup <server-id>' already does this too.)");
+                    Log.info("[EvictMapGenerator] Run 'discordcommands setup' - it finds the Discord server itself, no ids to copy. ('chatlog setup <server-id>' already does this too.)");
                 }
             }
             case "setup" -> {
@@ -401,7 +384,7 @@ public final class ConsoleCommands {
             }
             case "role" -> {
                 if (value.isEmpty()) {
-                    Log.err("[EvictMapGenerator] Use: evictdiscordcmd role <role name or id> ('evictdiscordcmd setup' lists the names).");
+                    Log.err("[EvictMapGenerator] Use: discordcommands role <role name or id> ('discordcommands setup' lists the names).");
                 } else {
                     discordModCommands.setRole(value, this::logDiscordCommandLines);
                 }
@@ -418,7 +401,7 @@ public final class ConsoleCommands {
                 }
             }
             case "token" -> Log.err(
-                    "[EvictMapGenerator] The token is never typed here - it would be written to the server log. Set @ in @ and run 'evictdiscordcmd reload'.",
+                    "[EvictMapGenerator] The token is never typed here - it would be written to the server log. Set @ in @ and run 'discordcommands reload'.",
                     Secrets.DISCORD_CHAT_BOT_TOKEN,
                     Secrets.path()
             );
@@ -426,12 +409,12 @@ public final class ConsoleCommands {
                 // A bare server id still works, for the case setup cannot
                 // settle by itself: several Discord servers with the same bot.
                 if (!action.chars().allMatch(Character::isDigit)) {
-                    Log.err("[EvictMapGenerator] Usage: evictdiscordcmd [setup | role <name> | reload | off]");
+                    Log.err("[EvictMapGenerator] Usage: discordcommands [setup | role <name> | reload | off]");
                     return;
                 }
 
                 discordModCommands.configure(action, value);
-                Log.info("[EvictMapGenerator] Discord commands wired to server @. Run 'evictdiscordcmd' to check the connection.", action);
+                Log.info("[EvictMapGenerator] Discord commands wired to server @. Run 'discordcommands' to check the connection.", action);
             }
         }
     }
@@ -444,25 +427,16 @@ public final class ConsoleCommands {
     }
 
     /**
-     * evictperf: the live performance table. No argument prints the checklist
+     * perf: the live performance table. No argument prints the checklist
      * and this server's current numbers; 'setup' has the bot create the channel
      * (reusing the Discord server the slash commands are already wired to, so
      * no id has to be found twice); a channel id wires one by hand; 'off' stops
-     * it; 'reload' re-reads the bot token; 'test' refreshes right now.
-     *
-     * <p>'profile on/off' is the exception that also works on a match server:
-     * the stack profiler belongs to whichever process is asked, and a match
-     * server's own console is exactly where you stand when that match server is
-     * the slow one.
+     * it; 'reload' re-reads the bot token; 'test' refreshes right now. Hub only;
+     * the stack profiler is 'profile', which also works on a match server.
      */
     private void handlePerfCommand(String action, String value, String extra) {
-        if (action.equalsIgnoreCase("profile")) {
-            handleProfileToggle(value);
-            return;
-        }
-
         if (perfReporter == null) {
-            Log.err("[EvictMapGenerator] The performance table only runs on the hub. 'evictprofile' and 'evictperf profile on/off' work here.");
+            Log.err("[EvictMapGenerator] The performance table only runs on the hub. 'profile' works here.");
             return;
         }
 
@@ -475,7 +449,7 @@ public final class ConsoleCommands {
 
             Log.info("[EvictMapGenerator]   @", profilerLine());
             Log.info("[EvictMapGenerator]   Now: @", currentPerfLine());
-            Log.info("[EvictMapGenerator] 'evictperf setup' creates the channel with the bot (needs Manage Channels). Staff-only, like the other log channels.");
+            Log.info("[EvictMapGenerator] 'perf setup' creates the channel with the bot (needs Manage Channels). Staff-only, like the other log channels.");
             return;
         }
 
@@ -495,7 +469,7 @@ public final class ConsoleCommands {
             }
             case "test" -> {
                 if (!perfReporter.isConfigured()) {
-                    Log.err("[EvictMapGenerator] No channel is wired yet - run 'evictperf setup'.");
+                    Log.err("[EvictMapGenerator] No channel is wired yet - run 'perf setup'.");
                     return;
                 }
 
@@ -504,7 +478,7 @@ public final class ConsoleCommands {
             }
             default -> {
                 if (!isChannelId(action)) {
-                    Log.err("[EvictMapGenerator] Use: evictperf [setup <server-id> | rate <requests> <seconds> | <channel-id> | off | reload | test | profile on/off]");
+                    Log.err("[EvictMapGenerator] Use: perf [setup <server-id> | rate <requests> <seconds> | <channel-id> | off | reload | test]");
                     return;
                 }
 
@@ -524,7 +498,7 @@ public final class ConsoleCommands {
         String guild = value.isEmpty() ? settings.discordCommandGuild() : value;
 
         if (guild.isBlank()) {
-            Log.err("[EvictMapGenerator] No Discord server known yet. Run 'evictdiscordcmd setup' (it finds the server itself), or pass the id: evictperf setup <server-id>.");
+            Log.err("[EvictMapGenerator] No Discord server known yet. Run 'discordcommands setup' (it finds the server itself), or pass the id: perf setup <server-id>.");
             return;
         }
 
@@ -538,7 +512,7 @@ public final class ConsoleCommands {
     }
 
     /**
-     * evictperf rate: how many Discord requests the reports may spend, and over
+     * perf rate: how many Discord requests the reports may spend, and over
      * how long. It is the one knob that matters, because the budget is shared
      * out between the servers that are running - raising it refreshes each of
      * them sooner, lowering it is how you stay clear of a rate limit.
@@ -546,7 +520,7 @@ public final class ConsoleCommands {
     private void handlePerfRate(String requests, String seconds) {
         if (requests.isEmpty() || seconds.isEmpty()) {
             Log.info(
-                    "[EvictMapGenerator] Budget is @ request(s) per @s. Change it with 'evictperf rate <requests> <seconds>' (Discord allows about 5 per 5s in one channel).",
+                    "[EvictMapGenerator] Budget is @ request(s) per @s. Change it with 'perf rate <requests> <seconds>' (Discord allows about 5 per 5s in one channel).",
                     settings.perfRateRequests(),
                     settings.perfRateSeconds()
             );
@@ -560,7 +534,7 @@ public final class ConsoleCommands {
             parsedRequests = Integer.parseInt(requests);
             parsedSeconds = Integer.parseInt(seconds);
         } catch (NumberFormatException exception) {
-            Log.err("[EvictMapGenerator] Use: evictperf rate <requests> <seconds> - both whole numbers.");
+            Log.err("[EvictMapGenerator] Use: perf rate <requests> <seconds> - both whole numbers.");
             return;
         }
 
@@ -575,7 +549,7 @@ public final class ConsoleCommands {
         }
     }
 
-    /** evictperf profile on/off - the stack profiler of this very process. */
+    /** profile on/off: the stack profiler of this very process, hub or match server alike. */
     private void handleProfileToggle(String value) {
         PerfSampler sampler = perfSampler.get();
 
@@ -592,18 +566,18 @@ public final class ConsoleCommands {
         switch (value.toLowerCase(Locale.ROOT)) {
             case "on" -> {
                 sampler.setProfiling(true);
-                Log.info("[EvictMapGenerator] Stack profiler on. 'evictprofile' shows what the tick is doing; give it a few seconds to fill.");
+                Log.info("[EvictMapGenerator] Stack profiler on. 'profile' shows what the tick is doing; give it a few seconds to fill.");
             }
             case "off" -> {
                 sampler.setProfiling(false);
                 Log.info("[EvictMapGenerator] Stack profiler off. Tick rate, load and memory keep being measured; only the hotspot names stop.");
             }
-            default -> Log.err("[EvictMapGenerator] Use: evictperf profile [on/off]");
+            default -> Log.err("[EvictMapGenerator] Use: profile [on/off]");
         }
     }
 
     /**
-     * evictprofile: the full hotspot table for this process - the question the
+     * profile: the full hotspot table for this process - the question the
      * Discord row only has room to answer three entries deep.
      */
     private void handleProfileCommand() {
@@ -617,7 +591,7 @@ public final class ConsoleCommands {
         Log.info("[EvictMapGenerator] @", currentPerfLine());
 
         if (!sampler.isProfiling()) {
-            Log.info("[EvictMapGenerator] The stack profiler is off - turn it on with 'evictperf profile on'.");
+            Log.info("[EvictMapGenerator] The stack profiler is off - turn it on with 'profile on'.");
             return;
         }
 
@@ -699,8 +673,8 @@ public final class ConsoleCommands {
 
         return "Stack profiler: " + (sampler.isProfiling()
                 ? "on, " + sampler.profileSamples()
-                + " samples in the window ('evictprofile' prints them)"
-                : "off ('evictperf profile on')");
+                + " samples in the window ('profile' prints them)"
+                : "off ('profile on')");
     }
 
     /** A Discord channel id is a snowflake: digits only, 15-22 of them. */
@@ -719,7 +693,7 @@ public final class ConsoleCommands {
     }
 
     /**
-     * evictchatlog: the Discord chat mirror's wiring. No argument prints the
+     * chatlog: the Discord chat mirror's wiring. No argument prints the
      * checklist (token file, hub and every port of the pool - eleven channel
      * ids are eleven chances to paste one wrong); 'hub'/a port plus a channel
      * id wires one feed, plus 'off' unwires it; 'reload' re-reads the token
@@ -747,7 +721,7 @@ public final class ConsoleCommands {
             }
 
             Log.info(
-                    "[EvictMapGenerator] Set @ in @ (never typed into this console - it would end up in the log), run 'evictchatlog reload', then 'evictchatlog setup <server-id>' to have the bot create the channels. Staff-only channels - they mirror everything players say.",
+                    "[EvictMapGenerator] Set @ in @ (never typed into this console - it would end up in the log), run 'chatlog reload', then 'chatlog setup <server-id>' to have the bot create the channels. Staff-only channels - they mirror everything players say.",
                     chatLogReporter.tokenKey(),
                     chatLogReporter.tokenPath()
             );
@@ -767,7 +741,7 @@ public final class ConsoleCommands {
             }
             case "setup" -> {
                 if (value.isEmpty()) {
-                    Log.err("[EvictMapGenerator] Use: evictchatlog setup <server-id> (Discord Developer Mode > right-click the server > Copy Server ID). The bot needs the Manage Channels permission for this.");
+                    Log.err("[EvictMapGenerator] Use: chatlog setup <server-id> (Discord Developer Mode > right-click the server > Copy Server ID). The bot needs the Manage Channels permission for this.");
                     return;
                 }
 
@@ -789,7 +763,7 @@ public final class ConsoleCommands {
                 if (discordModCommands != null
                         && !discordModCommands.isConfigured()) {
                     discordModCommands.configure(value, "");
-                    Log.info("[EvictMapGenerator] Discord /ban and /unban wired to the same server. 'evictdiscordcmd role <name>' picks who may use them; until then it is Discord's Administrator permission.");
+                    Log.info("[EvictMapGenerator] Discord /ban and /unban wired to the same server. 'discordcommands role <name>' picks who may use them; until then it is Discord's Administrator permission.");
                 }
             }
             case "reload" -> {
@@ -801,7 +775,7 @@ public final class ConsoleCommands {
             }
             case "test" -> {
                 if (!chatLogReporter.hasToken()) {
-                    Log.err("[EvictMapGenerator] No bot token is loaded. Set @ in @ and run 'evictchatlog reload'.", chatLogReporter.tokenKey(), chatLogReporter.tokenPath());
+                    Log.err("[EvictMapGenerator] No bot token is loaded. Set @ in @ and run 'chatlog reload'.", chatLogReporter.tokenKey(), chatLogReporter.tokenPath());
                     return;
                 }
 
@@ -814,19 +788,19 @@ public final class ConsoleCommands {
                 }
             }
             case "token" -> Log.err(
-                    "[EvictMapGenerator] The token is never typed here - it would be written to the server log. Set @ in @ and run 'evictchatlog reload'.",
+                    "[EvictMapGenerator] The token is never typed here - it would be written to the server log. Set @ in @ and run 'chatlog reload'.",
                     chatLogReporter.tokenKey(),
                     chatLogReporter.tokenPath()
             );
             case "hub" -> {
                 if (value.isEmpty()) {
-                    Log.err("[EvictMapGenerator] Use: evictchatlog hub <channel-id/off>");
+                    Log.err("[EvictMapGenerator] Use: chatlog hub <channel-id/off>");
                 } else if (value.equalsIgnoreCase("off")) {
                     chatLogReporter.disableHub();
                     Log.info("[EvictMapGenerator] The hub's chat is no longer mirrored.");
                 } else if (chatLogReporter.configureHub(value)) {
                     warnIfTokenMissing();
-                    Log.info("[EvictMapGenerator] Hub chat mirror wired up. 'evictchatlog test' verifies every channel.");
+                    Log.info("[EvictMapGenerator] Hub chat mirror wired up. 'chatlog test' verifies every channel.");
                 } else {
                     Log.err("[EvictMapGenerator] That is not a channel id. Enable Developer Mode in Discord, right-click the channel, Copy Channel ID.");
                 }
@@ -841,7 +815,7 @@ public final class ConsoleCommands {
         try {
             port = Integer.parseInt(target);
         } catch (NumberFormatException exception) {
-            Log.err("[EvictMapGenerator] Use: evictchatlog [setup <server-id> | hub/<port> <channel-id/off> | reload | off | test]");
+            Log.err("[EvictMapGenerator] Use: chatlog [setup <server-id> | hub/<port> <channel-id/off> | reload | off | test]");
             return;
         }
 
@@ -849,7 +823,7 @@ public final class ConsoleCommands {
         int lastPort = basePort + settings.duelMaxWorkers() - 1;
 
         if (value.isEmpty()) {
-            Log.err("[EvictMapGenerator] Use: evictchatlog @ <channel-id/off>", port);
+            Log.err("[EvictMapGenerator] Use: chatlog @ <channel-id/off>", port);
             return;
         }
 
@@ -874,14 +848,14 @@ public final class ConsoleCommands {
                     lastPort
             );
         } else {
-            Log.info("[EvictMapGenerator] Port @ chat mirror wired up. 'evictchatlog test' verifies every channel.", port);
+            Log.info("[EvictMapGenerator] Port @ chat mirror wired up. 'chatlog test' verifies every channel.", port);
         }
     }
 
     private void warnIfTokenMissing() {
         if (!chatLogReporter.hasToken()) {
             Log.warn(
-                    "[EvictMapGenerator] No bot token is loaded yet - nothing will be posted until @ is set in @ and 'evictchatlog reload' has run.",
+                    "[EvictMapGenerator] No bot token is loaded yet - nothing will be posted until @ is set in @ and 'chatlog reload' has run.",
                     chatLogReporter.tokenKey(),
                     chatLogReporter.tokenPath()
             );
@@ -889,46 +863,7 @@ public final class ConsoleCommands {
     }
 
     /**
-     * evictbanappeal: show, set or drop the Discord invite every ban kick screen
-     * points appeals at. The screen is a plain label the player types from, so
-     * a full invite URL is accepted but shown in its short form.
-     */
-    private void handleBanAppealCommand(String argument) {
-        switch (argument.toLowerCase()) {
-            case "" -> {
-                String url = settings.banAppealUrl();
-
-                if (url.isBlank()) {
-                    Log.info("[EvictMapGenerator] Ban appeal link: none. Banned players see the plain ban screen. Set one with 'evictbanappeal <discord-invite-url>'.");
-                } else {
-                    Log.info(
-                            "[EvictMapGenerator] Ban appeal link: @ (shown on the ban screen as @).",
-                            url,
-                            Extinction.moderation.ban.BanScreen.displayUrl(url)
-                    );
-                }
-            }
-            case "off" -> {
-                settings.setBanAppealUrl("");
-                Log.info("[EvictMapGenerator] Ban appeal link removed. Banned players see the plain ban screen from now on.");
-            }
-            default -> {
-                if (!argument.startsWith("https://") && !argument.startsWith("http://")) {
-                    Log.err("[EvictMapGenerator] That is not a URL. Paste the Discord invite, e.g. evictbanappeal https://discord.com/invite/abc123");
-                    return;
-                }
-
-                settings.setBanAppealUrl(argument);
-                Log.info(
-                        "[EvictMapGenerator] Ban appeal link set. Banned players are told to join @. Match servers pick it up on their next spawn.",
-                        Extinction.moderation.ban.BanScreen.displayUrl(argument)
-                );
-            }
-        }
-    }
-
-    /**
-     * evictvpnscan: the log-only VPN scan. Status is the whole checklist - key,
+     * vpn: the log-only VPN scan. Status is the whole checklist - key,
      * where hits go, today's spending against the daily allowance - because
      * "is it working" has four different answers and the console should give
      * the right one. 'test' spends one lookup, which is the point: it proves
@@ -952,13 +887,13 @@ public final class ConsoleCommands {
                 switch (ip.toLowerCase()) {
                     case "on" -> {
                         settings.setVpnLockEnabled(true);
-                        Log.info("[EvictMapGenerator] Lock on: an account's first join through a VPN, proxy or hosting range is held on the Fallen team until an admin frees it ('evictfree', /free, Discord /free).");
+                        Log.info("[EvictMapGenerator] Lock on: an account's first join through a VPN, proxy or hosting range is held on the Fallen team until an admin frees it ('free', /free, Discord /free).");
                     }
                     case "off" -> {
                         settings.setVpnLockEnabled(false);
                         Log.info("[EvictMapGenerator] Lock off: joins are only written down again. Accounts already locked stay locked until freed.");
                     }
-                    default -> Log.info("[EvictMapGenerator] @ Usage: evictvpnscan lock on/off", lockStatusLine());
+                    default -> Log.info("[EvictMapGenerator] @ Usage: vpn lock on/off", lockStatusLine());
                 }
             }
             case "on" -> {
@@ -967,7 +902,7 @@ public final class ConsoleCommands {
                 if (vpnScan.hasKey()) {
                     Log.info("[EvictMapGenerator] VPN scan on, log only (vpnapi + ip-api): a join through a VPN, proxy or hosting range is written to the console and the ban log. Nothing is blocked.");
                 } else {
-                    Log.info("[EvictMapGenerator] VPN scan on, log only, with ip-api only - add @=... to @ and run 'evictvpnscan reload' for vpnapi.io as the second opinion. Nothing is blocked.", Extinction.core.io.Secrets.VPNAPI_KEY, Extinction.core.io.Secrets.path());
+                    Log.info("[EvictMapGenerator] VPN scan on, log only, with ip-api only - add @=... to @ and run 'vpn reload' for vpnapi.io as the second opinion. Nothing is blocked.", Extinction.core.io.Secrets.VPNAPI_KEY, Extinction.core.io.Secrets.path());
                 }
             }
             case "off" -> {
@@ -976,21 +911,21 @@ public final class ConsoleCommands {
             }
             case "reload" -> {
                 if (vpnScan.reloadKey()) {
-                    Log.info("[EvictMapGenerator] VPN scan: API key loaded from @. 'evictvpnscan test <ip>' proves it.", Extinction.core.io.Secrets.path());
+                    Log.info("[EvictMapGenerator] VPN scan: API key loaded from @. 'vpn test <ip>' proves it.", Extinction.core.io.Secrets.path());
                 } else {
                     Log.warn("[EvictMapGenerator] VPN scan: @ is still not set in @ - scanning with ip-api only.", Extinction.core.io.Secrets.VPNAPI_KEY, Extinction.core.io.Secrets.path());
                 }
             }
             case "test" -> {
                 if (ip.isBlank()) {
-                    Log.err("[EvictMapGenerator] Give an address to try: evictvpnscan test <ip>");
+                    Log.err("[EvictMapGenerator] Give an address to try: vpn test <ip>");
                     return;
                 }
 
                 vpnScan.test(ip, line -> Log.info("[EvictMapGenerator] VPN scan test - @", line));
             }
             default -> Log.err(
-                    "[EvictMapGenerator] Usage: evictvpnscan [on/off/lock on/off/reload/test <ip>]"
+                    "[EvictMapGenerator] Usage: vpn [on/off/lock on/off/reload/test <ip>]"
             );
         }
     }
@@ -1004,11 +939,11 @@ public final class ConsoleCommands {
                 ? "on - a first join through a VPN is held for an admin"
                 : "off - log only")
                 + "; " + playerLock.lockedCount() + " locked, "
-                + playerLock.verifiedCount() + " verified ('evictfree' lists and frees)";
+                + playerLock.verifiedCount() + " verified ('free' lists and frees)";
     }
 
     /**
-     * evictfree: frees a locked account from the console - by UUID, or by a
+     * free: frees a locked account from the console - by UUID, or by a
      * part of the name when it matches exactly one. No argument lists them.
      */
     private void handleFreeCommand(String target) {
@@ -1054,7 +989,7 @@ public final class ConsoleCommands {
         }
 
         if (matches.isEmpty()) {
-            Log.err("[EvictMapGenerator] No locked account matches '@'. 'evictfree' lists them.", target);
+            Log.err("[EvictMapGenerator] No locked account matches '@'. 'free' lists them.", target);
             return;
         }
 
@@ -1078,7 +1013,7 @@ public final class ConsoleCommands {
     }
 
     /**
-     * evictbanimport: re-runs the import of existing bans. The automatic one
+     * banlog import: re-runs the import of existing bans. The automatic one
      * fires on the first start after the upgrade, necessarily before a log
      * webhook could have been configured, so this is how those bans get their
      * write-up.
@@ -1092,14 +1027,14 @@ public final class ConsoleCommands {
         boolean forced = "force".equalsIgnoreCase(argument);
 
         if (settings.banImportLogged() && !forced) {
-            Log.err("[EvictMapGenerator] The existing bans have already been written up. Running this again would post the whole back catalogue a second time; use 'evictbanimport force' if that is really what you want.");
+            Log.err("[EvictMapGenerator] The existing bans have already been written up. Running this again would post the whole back catalogue a second time; use 'banlog import force' if that is really what you want.");
             return;
         }
 
         if (banLogReporter != null && !settings.discordBanLogWebhookUrl().isBlank()) {
             Log.info("[EvictMapGenerator] Importing existing bans; entries are posted to the ban log at about one every 1.5s.");
         } else {
-            Log.info("[EvictMapGenerator] Importing existing bans. No ban-log webhook is set, so nothing will be posted to Discord - set one with 'evictbanlog <url>' first if you want the write-up.");
+            Log.info("[EvictMapGenerator] Importing existing bans. No ban-log webhook is set, so nothing will be posted to Discord - set one with 'banlog <url>' first if you want the write-up.");
         }
 
         int entries = banManager.importNow();
@@ -1113,7 +1048,7 @@ public final class ConsoleCommands {
     }
 
     /**
-     * evictban: ban a stored player whether or not they are online - the path
+     * banplayer: ban a stored player whether or not they are online - the path
      * for harassment found in the chat log after the offender left. Resolves
      * the name against the plugin's player DB (vanilla 'ban name' only works
      * on connected players), then seeds a normal ban through banPlayerID, so
@@ -1126,7 +1061,7 @@ public final class ConsoleCommands {
         }
 
         if (query.isEmpty()) {
-            Log.err("[EvictMapGenerator] Use: evictban <name/uuid>");
+            Log.err("[EvictMapGenerator] Use: banplayer <name/uuid>");
             return;
         }
 
@@ -1175,7 +1110,7 @@ public final class ConsoleCommands {
                 restartManager.restartNow();
                 break;
             default:
-                Log.err("[EvictMapGenerator] Use: evictrestart [cancel/now]");
+                Log.err("[EvictMapGenerator] Use: restart [cancel/now]");
         }
     }
 
@@ -1218,86 +1153,7 @@ public final class ConsoleCommands {
         Log.info("[EvictMapGenerator] nextSeed: @", runtime.nextSeed == null ? "random" : runtime.nextSeed);
         Log.info("[EvictMapGenerator] lastSeed: @", runtime.lastSeed == null ? "none" : runtime.lastSeed);
         Log.info("[EvictMapGenerator] unit build speed: @", settings.compactUnitBuildSpeedSettings());
-        Log.info("[EvictMapGenerator] duel server: @", settings.compactDuelServerSettings());
         terrain.logStatus();
-    }
-
-    private void setBuildSpeed(String[] args) {
-        if (args.length == 0) {
-            Log.info("[EvictMapGenerator] unit build speed: @", settings.compactUnitBuildSpeedSettings());
-            return;
-        }
-
-        try {
-            settings.setUnitBuildSpeedMultiplier(parseDecimal(args[0]));
-            Log.info("[EvictMapGenerator] Unit build speed saved as @. Applies to the next generated match and to spawned duel workers.", settings.compactUnitBuildSpeedSettings());
-        } catch (NumberFormatException exception) {
-            Log.err("[EvictMapGenerator] Build speed multiplier must be a number.");
-        } catch (IllegalArgumentException exception) {
-            Log.err("[EvictMapGenerator] @", exception.getMessage());
-        }
-    }
-
-    private void configureWater(String[] args) {
-        if (args.length == 0) {
-            Log.info("[EvictMapGenerator] water: @", settings.compactWaterSettings());
-            return;
-        }
-
-        if (args.length != 4) {
-            Log.err("[EvictMapGenerator] Use: evictwater <tries-per-hex> <normal-patch-tiles> <large-patch-percent> <large-patch-tiles>");
-            return;
-        }
-
-        try {
-            settings.setWaterSettings(parseDecimal(args[0]), Integer.parseInt(args[1]), parseDecimal(args[2]), Integer.parseInt(args[3]));
-            Log.info("[EvictMapGenerator] Saved evictwater. Applies to the next generated match: @", settings.compactWaterSettings());
-        } catch (NumberFormatException exception) {
-            Log.err("[EvictMapGenerator] Water tries and percents must be numbers; tile counts must be whole numbers.");
-        } catch (IllegalArgumentException exception) {
-            Log.err("[EvictMapGenerator] @", exception.getMessage());
-        }
-    }
-
-    private void configureOre(String[] args, String command, EvictSettings.OreKind oreKind) {
-        if (args.length == 0) {
-            Log.info("[EvictMapGenerator] @: @", command, settings.compactOreSettings(oreKind));
-            return;
-        }
-
-        if (args.length != 4) {
-            Log.err("[EvictMapGenerator] Use: @ <scale> <threshold> <octaves> <falloff>", command);
-            return;
-        }
-
-        try {
-            settings.setOreSettings(oreKind, Double.parseDouble(args[0]), Double.parseDouble(args[1]), Double.parseDouble(args[2]), Double.parseDouble(args[3]));
-            Log.info("[EvictMapGenerator] Saved @. Applies to the next generated match: @", command, settings.compactOreSettings(oreKind));
-        } catch (NumberFormatException exception) {
-            Log.err("[EvictMapGenerator] Ore settings must be numbers.");
-        } catch (IllegalArgumentException exception) {
-            Log.err("[EvictMapGenerator] @", exception.getMessage());
-        }
-    }
-
-    private void configureDuelServer(String[] args) {
-        if (args.length == 0) {
-            Log.info("[EvictMapGenerator] Duel server: @", settings.compactDuelServerSettings());
-            return;
-        }
-
-        try {
-            int basePort = args.length >= 2 ? Integer.parseInt(args[1]) : settings.duelServerPort();
-            int maxWorkers = args.length >= 3 ? Integer.parseInt(args[2]) : settings.duelMaxWorkers();
-            String map = args.length >= 4 ? args[3] : settings.duelWorkerMap();
-
-            settings.setDuelServer(args[0], basePort, maxWorkers, map);
-            Log.info("[EvictMapGenerator] Duel server saved as @. This applies immediately and after restart.", settings.compactDuelServerSettings());
-        } catch (NumberFormatException exception) {
-            Log.err("[EvictMapGenerator] basePort and maxWorkers must be whole numbers.");
-        } catch (IllegalArgumentException exception) {
-            Log.err("[EvictMapGenerator] @", exception.getMessage());
-        }
     }
 
     private void handleSetTimeCommand(String[] args) {
@@ -1316,32 +1172,6 @@ public final class ConsoleCommands {
 
         Log.info("[EvictMapGenerator] setting time to @", parsedTime);
         teamManager.setElapsedTimeMillis(parsedTime * 1000);
-    }
-
-    private void configureWalls(String[] args) {
-        if (args.length == 0) {
-            Log.info("Walls: " + settings.compactWallSettings());
-            return;
-        }
-
-        if (args.length != 4) {
-            Log.info("Use: /wall <full-wall> <small-wall> <open> <passage>");
-            return;
-        }
-
-        try {
-            double fullWall = Double.parseDouble(args[0]);
-            double smallWall = Double.parseDouble(args[1]);
-            double open = Double.parseDouble(args[2]);
-            double passage = Double.parseDouble(args[3]);
-
-            settings.setWallPercentages(fullWall, smallWall, open, passage);
-            Log.info("Wall settings saved: " + settings.compactWallSettings() + ". Applies to the next generated map.");
-        } catch (NumberFormatException exception) {
-            Log.err("Wall values must be numbers.");
-        } catch (IllegalArgumentException exception) {
-            Log.err(exception.getMessage());
-        }
     }
 
     private void addCoreCap(String[] args) {
@@ -1381,50 +1211,9 @@ public final class ConsoleCommands {
         Log.info("Added " + additional + " unit cap per core. Total added bonus per core: " + extraCoreCapPerCore + ".");
     }
 
-    private void configureCoreAttrition(String[] args) {
-        if (args.length == 0) {
-            Log.info("Core attrition: " + settings.compactCoreAttritionSettings());
-            return;
-        }
-
-        if (args.length != 3) {
-            Log.err("Use: /attritioncore <t1-3> <t4> <t5>");
-            return;
-        }
-
-        try {
-            double tier1To3 = Double.parseDouble(args[0]);
-            double tier4 = Double.parseDouble(args[1]);
-            double tier5 = Double.parseDouble(args[2]);
-
-            settings.setCoreAttritionPercentages(tier1To3, tier4, tier5);
-            Log.info("Core attrition saved: " + settings.compactCoreAttritionSettings());
-        } catch (NumberFormatException exception) {
-            Log.err("Core attrition values must be numbers.");
-        } catch (IllegalArgumentException exception) {
-            Log.err(exception.getMessage());
-        }
-    }
-
-    private void configureRangeAttrition(String[] args) {
-        if (args.length == 0) {
-            Log.info("Range attrition: " + settings.compactRangeAttritionSettings());
-            return;
-        }
-
-        try {
-            settings.setRangeAttritionPercent(Double.parseDouble(args[0]));
-            Log.info("Range attrition saved: " + settings.compactRangeAttritionSettings());
-        } catch (NumberFormatException exception) {
-            Log.err("Range attrition value must be a number.");
-        } catch (IllegalArgumentException exception) {
-            Log.err(exception.getMessage());
-        }
-    }
-
     private void handleEloCommand(String[] args) {
         if (args.length < 2) {
-            Log.err("[EvictMapGenerator] Use: evictelo <name/uuid> <value>");
+            Log.err("[EvictMapGenerator] Use: elo <name/uuid> <value>");
             return;
         }
 
@@ -1532,10 +1321,6 @@ public final class ConsoleCommands {
 
         return " | lastIP=" + vanilla.lastIP
                 + " | knownIPs=" + vanilla.ips.toString(", ");
-    }
-
-    private double parseDecimal(String value) {
-        return Double.parseDouble(value.replace(',', '.'));
     }
 
     static String formatDuration(long durationMillis) {

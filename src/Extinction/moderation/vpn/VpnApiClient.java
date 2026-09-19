@@ -48,7 +48,7 @@ public final class VpnApiClient implements IpLookupSource {
         return ready()
                 ? "key loaded from " + Secrets.path()
                 : "NO KEY - add " + Secrets.VPNAPI_KEY + "=... to " + Secrets.path()
-                + ", then 'evictvpnscan reload' (optional; ip-api works without it)";
+                + ", then 'vpn reload' (optional; ip-api works without it)";
     }
 
     @Override

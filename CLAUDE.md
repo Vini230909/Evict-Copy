@@ -40,7 +40,7 @@ restart — nothing else. `duel-workers/` must **not** be deleted: every worker 
 re-copies `config/mods` into its folder and `refreshWorkerJars()` updates stale
 server jars on hub startup, so workers pick up a new plugin automatically. The
 server console is not a shell: set the port with `config port <n>`, host with
-`host evict-map pvp`; `evictauto` defaults ON, so hosting auto-generates a round.
+`host evict-map pvp`; `oregen auto` defaults ON, so hosting auto-generates a round.
 
 ## Working rules
 

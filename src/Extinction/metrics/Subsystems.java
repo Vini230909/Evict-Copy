@@ -22,7 +22,7 @@ package Extinction.metrics;
  * {@code Bullet} are matched by name and everything else there is treated as a
  * unit, which is what almost all of them are. And a frame from neither
  * Mindustry nor the plugin is {@link #OTHER} rather than a category of its own:
- * a library hotspot is real but rare, and {@code evictprofile} still names the
+ * a library hotspot is real but rare, and {@code profile} still names the
  * method.
  */
 public final class Subsystems {

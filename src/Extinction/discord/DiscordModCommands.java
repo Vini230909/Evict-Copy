@@ -208,7 +208,7 @@ public final class DiscordModCommands {
                     + "the commands belong in:");
 
             for (DiscordCommandApi.Named guild : found.items()) {
-                lines.add("  " + guild.name() + " - 'evictdiscordcmd "
+                lines.add("  " + guild.name() + " - 'discordcommands "
                         + guild.id() + "'");
             }
 
@@ -227,11 +227,11 @@ public final class DiscordModCommands {
                 api.roles(settings.discordCommandGuild());
 
         if (!roles.error().isBlank() || roles.items().isEmpty()) {
-            lines.add("Set one with 'evictdiscordcmd role <role name or id>'.");
+            lines.add("Set one with 'discordcommands role <role name or id>'.");
             return;
         }
 
-        lines.add("Pick one with 'evictdiscordcmd role <name>':");
+        lines.add("Pick one with 'discordcommands role <name>':");
 
         for (DiscordCommandApi.Named role : roles.items()) {
             lines.add("  " + role.name());
@@ -269,7 +269,7 @@ public final class DiscordModCommands {
         String guild = settings.discordCommandGuild();
 
         if (guild.isBlank()) {
-            lines.add("No Discord server is set yet. Run 'evictdiscordcmd setup' first.");
+            lines.add("No Discord server is set yet. Run 'discordcommands setup' first.");
             return "";
         }
 
@@ -342,13 +342,13 @@ public final class DiscordModCommands {
 
         lines.add("bot token: " + (token.isBlank()
                 ? "NOT SET - set " + Secrets.DISCORD_CHAT_BOT_TOKEN + " in "
-                + Secrets.path() + ", then 'evictdiscordcmd reload'"
+                + Secrets.path() + ", then 'discordcommands reload'"
                 : "loaded from " + Secrets.path()));
 
         String guild = settings.discordCommandGuild();
 
         lines.add("Discord server: " + (guild.isBlank()
-                ? "NOT SET - 'evictdiscordcmd <server-id> [role-id]'"
+                ? "NOT SET - 'discordcommands <server-id> [role-id]'"
                 : guild));
 
         String role = settings.discordCommandRole();
@@ -394,7 +394,7 @@ public final class DiscordModCommands {
             if (!quiet) {
                 PluginLog.err(
                         "Discord commands: @ is not set in @. Add it there and "
-                                + "run 'evictdiscordcmd reload'.",
+                                + "run 'discordcommands reload'.",
                         Secrets.DISCORD_CHAT_BOT_TOKEN,
                         Secrets.path()
                 );

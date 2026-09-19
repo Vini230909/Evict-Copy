@@ -57,7 +57,7 @@ import mindustry.gen.Unit;
  * disconnect - players drop in and out of the running world freely),
  * - on an Evict victory writes a result file, returns both players to the hub,
  * - shuts down once it has sat empty for a grace period,
- * - writes status.properties periodically so the hub's evictduelstatus can show
+ * - writes status.properties periodically so the hub's matchstatus can show
  * the live state, game time and connected players.
  * Countdowns, status writes and the empty-shutdown run on a real-time executor,
  * because the game is paused during them and logic-timed tasks would stall.

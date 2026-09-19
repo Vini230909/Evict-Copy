@@ -248,7 +248,7 @@ final class DiscordGuildSetup {
     private static String explain(int status, String body) {
         return switch (status) {
             case 401 -> "the bot token was rejected (HTTP 401) - check "
-                    + "DISCORD_CHAT_BOT_TOKEN and run 'evictchatlog reload'.";
+                    + "DISCORD_CHAT_BOT_TOKEN and run 'chatlog reload'.";
             case 403 -> "the bot may not manage channels here (HTTP 403) - "
                     + "invite it with the Manage Channels permission.";
             case 404 -> "no such server (HTTP 404) - check the server id, and "

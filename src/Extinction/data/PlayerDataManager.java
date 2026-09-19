@@ -620,7 +620,7 @@ public final class PlayerDataManager {
      * and every player's current and peak ELO. Normal counts every competitive
      * duel row - 1v1, Teams and /play FFA (Training/Sandbox never leave rows);
      * ranked counts only ranked rows. Playtime and any legacy columns are
-     * untouched. Manual evictelo overrides are replaced by the replayed
+     * untouched. Manual elo overrides are replaced by the replayed
      * values.
      */
     private void recountStatsFromHistory(Connection connection)
@@ -1544,7 +1544,7 @@ public final class PlayerDataManager {
 
     /**
      * Registers a callback for every stored rating change (a ranked result or a
-     * manual {@code evictelo}). The Discord ladder uses it to drop its cache
+     * manual {@code elo}). The Discord ladder uses it to drop its cache
      * instead of showing pre-match ratings until its slow refresh comes round.
      */
     public void setEloChangeListener(Runnable listener) {

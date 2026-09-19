@@ -384,7 +384,7 @@ public class EvictMapPlugin extends Plugin {
                     duelWorker ? null : discordModCommands,
                     duelWorker ? null : perfReporter,
                     () -> perfSampler,
-                    // evictgen regenerates the live map in place with no fresh snapshot,
+                    // oregen gen regenerates the live map in place with no fresh snapshot,
                     // so connected clients only see the new terrain via the per-tile sync.
                     seed -> generate(seed, true)
             );
@@ -712,7 +712,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.13.2. Use 'evictstatus' for commands and current settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.13.2. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
@@ -950,7 +950,7 @@ public class EvictMapPlugin extends Plugin {
      *                      world (re)load - the vanilla world snapshot already carries the terrain,
      *                      and the extra per-tile flood is what dropped connected players with
      *                      "(error)" at match end. Pass {@code true} for in-place regeneration
-     *                      (duel restart, evictgen) where no fresh snapshot is sent.
+     *                      (duel restart, oregen gen) where no fresh snapshot is sent.
      */
     private void generate(long seed, boolean syncToClients) {
         EvictTerrainGenerator.GeneratedRound round =

@@ -16,7 +16,7 @@ public final class Console {
     public static void register(CommandHandler handler) {
         Commands commands = new Commands();
 
-        commands.command("evictwordfilter").console()
+        commands.command("wordfilter").console()
                 .args("action:string?", "text:text?")
                 .description("Banned-word filter: status, on/off, or test a line.")
                 .run(ctx -> {
@@ -25,7 +25,7 @@ public final class Console {
 
                     switch (action) {
                         case "" -> PluginLog.info(
-                                "Word filter: @, watching @ word(s) everywhere plus @ banned in names only. Bans on chat and on names. Edit the lists in BannedWords.java and rebuild; 'evictwordfilter test <text>' tries a line.",
+                                "Word filter: @, watching @ word(s) everywhere plus @ banned in names only. Bans on chat and on names. Edit the lists in BannedWords.java and rebuild; 'wordfilter test <text>' tries a line.",
                                 Config.wordFilter ? "on" : "off",
                                 WordFilter.wordCount(),
                                 WordFilter.nameWordCount()
@@ -42,7 +42,7 @@ public final class Console {
                         }
                         case "test" -> {
                             if (text.isBlank()) {
-                                PluginLog.err("Give the text to try: evictwordfilter test <text>");
+                                PluginLog.err("Give the text to try: wordfilter test <text>");
                                 return;
                             }
 
@@ -61,7 +61,7 @@ public final class Console {
                                 PluginLog.info("Would ban as a player name only: matches '@' from the name list. The same text in chat passes.", name);
                             }
                         }
-                        default -> PluginLog.err("Usage: evictwordfilter [on/off/test <text>]");
+                        default -> PluginLog.err("Usage: wordfilter [on/off/test <text>]");
                     }
                 });
 

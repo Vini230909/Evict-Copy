@@ -30,7 +30,7 @@ import java.util.Map;
  * <h2>Cost</h2>
  * {@code Thread.getStackTrace()} on another thread is not free, which is why
  * this samples at {@value #SAMPLE_INTERVAL_MILLIS} ms rather than continuously,
- * and why it can be switched off ({@code evictperf profile off}) on a server
+ * and why it can be switched off ({@code profile off}) on a server
  * where every last percent matters. Samples live in a fixed ring covering the
  * last minute, so the profile is always recent and never grows.
  */

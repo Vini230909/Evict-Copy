@@ -200,7 +200,7 @@ public final class BanLogReporter {
     /** One line describing the current wiring, for the console command. */
     public String statusLine() {
         if (!webhook.isConfigured()) {
-            return "not set (use 'evictbanlog <webhook-url>')";
+            return "not set (use 'banlog <webhook-url>')";
         }
 
         StringBuilder status = new StringBuilder();

@@ -209,7 +209,7 @@ final class DiscordBotMessage {
         switch (status) {
             case 401 -> breakSender(
                     "Discord rejected the bot token (HTTP 401). Set a new one in "
-                            + "the secrets file and run 'evictperf reload'."
+                            + "the secrets file and run 'perf reload'."
             );
             case 403 -> breakSender(
                     "The bot may not post in the performance channel (HTTP 403). "
@@ -230,7 +230,7 @@ final class DiscordBotMessage {
         if (!editing) {
             breakSender(
                     "The performance channel no longer exists (HTTP 404). "
-                            + "Rewire it with 'evictperf setup'."
+                            + "Rewire it with 'perf setup'."
             );
             return;
         }
@@ -243,7 +243,7 @@ final class DiscordBotMessage {
      * Honours a rate limit - quietly. A 429 that is waited out is backpressure
      * working, not a failure: the caller widens its pacing and the message goes
      * out a moment later. Logging each one filled the console with lines an
-     * admin can do nothing about, so the count is kept for {@code evictperf} to
+     * admin can do nothing about, so the count is kept for {@code perf} to
      * report and the caller decides whether it is worth saying anything.
      */
     private void applyRateLimit(String body) {

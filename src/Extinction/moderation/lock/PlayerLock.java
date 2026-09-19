@@ -231,7 +231,7 @@ public final class PlayerLock {
         save();
 
         PluginLog.info(
-                "Locked @ (@) from @: new account through @. Free with 'evictfree', /free or Discord /free.",
+                "Locked @ (@) from @: new account through @. Free with 'free', /free or Discord /free.",
                 arc.util.Strings.stripColors(plain),
                 uuid,
                 ip,

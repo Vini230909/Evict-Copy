@@ -483,7 +483,7 @@ final class DiscordGateway {
 
         return switch (status) {
             case 4004 -> "HTTP 4004 - the bot token was rejected; check "
-                    + "DISCORD_CHAT_BOT_TOKEN and run 'evictdiscordcmd reload'";
+                    + "DISCORD_CHAT_BOT_TOKEN and run 'discordcommands reload'";
             case 4013, 4014 -> "code " + status + " - the bot asked for "
                     + "privileged data it is not approved for";
             default -> "code " + status + detail;

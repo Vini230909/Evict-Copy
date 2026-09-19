@@ -163,7 +163,7 @@ final class DiscordBotChannel {
         switch (status) {
             case 401 -> breakChannel(
                     "Discord rejected the bot token (HTTP 401). Set a new one "
-                            + "with 'evictchatlog token <bot-token>'."
+                            + "with 'chatlog token <bot-token>'."
             );
             case 403 -> breakChannel(
                     "The bot may not post in this channel (HTTP 403). Invite "
@@ -172,7 +172,7 @@ final class DiscordBotChannel {
             );
             case 404 -> breakChannel(
                     "The channel no longer exists (HTTP 404). Rewire it with "
-                            + "'evictchatlog ... <channel-id>'."
+                            + "'chatlog ... <channel-id>'."
             );
             case 429 -> applyRateLimit(body);
             default -> recordFailure("HTTP " + status);

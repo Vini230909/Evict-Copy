@@ -28,8 +28,8 @@ import java.util.function.LongSupplier;
  * watches an already-queued restart and fires once the hub has been empty for
  * {@link #EMPTY_CONFIRM_MILLIS}, so a long round that simply runs out of players
  * does not hold the update back. Running matches are never killed -
- * {@code evictrestart now} is the only path that kills them, and even it counts
- * down 10 s on the HUD first. {@code evictrestart cancel} aborts either
+ * {@code restart now} is the only path that kills them, and even it counts
+ * down 10 s on the HUD first. {@code restart cancel} aborts either
  * countdown mid-flight.
  */
 public final class RestartManager {
@@ -47,7 +47,7 @@ public final class RestartManager {
     /** Seconds of visible countdown before a young-round restart fires. */
     private static final int WARNING_COUNTDOWN_SECONDS = 30;
 
-    /** Seconds of visible countdown before {@code evictrestart now} fires. */
+    /** Seconds of visible countdown before {@code restart now} fires. */
     private static final int NOW_COUNTDOWN_SECONDS = 10;
 
     /**
@@ -92,7 +92,7 @@ public final class RestartManager {
         this.exitAction = exitAction;
     }
 
-    /** {@code evictrestart}: queue a restart, or report what a queued one waits for. */
+    /** {@code restart}: queue a restart, or report what a queued one waits for. */
     public void requestRestart() {
         if (queued) {
             PluginLog.info("Restart already queued. @", waitDescription());
@@ -103,7 +103,7 @@ public final class RestartManager {
         attempt(false);
     }
 
-    /** {@code evictrestart cancel}: drop a queued restart (and any running countdown). */
+    /** {@code restart cancel}: drop a queued restart (and any running countdown). */
     public void cancelRestart() {
         if (!queued && !exitPending) {
             PluginLog.info("No restart is queued.");
@@ -123,7 +123,7 @@ public final class RestartManager {
         PluginLog.info("Queued restart cancelled.");
     }
 
-    /** {@code evictrestart now}: announce, count down 10 s, then exit, killing any matches. */
+    /** {@code restart now}: announce, count down 10 s, then exit, killing any matches. */
     public void restartNow() {
         PluginLog.warn("Immediate restart requested - exiting in @s.", NOW_COUNTDOWN_SECONDS);
         Text.of()
@@ -210,7 +210,7 @@ public final class RestartManager {
      * lives {@link #HUD_SECONDS} and replaces the previous one, so the number
      * stays readable even when a tick lags); chat gets the milestone seconds
      * (every 10 s, then each of the last five), so the countdown is in the
-     * persistent chat log without thirty lines of spam. {@code evictrestart
+     * persistent chat log without thirty lines of spam. {@code restart
      * cancel} bumps the serial, which drops every pending tick and hides the
      * popup.
      */

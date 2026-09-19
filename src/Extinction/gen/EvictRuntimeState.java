@@ -9,7 +9,7 @@ public final class EvictRuntimeState {
 
     /**
      * Auto-generation defaults to on so a plain "host evict-map pvp" produces
-     * an Evict round with a random seed. Use "evictauto off" to host a map
+     * an Evict round with a random seed. Use "oregen auto off" to host a map
      * without runtime terrain generation.
      */
     public boolean autoGenerate = true;

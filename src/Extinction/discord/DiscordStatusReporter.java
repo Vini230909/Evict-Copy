@@ -96,7 +96,7 @@ public final class DiscordStatusReporter {
         started = true;
 
         // Registered whether or not a webhook is set yet: one may be set later
-        // with 'evictdiscord <url>', and that must not leave the server with no
+        // with 'discordstatus <url>', and that must not leave the server with no
         // way to say goodbye until the next restart. The hook itself does
         // nothing when there is nothing configured.
         Runtime.getRuntime().addShutdownHook(
@@ -184,7 +184,7 @@ public final class DiscordStatusReporter {
     /** One line describing the current wiring, for the console command. */
     public String statusLine() {
         if (!webhook.isConfigured()) {
-            return "not set (use 'evictdiscord <webhook-url>')";
+            return "not set (use 'discordstatus <webhook-url>')";
         }
 
         StringBuilder status = new StringBuilder();

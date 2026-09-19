@@ -1,4 +1,4 @@
-// The word list: edit, rebuild, nothing else. Try a new entry with 'evictwordfilter test' first.
+// The word list: edit, rebuild, nothing else. Try a new entry with 'wordfilter test' first.
 package Extinction;
 
 import java.util.List;

@@ -157,7 +157,7 @@ public final class WordFilter {
         return word != null ? word : findNameOnly(text);
     }
 
-    // Only NAMES: what a name may not carry but chat may. For 'evictwordfilter test'.
+    // Only NAMES: what a name may not carry but chat may. For 'wordfilter test'.
     public static String findNameOnly(String text) {
         return match(text, NAMES);
     }

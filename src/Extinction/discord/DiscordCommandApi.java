@@ -358,7 +358,7 @@ final class DiscordCommandApi {
     private static String explain(int status, String body) {
         return switch (status) {
             case 401 -> "the bot token was rejected (HTTP 401) - check "
-                    + "DISCORD_CHAT_BOT_TOKEN and run 'evictdiscordcmd reload'";
+                    + "DISCORD_CHAT_BOT_TOKEN and run 'discordcommands reload'";
             case 403 -> "the bot may not add commands here (HTTP 403) - "
                     + "re-invite it with the applications.commands scope";
             case 404 -> "no such Discord server (HTTP 404) - check the server "
