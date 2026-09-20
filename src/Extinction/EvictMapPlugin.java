@@ -385,6 +385,9 @@ public class EvictMapPlugin extends Plugin {
             // without deleting the folders and losing their logs.
             WorkerFolder.refreshJars();
 
+            // Hub only: the Pure map list, and the next round pinned to the Extinction map.
+            PureMaps.load();
+
             // Hub only: one live status message in Discord. Workers must stay
             // out of it - they would all edit the same message.
             discordStatusReporter.start();
@@ -440,6 +443,10 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Events.on(PlayEvent.class, event -> {
+            // A Pure worker hosts a real map with generation off: the referee still runs, the
+            // hex rules, hex assignment and the rest below do not.
+            duelWorkerReferee.begin();
+
             if (!runtime.autoGenerate) {
                 return;
             }
@@ -447,7 +454,6 @@ public class EvictMapPlugin extends Plugin {
             scheduleConnectedPlayerAssignmentScan();
 
             if (duelWorker) {
-                duelWorkerReferee.begin();
 
                 // The handshake is loaded now, so the referee knows the mode:
                 // gate the victory check on the full roster count, and open
@@ -484,6 +490,13 @@ public class EvictMapPlugin extends Plugin {
             // resets the flag, so re-apply it after every rules pass.
             if (duelWorker && duelWorkerReferee.matchMode().infiniteResources()) {
                 Vars.state.rules.infiniteResources = true;
+            }
+        });
+
+        // A Pure worker: vanilla PvP's game over names the winner, the referee does the rest.
+        Events.on(GameOverEvent.class, event -> {
+            if (duelWorker && duelWorkerReferee.matchMode().pure()) {
+                duelWorkerReferee.handleVictory(event.winner);
             }
         });
 
@@ -654,24 +667,12 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.14.3. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.0. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
-    /**
-     * Exit path for {@link RestartManager}: the duel-worker way. Close the
-     * network so clients disconnect cleanly, then {@code System.exit(0)} -
-     * the same hard exit duel workers use to self-terminate. The cooperative
-     * {@code Core.app.exit()} teardown proved unreliable on the production
-     * host (the JVM lingered until console input killed it), and a restart
-     * must never depend on someone at the keyboard. {@code System.exit}
-     * still runs the shutdown hooks (worker cleanup, player-DB flush), and
-     * exit code 0 sends the start-script loop down its fast relaunch path.
-     * The halt guard is the final backstop: if a shutdown hook itself ever
-     * wedges, {@code Runtime.halt} takes the process down regardless; it
-     * logs on raw stderr because the normal logger may already be gone
-     * during shutdown.
-     */
+    // Exit path for RestartManager: close the net, then System.exit(0) like a worker (Core.app.exit
+    // proved unreliable on the host); the halt guard takes the JVM down if a shutdown hook wedges.
     private void exitHubProcess() {
         Thread haltGuard = new Thread(() -> {
             try {
@@ -765,7 +766,8 @@ public class EvictMapPlugin extends Plugin {
             );
         }
 
-        RulesApplier.applyRules();
+        // A Pure worker stays vanilla: no Extinction rules, no turret or core-unit damage tweaks.
+        if (!PureMatch.pureWorker()) RulesApplier.applyRules();
         teamManager.setInviteManager(inviteManager);
         teamManager.setDuelMode(duelWorker);
     }
@@ -859,7 +861,7 @@ public class EvictMapPlugin extends Plugin {
         // menu, which the lock's command gate cannot refuse).
         freeCommands.registerClientCommands(handler);
         matchmaking.excludeFromPickers(player -> playerLock.isLocked(player.uuid()));
-        Extinction.commands.Player.register(handler, matchmaking, spectateMenu);
+        Extinction.commands.Player.register(handler, matchmaking, spectateMenu, duelWorkerReferee);
 
         // On a duel worker, replace vanilla /t so a ranked match can invert it
         // for casting admins. The hub keeps vanilla /t untouched. Registering
@@ -1076,13 +1078,8 @@ public class EvictMapPlugin extends Plugin {
                 && !duelWorkerReferee.isParticipant(player.uuid());
     }
 
-    /**
-     * Runs one player-event handler isolated from the others. Arc's Events.fire
-     * lets an exception abort every remaining listener statement, so without
-     * this a single failing handler would silently skip the rest of the chain
-     * (and take the vanilla listeners registered after this plugin down with
-     * it). The failure is logged with its stage name instead.
-     */
+    // Runs one player-event handler isolated: a throwing listener would otherwise silently skip
+    // every handler after it (and the vanilla ones), so the failure is logged with its stage instead.
     private static void guarded(String stage, Runnable handler) {
         try {
             handler.run();

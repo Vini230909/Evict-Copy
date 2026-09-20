@@ -10,6 +10,9 @@ public final class MatchDraft {
     final MatchMode mode;
     final String challengerUuid;
 
+    // Pure matches: the map the worker hosts; null for the generated Extinction map.
+    final String map;
+
     // Random Teams only: how many teams the accepted pool is shuffled into. 0 otherwise.
     final int teamCount;
 
@@ -26,13 +29,75 @@ public final class MatchDraft {
     final Set<String> pendingInviteeUuids = new HashSet<>();
 
     MatchDraft(MatchMode mode, String challengerUuid, int teamCount) {
+        this(mode, challengerUuid, teamCount, null);
+    }
+
+    // A Pure team draft starts with every column in place: the challenger in the first, the rest empty.
+    MatchDraft(MatchMode mode, String challengerUuid, int teamCount, String map) {
         this.mode = mode;
         this.challengerUuid = challengerUuid;
         this.teamCount = teamCount;
+        this.map = map;
 
         List<String> firstTeam = new ArrayList<>();
         firstTeam.add(challengerUuid);
         teams.add(firstTeam);
+
+        for (int column = 1; column < mode.mapTeams(); column++) {
+            teams.add(new ArrayList<>());
+        }
+    }
+
+    // Rosters listed one team per line (Teams and Pure), or one line of players (Random Teams, FFA).
+    String summary() {
+        if (mode == MatchMode.TEAMS || mode.pure()) {
+            StringBuilder text = new StringBuilder();
+
+            for (int index = 0; index < teams.size(); index++) {
+                if (index > 0) {
+                    text.append("\n");
+                }
+
+                text.append("Team ")
+                        .append(index + 1)
+                        .append(": ")
+                        .append(namesOf(teams.get(index)));
+            }
+
+            return text.toString();
+        }
+
+        if (mode == MatchMode.RANDOM_TEAMS) {
+            return "Players: " + namesOf(teams.get(0))
+                    + "\n[lightgray]Shuffled into " + teamCount
+                    + " random teams.[]";
+        }
+
+        return "Players: " + namesOf(teams.get(0));
+    }
+
+    static String namesOf(List<String> uuids) {
+        if (uuids.isEmpty()) {
+            return "[lightgray](nobody yet)[]";
+        }
+
+        StringBuilder names = new StringBuilder();
+
+        for (String uuid : uuids) {
+            mindustry.gen.Player player = Matchmaking.onlinePlayerByUuid(uuid);
+
+            if (!names.isEmpty()) {
+                names.append("[white], ");
+            }
+
+            names.append(
+                    player == null
+                            ? "[lightgray](left)[]"
+                            : PlayerNameFormatter.displayName(player)
+            );
+        }
+
+        return names.toString();
     }
 
     List<String> currentRoster() {

@@ -25,6 +25,9 @@ public final class MatchHandshake {
     public final MatchMode mode;
     public final String label;
 
+    // Pure matches: the map the worker hosts; "" for the generated Extinction map.
+    public final String map;
+
     // One inner list per match team; a uuid counts once, in the first team naming it.
     public final List<List<String>> rosterTeams;
     public final Set<String> participantUuids;
@@ -37,6 +40,7 @@ public final class MatchHandshake {
             int hubPort,
             MatchMode mode,
             String label,
+            String map,
             List<List<String>> rosterTeams,
             Set<String> participantUuids,
             Map<String, String> names
@@ -45,6 +49,7 @@ public final class MatchHandshake {
         this.hubPort = hubPort;
         this.mode = mode;
         this.label = label;
+        this.map = map;
         this.rosterTeams = rosterTeams;
         this.participantUuids = participantUuids;
         this.names = names;
@@ -60,6 +65,7 @@ public final class MatchHandshake {
         properties.setProperty("mode", slot.mode.id());
         // The label is repeated so sibling workers can list this match in their /s hop menu.
         properties.setProperty("label", slot.label);
+        properties.setProperty("map", slot.map == null ? "" : slot.map);
         properties.setProperty(
                 "team.count",
                 Integer.toString(rosterUuids.size())
@@ -105,6 +111,7 @@ public final class MatchHandshake {
         int hubPort = PropertiesFile.getInt(properties, "hub.port", 6567);
         MatchMode mode = MatchMode.fromId(properties.getProperty("mode", "1v1").trim());
         String label = properties.getProperty("label", "").trim();
+        String map = properties.getProperty("map", "").trim();
 
         List<List<String>> rosterTeams = new ArrayList<>();
         Set<String> participantUuids = new LinkedHashSet<>();
@@ -149,6 +156,6 @@ public final class MatchHandshake {
             }
         }
 
-        return new MatchHandshake(hubIp, hubPort, mode, label, rosterTeams, participantUuids, names);
+        return new MatchHandshake(hubIp, hubPort, mode, label, map, rosterTeams, participantUuids, names);
     }
 }

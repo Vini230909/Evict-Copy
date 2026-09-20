@@ -75,9 +75,13 @@ public final class Matches {
         return Config.duelServerIp != null && !Config.duelServerIp.isBlank();
     }
 
-    // Reserves a worker and, once it is hosting, redirects every rostered player to it.
-    // False at once when unconfigured or every slot is busy; the caller tells the players.
     public boolean requestMatch(MatchMode mode, List<List<Player>> rosterTeams) {
+        return requestMatch(mode, rosterTeams, null);
+    }
+
+    // Reserves a worker and, once it is hosting, redirects every rostered player to it. False at
+    // once when unconfigured or all slots are busy. A Pure match names its map; null = Extinction.
+    public boolean requestMatch(MatchMode mode, List<List<Player>> rosterTeams, String map) {
         if (!isConfigured() || rosterTeams == null || rosterTeams.isEmpty()) {
             return false;
         }
@@ -90,6 +94,7 @@ public final class Matches {
 
         MatchSlot slot = new MatchSlot(port);
         slot.mode = mode;
+        slot.map = map;
 
         List<List<String>> rosterUuids = new ArrayList<>();
 
@@ -109,7 +114,7 @@ public final class Matches {
             rosterUuids.add(uuids);
         }
 
-        slot.label = matchLabel(mode, rosterTeams);
+        slot.label = matchLabel(slot, rosterTeams);
         slot.adminUuids = WorkerFolder.snapshotAdminUuids();
         slot.bannedBlocks = WorkerFolder.snapshotBannedBlockNames();
 
@@ -119,7 +124,7 @@ public final class Matches {
 
         workers.put(port, slot);
 
-        announceMatchStart(mode, slot.label);
+        announceMatchStart(slot);
         reports.matchStarted(slot);
 
         spawnExecutor.submit(() -> spawnAndRedirect(slot, rosterUuids));
@@ -130,9 +135,10 @@ public final class Matches {
 
     // "A vs B", "A, B vs C (Teams)", "A vs B vs C (FFA)" or "A (Training)", names shortened.
     private static String matchLabel(
-            MatchMode mode,
+            MatchSlot slot,
             List<List<Player>> rosterTeams
     ) {
+        MatchMode mode = slot.mode;
         String label;
 
         if (mode == MatchMode.FFA) {
@@ -169,17 +175,17 @@ public final class Matches {
         }
 
         if (mode != MatchMode.ONE_VS_ONE) {
-            label += " [lightgray](" + mode.label() + ")[]";
+            label += " [lightgray](" + slot.modeLabel() + ")[]";
         }
 
         return label;
     }
 
     // Tells the hub a match is starting; the label already names the mode for all but 1v1.
-    private static void announceMatchStart(MatchMode mode, String label) {
-        String announcement = mode == MatchMode.ONE_VS_ONE
-                ? label + " [lightgray](" + mode.label() + ")[]"
-                : label;
+    private static void announceMatchStart(MatchSlot slot) {
+        String announcement = slot.mode == MatchMode.ONE_VS_ONE
+                ? slot.label + " [lightgray](" + slot.modeLabel() + ")[]"
+                : slot.label;
 
         Call.sendMessage("[accent]Match starting:[] " + announcement);
     }
@@ -193,7 +199,7 @@ public final class Matches {
 
             MatchHandshake.write(workerDir, slot, rosterUuids);
 
-            Process process = WorkerFolder.launch(workerDir, slot.port);
+            Process process = WorkerFolder.launch(workerDir, slot.port, slot.map);
             slot.process = process;
 
             process.onExit().thenRun(
@@ -264,7 +270,7 @@ public final class Matches {
         for (Player player : players) {
             player.sendMessage(
                     "[accent]Connecting you to your "
-                            + slot.mode.label() + "...[]"
+                            + slot.modeLabel() + "...[]"
             );
             activeDuelByUuid.put(player.uuid(), slot.port);
             Call.connect(player.con, ip, slot.port);
@@ -388,7 +394,7 @@ public final class Matches {
 
             statuses.add(new MatchStatus(
                     slot.port - Config.duelServerPort + 1,
-                    slot.mode.label(),
+                    slot.modeLabel(),
                     slot.rosterNames(),
                     (now - slot.spawnedAtMillis) / 1000L
             ));
@@ -412,7 +418,7 @@ public final class Matches {
         }
 
         viewer.sendMessage(
-                "[accent]Connecting you to the " + slot.mode.label()
+                "[accent]Connecting you to the " + slot.modeLabel()
                         + " as a spectator...[]"
         );
         Call.sendMessage(

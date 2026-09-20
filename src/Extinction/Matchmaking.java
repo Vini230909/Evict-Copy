@@ -35,9 +35,11 @@ public final class Matchmaking {
     };
 
     private final Matches matches;
-    private final Challenges challenges;
-    private final MatchDrafts drafts;
+    final Challenges challenges;
+    final MatchDrafts drafts;
+    private final PureMenus pure;
 
+    private final int gameMenuId;
     private final int modeMenuId;
     private final int teamCountMenuId;
 
@@ -48,6 +50,8 @@ public final class Matchmaking {
         this.matches = matches;
         this.challenges = new Challenges(this, matches);
         this.drafts = new MatchDrafts(this, matches);
+        this.pure = new PureMenus(this);
+        this.gameMenuId = Menus.registerMenu(this::handleGameSelection);
         this.modeMenuId = Menus.registerMenu(this::handleModeSelection);
         this.teamCountMenuId = Menus.registerMenu(this::handleTeamCountSelection);
     }
@@ -64,9 +68,16 @@ public final class Matchmaking {
 
         challenges.handlePlayerLeave(player.uuid());
         drafts.handlePlayerLeave(player);
+        pure.handlePlayerLeave(player);
     }
 
-    public void openModeMenu(Player player) {
+    // "Teams", or "Pure 1v1 PvP on Frontier": a mode as the menus and invites name it.
+    static String describe(MatchMode mode, String map) {
+        return map == null ? mode.label() : mode.label() + " on " + map;
+    }
+
+    // /play: Extinction (the generated hex map, today's modes) or Pure (vanilla PvP on a real map).
+    public void openGameMenu(Player player) {
         if (player == null) {
             return;
         }
@@ -78,6 +89,30 @@ public final class Matchmaking {
             return;
         }
 
+        Call.menu(
+                player.con,
+                gameMenuId,
+                "[accent]Play",
+                "Extinction: the generated hex map.\nPure: plain Mindustry PvP on a real map.",
+                new String[][]{
+                        {"Extinction", "Pure"}
+                }
+        );
+    }
+
+    private void handleGameSelection(Player player, int option) {
+        if (player == null || !matches.isConfigured()) {
+            return;
+        }
+
+        if (option == 0) {
+            openModeMenu(player);
+        } else if (option == 1) {
+            pure.openModeMenu(player);
+        }
+    }
+
+    private void openModeMenu(Player player) {
         Call.menu(
                 player.con,
                 modeMenuId,
@@ -151,10 +186,14 @@ public final class Matchmaking {
 
     // Training or Sandbox: the requester is the only rostered player, nobody to pick or invite.
     private void startSoloMatch(Player player, MatchMode mode) {
+        startSoloMatch(player, mode, null);
+    }
+
+    void startSoloMatch(Player player, MatchMode mode, String map) {
         List<List<Player>> rosters = new ArrayList<>();
         rosters.add(List.of(player));
 
-        if (!matches.requestMatch(mode, rosters)) {
+        if (!matches.requestMatch(mode, rosters, map)) {
             player.sendMessage(
                     "[scarlet]All match servers are busy right now. Try again shortly.[]"
             );

@@ -99,7 +99,7 @@ public final class WorkerReports {
 
     // The start embed in the match's port channel: mode and the rosters.
     public void matchStarted(MatchSlot slot) {
-        chatLog.matchStarted(slot.port, slot.mode.label(), slot.rosterNames());
+        chatLog.matchStarted(slot.port, slot.modeLabel(), slot.rosterNames());
     }
 
     // At release: the slot's credited totals go with it (the final total was credited on exit).
@@ -437,12 +437,13 @@ public final class WorkerReports {
             case "victory" -> "Victory.";
             case "surrender" -> "Ended with /die.";
             case "sandbox-ended" -> "Closed by the sandbox owner.";
+            case "gameover" -> "Game over.";
             default -> DiscordFormat.playerText(result.reason());
         };
 
         chatLog.matchEnded(
                 slot.port,
-                mode.label(),
+                slot.modeLabel(),
                 solo ? null : chatNames(slot, result.winnerUuids()),
                 solo ? null : chatNames(slot, result.loserUuids()),
                 matchDurationSeconds(slot),
@@ -460,7 +461,7 @@ public final class WorkerReports {
         slot.endReported = true;
         chatLog.matchEnded(
                 slot.port,
-                slot.mode.label(),
+                slot.modeLabel(),
                 null,
                 null,
                 matchDurationSeconds(slot),

@@ -77,8 +77,45 @@ public final class MatchDrafts {
             return;
         }
 
-        // A fresh draft supersedes the challenger's previous one; if its invites are already
-        // out it is cancelled properly so the invitees learn their menus are dead.
+        MatchDraft draft = new MatchDraft(mode, challenger.uuid(), teamCount);
+        register(challenger, draft);
+        openPickMenu(challenger, draft);
+    }
+
+    // A Pure team draft: the rosters are filled through PureRoster's grid, the rest is the same.
+    void beginPure(Player challenger, MatchMode mode, String map) {
+        register(challenger, new MatchDraft(mode, challenger.uuid(), 0, map));
+    }
+
+    MatchDraft draftOf(Player challenger) {
+        MatchDraft draft = draftsByChallengerUuid.get(challenger.uuid());
+        return draft == null || draft.inviting ? null : draft;
+    }
+
+    // Cancel from a Pure grid: same words as the pick menu's Cancel.
+    void cancel(Player challenger) {
+        draftsByChallengerUuid.remove(challenger.uuid());
+        challenger.sendMessage("[lightgray]Match setup cancelled.[]");
+    }
+
+    // Done from a Pure grid: every team needs a player, then the usual invites go out.
+    boolean done(Player challenger, MatchDraft draft) {
+        for (int index = 0; index < draft.teams.size(); index++) {
+            if (draft.teams.get(index).isEmpty()) {
+                challenger.sendMessage(
+                        "[scarlet]Pick at least one player for Team " + (index + 1) + ".[]"
+                );
+                return false;
+            }
+        }
+
+        sendDraftInvites(challenger, draft);
+        return true;
+    }
+
+    // A fresh draft supersedes the challenger's previous one; if its invites are already
+    // out it is cancelled properly so the invitees learn their menus are dead.
+    private void register(Player challenger, MatchDraft draft) {
         MatchDraft previous = draftsByChallengerUuid.get(challenger.uuid());
 
         if (previous != null && previous.inviting) {
@@ -92,9 +129,7 @@ public final class MatchDrafts {
                     .removeIf(challenger.uuid()::equals);
         }
 
-        MatchDraft draft = new MatchDraft(mode, challenger.uuid(), teamCount);
         draftsByChallengerUuid.put(challenger.uuid(), draft);
-        openPickMenu(challenger, draft);
     }
 
     private void openPickMenu(Player challenger, MatchDraft draft) {
@@ -170,7 +205,7 @@ public final class MatchDrafts {
                 challenger.con,
                 pickMenuId,
                 title,
-                instruction + "\n\n" + rosterSummary(draft),
+                instruction + "\n\n" + draft.summary(),
                 rows.toArray(new String[0][])
         );
     }
@@ -322,7 +357,7 @@ public final class MatchDrafts {
                 () -> expireDraftInvites(draft, serial)
         );
 
-        String summary = rosterSummary(draft);
+        String summary = draft.summary();
 
         for (String uuid : inviteeUuids) {
             Player invitee = Matchmaking.onlinePlayerByUuid(uuid);
@@ -334,7 +369,7 @@ public final class MatchDrafts {
                     "[accent]" + draft.mode.label() + " invite",
                     PlayerNameFormatter.displayName(challenger)
                             + "[white] invited you to a "
-                            + draft.mode.label() + " match.\n\n" + summary,
+                            + Matchmaking.describe(draft.mode, draft.map) + " match.\n\n" + summary,
                     new String[][]{
                             {"[green]Accept"},
                             {"[red]Decline"}
@@ -408,7 +443,7 @@ public final class MatchDrafts {
     private void launchDraft(MatchDraft draft) {
         List<List<Player>> rosters = new ArrayList<>();
 
-        if (draft.mode == MatchMode.TEAMS) {
+        if (draft.mode == MatchMode.TEAMS || draft.mode.pure()) {
             for (List<String> team : draft.teams) {
                 List<Player> roster = resolveRoster(team);
 
@@ -448,7 +483,7 @@ public final class MatchDrafts {
                 ? MatchMode.TEAMS
                 : draft.mode;
 
-        if (!matches.requestMatch(wireMode, rosters)) {
+        if (!matches.requestMatch(wireMode, rosters, draft.map)) {
             for (List<Player> roster : rosters) {
                 for (Player player : roster) {
                     player.sendMessage(
@@ -518,57 +553,6 @@ public final class MatchDrafts {
                 );
             }
         }
-    }
-
-    private String rosterSummary(MatchDraft draft) {
-        if (draft.mode == MatchMode.TEAMS) {
-            StringBuilder summary = new StringBuilder();
-
-            for (int index = 0; index < draft.teams.size(); index++) {
-                if (index > 0) {
-                    summary.append("\n");
-                }
-
-                summary.append("Team ")
-                        .append(index + 1)
-                        .append(": ")
-                        .append(namesOf(draft.teams.get(index)));
-            }
-
-            return summary.toString();
-        }
-
-        if (draft.mode == MatchMode.RANDOM_TEAMS) {
-            return "Players: " + namesOf(draft.teams.get(0))
-                    + "\n[lightgray]Shuffled into " + draft.teamCount
-                    + " random teams.[]";
-        }
-
-        return "Players: " + namesOf(draft.teams.get(0));
-    }
-
-    private String namesOf(List<String> uuids) {
-        if (uuids.isEmpty()) {
-            return "[lightgray](nobody yet)[]";
-        }
-
-        StringBuilder names = new StringBuilder();
-
-        for (String uuid : uuids) {
-            Player player = Matchmaking.onlinePlayerByUuid(uuid);
-
-            if (!names.isEmpty()) {
-                names.append("[white], ");
-            }
-
-            names.append(
-                    player == null
-                            ? "[lightgray](left)[]"
-                            : PlayerNameFormatter.displayName(player)
-            );
-        }
-
-        return names.toString();
     }
 
     // Expires a draft whose invites were not all answered in time.

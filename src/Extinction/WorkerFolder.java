@@ -102,10 +102,8 @@ public final class WorkerFolder {
             copyFile(new File(Config.duelWorkerJar), jar);
         }
 
-        File maps = new File(workerConfig, "maps");
-        if (!maps.exists()) {
-            copyDirectory(new File("config/maps"), maps);
-        }
+        // Maps are refreshed every spawn: a Pure map added to the hub is playable at once.
+        copyDirectory(new File("config/maps"), new File(workerConfig, "maps"));
 
         copyDirectory(new File("config/mods"), new File(workerConfig, "mods"));
 
@@ -210,7 +208,8 @@ public final class WorkerFolder {
     }
 
     // java -Devict.duelWorker=true -jar <jar>, then port, votekick and host over stdin.
-    public static Process launch(File workerDir, int port) throws IOException {
+    // A Pure worker hosts the chosen map as it is: generation is switched off before the host.
+    public static Process launch(File workerDir, int port, String pureMap) throws IOException {
         String javaExe = new File(
                 System.getProperty("java.home"),
                 "bin/java"
@@ -234,7 +233,13 @@ public final class WorkerFolder {
         // Votekick lives in Mindustry's settings.bin, which is not copied; mirror the hub's value.
         writeCommand(stdin,
                 "config enableVotekick " + Administration.Config.enableVotekick.bool());
-        writeCommand(stdin, "host " + Config.duelWorkerMap + " pvp");
+
+        if (pureMap == null) {
+            writeCommand(stdin, "host " + Config.duelWorkerMap + " pvp");
+        } else {
+            writeCommand(stdin, "oregen auto off");
+            writeCommand(stdin, "host " + pureMap.replace(' ', '_') + " pvp");
+        }
 
         return process;
     }

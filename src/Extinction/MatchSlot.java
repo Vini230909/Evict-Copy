@@ -21,6 +21,9 @@ public final class MatchSlot {
     public volatile Process process;
     public MatchMode mode = MatchMode.ONE_VS_ONE;
     public String label = "?";
+
+    // Pure matches: the map the worker hosts; null for the generated Extinction map.
+    public String map;
     public final List<Participant> participants = new ArrayList<>();
     public List<String> adminUuids = new ArrayList<>();
     public List<String> bannedBlocks = new ArrayList<>();
@@ -30,6 +33,11 @@ public final class MatchSlot {
 
     public MatchSlot(int port) {
         this.port = port;
+    }
+
+    // "Teams", or "Pure 2 Team PvP on Frontier" - the mode as announcements and embeds name it.
+    public String modeLabel() {
+        return map == null ? mode.label() : mode.label() + " on " + map;
     }
 
     public boolean alive() {

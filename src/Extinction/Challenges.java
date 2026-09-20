@@ -57,8 +57,12 @@ public final class Challenges {
         return false;
     }
 
-    // The same flow for 1v1 and Ranked; the mode is carried through so only the match differs.
     void openSelectionMenu(Player player, MatchMode mode) {
+        openSelectionMenu(player, mode, null);
+    }
+
+    // The same flow for 1v1, Ranked and Pure 1v1; mode (and map) are carried through.
+    void openSelectionMenu(Player player, MatchMode mode, String map) {
         List<Player> opponents = matchmaking.otherOnlinePlayers(player);
 
         if (opponents.isEmpty()) {
@@ -87,14 +91,14 @@ public final class Challenges {
         rows.add(new String[]{"[red]Cancel"});
         selectionByChallengerUuid.put(
                 player.uuid(),
-                new Selection(mode, targetUuids)
+                new Selection(mode, targetUuids, map)
         );
 
         Call.menu(
                 player.con,
                 selectionMenuId,
                 "[accent]" + mode.label(),
-                "Select a player to challenge to a " + mode.label() + ".",
+                "Select a player to challenge to a " + Matchmaking.describe(mode, map) + ".",
                 rows.toArray(new String[0][])
         );
     }
@@ -139,7 +143,7 @@ public final class Challenges {
 
         challengeByOpponentUuid.put(
                 opponentUuid,
-                new PendingChallenge(player.uuid(), mode, serial)
+                new PendingChallenge(player.uuid(), mode, serial, selection.map())
         );
         Time.run(
                 Matchmaking.PENDING_RESPONSE_TIMEOUT_TICKS,
@@ -158,7 +162,7 @@ public final class Challenges {
                 "[accent]" + mode.label() + " Challenge",
                 PlayerNameFormatter.displayName(player)
                         + "[white] has challenged you to a "
-                        + mode.label() + ".",
+                        + Matchmaking.describe(mode, selection.map()) + ".",
                 new String[][]{
                         {"[green]Accept"},
                         {"[red]Decline"}
@@ -212,7 +216,7 @@ public final class Challenges {
         rosters.add(List.of(challenger));
         rosters.add(List.of(opponent));
 
-        if (!matches.requestMatch(mode, rosters)) {
+        if (!matches.requestMatch(mode, rosters, pending.map())) {
             challenger.sendMessage(
                     "[scarlet]All match servers are busy right now. Try again shortly.[]"
             );
@@ -256,14 +260,15 @@ public final class Challenges {
     }
 
     // A challenger's open selection menu: the mode and the ordered opponents shown.
-    private record Selection(MatchMode mode, List<String> targetUuids) {
+    private record Selection(MatchMode mode, List<String> targetUuids, String map) {
     }
 
     // An outstanding challenge: who sent it, in which mode, and its expiry serial.
     private record PendingChallenge(
             String challengerUuid,
             MatchMode mode,
-            int serial
+            int serial,
+            String map
     ) {
     }
 }

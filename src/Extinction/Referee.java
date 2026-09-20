@@ -56,6 +56,7 @@ public final class Referee {
     public final Sandbox sandbox = new Sandbox(this);
     public final WorkerExit exit = new WorkerExit(this, scheduler);
     public final WorkerStatus status = new WorkerStatus(this);
+    public final PureMatch pure = new PureMatch(this);
 
     // The mode: its rules (gated, solo, ...) are asked of it, never compared by constant.
     private MatchMode mode = MatchMode.ONE_VS_ONE;
@@ -71,6 +72,7 @@ public final class Referee {
     private Predicate<Player> stillCompeting;
 
     private boolean handshakeLoaded = false;
+    private boolean begun = false;
     private boolean resolved = false;
 
     public Referee() {
@@ -167,14 +169,20 @@ public final class Referee {
         }
     }
 
-    // Called once the worker has hosted its round.
+    // Called once the worker has hosted its round. Vanilla reloads a Pure map after its game over;
+    // the second PlayEvent must not start the referee over.
     public void begin() {
-        if (!active) {
+        if (!active || begun) {
             return;
         }
 
+        begun = true;
         loadHandshake();
         exit.scheduleShutdownIfEmpty(WorkerExit.STARTUP_GRACE_SECONDS);
+
+        if (mode.pure()) {
+            pure.begin();
+        }
 
         if (!mode.gated()) {
             gate.startUngated();
@@ -199,6 +207,11 @@ public final class Referee {
                         && !isParticipant(player.uuid())
         ) {
             welcomeSpectator(player);
+        }
+
+        // Vanilla assigns a joiner to any team; a Pure participant belongs to their roster's team.
+        if (mode.pure() && player != null && isParticipant(player.uuid())) {
+            pure.place(player);
         }
 
         if (gate.started()) {
@@ -286,8 +299,15 @@ public final class Referee {
     }
 
     // Wired in place of the hub's round-victory handler: records the result, returns everyone.
+    // On a Pure worker vanilla's PvP game over calls this with its winner.
     public void handleVictory(Team winner) {
         if (!active || resolved) {
+            return;
+        }
+
+        // A Pure Training that ran out of enemy cores has no winner to name: it just ends.
+        if (mode.pure() && mode.solo()) {
+            endSoloSession("gameover");
             return;
         }
 
@@ -454,6 +474,10 @@ public final class Referee {
         }
 
         pause.update();
+
+        if (mode.pure()) {
+            pure.update();
+        }
     }
 
     public void pauseGame() {
