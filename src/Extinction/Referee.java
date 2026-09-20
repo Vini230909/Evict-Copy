@@ -313,12 +313,7 @@ public final class Referee {
 
         resolved = true;
 
-        // The world must run for the return countdown to tick.
-        if (pause.active()) {
-            pause.forceEnd();
-        }
-
-        hideHud();
+        gate.release();
 
         Player winnerPlayer = Groups.player.find(
                 player -> player != null
@@ -408,8 +403,11 @@ public final class Referee {
                 : names.toString();
     }
 
-    // Training /die: no winner, nothing recorded, everyone returns to the hub.
+    // Every successful surrender releases the freeze; Training also returns everyone to the hub.
     public void handleParticipantSurrender(Player player) {
+        if (active && !resolved) {
+            gate.release();
+        }
         if (
                 !active
                         || resolved
@@ -427,11 +425,7 @@ public final class Referee {
     void endSoloSession(String reason) {
         resolved = true;
 
-        if (pause.active()) {
-            pause.forceEnd();
-        }
-
-        hideHud();
+        gate.release();
 
         List<String> allRosterUuids = new ArrayList<>();
 

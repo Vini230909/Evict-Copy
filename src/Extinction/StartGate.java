@@ -54,6 +54,20 @@ public final class StartGate {
         matchStartMillis = System.currentTimeMillis();
     }
 
+    // Surrender and match end cancel every pending freeze/countdown before resuming the world.
+    public void release() {
+        matchSerial++;
+        settleSerial++;
+        settlePending = false;
+        startFreezeApplied = false;
+        countdownStarted = false;
+        if (!matchStarted) {
+            startUngated();
+        }
+        referee.pause.forceEnd();
+        referee.hideHud();
+    }
+
     // A duelist arrived: let the world settle their camera before the freeze.
     public void participantJoined() {
         settleCamerasThenFreeze();

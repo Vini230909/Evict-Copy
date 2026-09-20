@@ -64,6 +64,8 @@ Game-mode menu: `1v1`, `Ranked`, `Teams`, `Random Teams`, `FFA`, `Training`, `Sa
 
 All modes run the same generated Evict map and worker rules: wait-for-everyone start gate, 5 s countdown, disconnect pause with rejoin window.
 
+On workers, `/die` has no opening time limit: surrender works while waiting for players, during the opening countdown, and while paused (including an opponent's disconnect). A successful surrender cancels the pending start freeze/countdown and disconnect pause, hides their HUD, and resumes the game so elimination and return to the lobby can finish. Victory and solo session end also release any freeze. Sandbox keeps its owner-only `/die` rule.
+
 `/spectate` (`/s`) lists each match as one button with two lines: the player names above, then `Extinction • <game mode>` or `Pure • <game mode> on <map>` below. This applies both on the hub and when switching between matches from a worker; the worker menu also offers Return to the lobby.
 
 ### Pure matches
