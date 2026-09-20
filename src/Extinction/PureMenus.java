@@ -5,6 +5,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Consumer;
 
 import mindustry.gen.Call;
 import mindustry.gen.Player;
@@ -37,7 +39,12 @@ public final class PureMenus {
     }
 
     void handlePlayerLeave(Player player) {
-        selectionByUuid.remove(player.uuid());
+        for (MapSelection selection : new ArrayList<>(selectionByUuid.values())) {
+            if (selection.uuids().contains(player.uuid())) {
+                selectionByUuid.remove(selection.uuids().get(0));
+                selection.cancelled().run();
+            }
+        }
         roster.handlePlayerLeave(player);
     }
 
@@ -60,38 +67,46 @@ public final class PureMenus {
             return;
         }
 
-        openMapMenu(player, MODE_MENU_OPTIONS[option]);
+        MatchMode mode = MODE_MENU_OPTIONS[option];
+        switch (mode) {
+            case PURE_TRAINING -> openMapMenu(player, mode, List.of(player.uuid()),
+                    map -> matchmaking.startSoloMatch(player, mode, map), () -> {});
+            case PURE_1V1 -> matchmaking.challenges.openSelectionMenu(player, mode);
+            default -> roster.begin(player, mode);
+        }
     }
 
     // One map per row in the client's scrollable menu; only maps with the mode's team count.
-    private void openMapMenu(Player player, MatchMode mode) {
-        List<PureMaps.PureMap> maps = PureMaps.forMode(mode);
-
-        if (maps.isEmpty()) {
-            player.sendMessage(
-                    mode.mapTeams() == 0
-                            ? "[scarlet]No Pure map is in config/maps.[]"
-                            : "[scarlet]No Pure map with " + mode.mapTeams() + " teams is in config/maps.[]"
-            );
-            return;
-        }
+    void openMapMenu(Player player, MatchMode mode, List<String> uuids,
+                     Consumer<String> selected, Runnable cancelled) {
+        Set<String> vetoes = matchmaking.mapVetoes.combined(uuids);
+        List<PureMaps.PureMap> maps = MapVetoes.ordered(mode, vetoes);
+        boolean available = maps.stream().anyMatch(map -> !vetoes.contains(map.name()));
 
         List<String> shown = new ArrayList<>();
         List<String[]> rows = new ArrayList<>();
 
         for (PureMaps.PureMap map : maps) {
             shown.add(map.name());
-            rows.add(new String[]{map.name() + " [lightgray](" + map.teams() + " teams)[]"});
+            rows.add(new String[]{MapVetoes.label(map, vetoes.contains(map.name()))});
         }
 
-        rows.add(new String[]{"[red]Cancel"});
-        selectionByUuid.put(player.uuid(), new MapSelection(mode, shown));
+        rows.add(new String[]{available ? "[red]Cancel" : "[lightgray]Close"});
+        selectionByUuid.remove(player.uuid());
+        if (available) {
+            selectionByUuid.put(player.uuid(), new MapSelection(mode, shown, List.copyOf(uuids),
+                    vetoes, selected, cancelled));
+        } else {
+            cancelled.run();
+        }
 
         Call.menu(
                 player.con,
                 mapMenuId,
                 "[accent]" + mode.label(),
-                "Pick the map.",
+                available ? "Pick the map. Scarlet maps are vetoed by a player and cannot be selected."
+                        : "[scarlet]No map is available " + (maps.isEmpty() ? "for this mode" : "after player vetoes")
+                                + ". Match cancelled.[]",
                 rows.toArray(new String[0][])
         );
     }
@@ -103,39 +118,43 @@ public final class PureMenus {
 
         MapSelection selection = selectionByUuid.remove(player.uuid());
 
-        if (selection == null || option < 0) {
+        if (selection == null) {
             return;
         }
 
         int mapCount = selection.shown().size();
 
-        if (option < mapCount) {
+        if (option >= 0 && option < mapCount) {
             String map = selection.shown().get(option);
 
-            if (!PureMaps.exists(map)) {
-                player.sendMessage("[scarlet]That map is no longer available.[]");
+            if (selection.uuids().stream().anyMatch(uuid -> Matchmaking.onlinePlayerByUuid(uuid) == null)) {
+                selection.cancelled().run();
+                player.sendMessage("[scarlet]A picked player left. Match setup cancelled.[]");
                 return;
             }
 
-            start(player, selection.mode(), map);
+            if (selection.vetoes().contains(map) || matchmaking.mapVetoes.blocks(selection.uuids(), map)) {
+                player.sendMessage("[scarlet]That map is vetoed. Pick an available map.[]");
+                openMapMenu(player, selection.mode(), selection.uuids(), selection.selected(), selection.cancelled());
+                return;
+            }
+
+            if (!PureMaps.exists(map)) {
+                player.sendMessage("[scarlet]That map is no longer available.[]");
+                selection.cancelled().run();
+                return;
+            }
+
+            selection.selected().accept(map);
             return;
         }
 
-        if (option == mapCount) {
-            player.sendMessage("[lightgray]Match setup cancelled.[]");
-        }
-    }
-
-    // The map is chosen: Training starts alone, 1v1 picks an opponent, the team modes open the grid.
-    private void start(Player player, MatchMode mode, String map) {
-        switch (mode) {
-            case PURE_TRAINING -> matchmaking.startSoloMatch(player, mode, map);
-            case PURE_1V1 -> matchmaking.challenges.openSelectionMenu(player, mode, map);
-            default -> roster.begin(player, mode, map);
-        }
+        selection.cancelled().run();
+        player.sendMessage("[lightgray]Match setup cancelled.[]");
     }
 
     // One open map picker: the mode and the map names shown in row order.
-    private record MapSelection(MatchMode mode, List<String> shown) {
+    private record MapSelection(MatchMode mode, List<String> shown, List<String> uuids,
+                                Set<String> vetoes, Consumer<String> selected, Runnable cancelled) {
     }
 }

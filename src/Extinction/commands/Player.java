@@ -30,7 +30,7 @@ public final class Player {
         }
 
         commands.command("play").client()
-                .description("Start a match: Unranked, 1v1, Teams, Random Teams, FFA, Training or Sandbox.")
+                .description("Start an Extinction or Pure match.")
                 .run(ctx -> matchmaking.openGameMenu(ctx.sender()));
 
         // Aliases are their own rows so /help folds them into their target's row.
@@ -41,6 +41,10 @@ public final class Player {
         commands.command("spectate").client()
                 .description("Spectate an ongoing match; while spectating, switch matches or return to the lobby.")
                 .run(ctx -> spectate.handleViewCommand(ctx.sender()));
+
+        commands.command("maps").client()
+                .description("Choose your Pure maps; deselected maps are vetoed in your matches (hub only).")
+                .run(ctx -> matchmaking.mapVetoes.openMenu(ctx.sender()));
 
         commands.command("s").client()
                 .description("Alias for /spectate.")

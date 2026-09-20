@@ -11,7 +11,7 @@ public final class MatchDraft {
     final String challengerUuid;
 
     // Pure matches: the map the worker hosts; null for the generated Extinction map.
-    final String map;
+    String map;
 
     // Random Teams only: how many teams the accepted pool is shuffled into. 0 otherwise.
     final int teamCount;

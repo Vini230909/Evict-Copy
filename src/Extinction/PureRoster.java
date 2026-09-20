@@ -39,13 +39,13 @@ public final class PureRoster {
         candidatesByUuid.remove(player.uuid());
     }
 
-    void begin(Player challenger, MatchMode mode, String map) {
+    void begin(Player challenger, MatchMode mode) {
         if (matchmaking.otherOnlinePlayers(challenger).isEmpty()) {
             challenger.sendMessage("[scarlet]No other players are online.[]");
             return;
         }
 
-        matchmaking.drafts.beginPure(challenger, mode, map);
+        matchmaking.drafts.beginPure(challenger, mode);
         openGrid(challenger);
     }
 
@@ -78,7 +78,7 @@ public final class PureRoster {
             }
         }
 
-        options[rows] = new String[]{"[green]Done - send invites"};
+        options[rows] = new String[]{"[green]Done - pick map"};
         options[rows + 1] = new String[]{"[red]Cancel"};
 
         gridByUuid.put(challenger.uuid(), new Grid(columns, rows));
@@ -113,7 +113,11 @@ public final class PureRoster {
         Grid grid = gridByUuid.remove(challenger.uuid());
         MatchDraft draft = matchmaking.drafts.draftOf(challenger);
 
-        if (grid == null || draft == null || option < 0) {
+        if (grid == null || draft == null) {
+            return;
+        }
+        if (option < 0) {
+            matchmaking.drafts.cancel(challenger);
             return;
         }
 

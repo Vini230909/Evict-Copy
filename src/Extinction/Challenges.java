@@ -58,11 +58,6 @@ public final class Challenges {
     }
 
     void openSelectionMenu(Player player, MatchMode mode) {
-        openSelectionMenu(player, mode, null);
-    }
-
-    // The same flow for 1v1, Ranked and Pure 1v1; mode (and map) are carried through.
-    void openSelectionMenu(Player player, MatchMode mode, String map) {
         List<Player> opponents = matchmaking.otherOnlinePlayers(player);
 
         if (opponents.isEmpty()) {
@@ -91,14 +86,14 @@ public final class Challenges {
         rows.add(new String[]{"[red]Cancel"});
         selectionByChallengerUuid.put(
                 player.uuid(),
-                new Selection(mode, targetUuids, map)
+                new Selection(mode, targetUuids)
         );
 
         Call.menu(
                 player.con,
                 selectionMenuId,
                 "[accent]" + mode.label(),
-                "Select a player to challenge to a " + Matchmaking.describe(mode, map) + ".",
+                "Select a player to challenge to a " + mode.label() + ".",
                 rows.toArray(new String[0][])
         );
     }
@@ -128,6 +123,25 @@ public final class Challenges {
             return;
         }
 
+        if (mode.pure()) {
+            String opponentUuid = opponent.uuid();
+            matchmaking.pure.openMapMenu(player, mode, List.of(player.uuid(), opponentUuid),
+                    map -> sendChallenge(player, Matchmaking.onlinePlayerByUuid(opponentUuid), mode, map), () -> {});
+        } else {
+            sendChallenge(player, opponent, mode, null);
+        }
+    }
+
+    private void sendChallenge(Player player, Player opponent, MatchMode mode, String map) {
+        if (opponent == null) {
+            player.sendMessage("[scarlet]That player is no longer online.[]");
+            return;
+        }
+        if (mode.pure() && matchmaking.isBusy(player.uuid())) {
+            player.sendMessage("[scarlet]You are already in another match setup.[]");
+            return;
+        }
+
         // Refuse instead of overwriting their pending entry.
         if (matchmaking.isBusy(opponent.uuid())) {
             player.sendMessage(
@@ -143,7 +157,7 @@ public final class Challenges {
 
         challengeByOpponentUuid.put(
                 opponentUuid,
-                new PendingChallenge(player.uuid(), mode, serial, selection.map())
+                new PendingChallenge(player.uuid(), mode, serial, map)
         );
         Time.run(
                 Matchmaking.PENDING_RESPONSE_TIMEOUT_TICKS,
@@ -162,7 +176,7 @@ public final class Challenges {
                 "[accent]" + mode.label() + " Challenge",
                 PlayerNameFormatter.displayName(player)
                         + "[white] has challenged you to a "
-                        + Matchmaking.describe(mode, selection.map()) + ".",
+                        + Matchmaking.describe(mode, map) + ".",
                 new String[][]{
                         {"[green]Accept"},
                         {"[red]Decline"}
@@ -208,6 +222,12 @@ public final class Challenges {
                             + "[scarlet] declined your "
                             + mode.label() + ".[]"
             );
+            return;
+        }
+
+        if (mode.pure() && matchmaking.mapVetoes.blocks(List.of(challengerUuid, opponent.uuid()), pending.map())) {
+            challenger.sendMessage("[scarlet]The chosen map was vetoed. Match cancelled.[]");
+            opponent.sendMessage("[scarlet]The chosen map was vetoed. Match cancelled.[]");
             return;
         }
 
@@ -260,7 +280,7 @@ public final class Challenges {
     }
 
     // A challenger's open selection menu: the mode and the ordered opponents shown.
-    private record Selection(MatchMode mode, List<String> targetUuids, String map) {
+    private record Selection(MatchMode mode, List<String> targetUuids) {
     }
 
     // An outstanding challenge: who sent it, in which mode, and its expiry serial.

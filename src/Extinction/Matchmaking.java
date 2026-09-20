@@ -37,7 +37,8 @@ public final class Matchmaking {
     private final Matches matches;
     final Challenges challenges;
     final MatchDrafts drafts;
-    private final PureMenus pure;
+    final PureMenus pure;
+    public final MapVetoes mapVetoes = new MapVetoes();
 
     private final int gameMenuId;
     private final int modeMenuId;
@@ -69,6 +70,7 @@ public final class Matchmaking {
         challenges.handlePlayerLeave(player.uuid());
         drafts.handlePlayerLeave(player);
         pure.handlePlayerLeave(player);
+        mapVetoes.handlePlayerLeave(player);
     }
 
     // "Teams", or "Pure 1v1 PvP on Frontier": a mode as the menus and invites name it.

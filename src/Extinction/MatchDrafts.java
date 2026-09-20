@@ -83,8 +83,8 @@ public final class MatchDrafts {
     }
 
     // A Pure team draft: the rosters are filled through PureRoster's grid, the rest is the same.
-    void beginPure(Player challenger, MatchMode mode, String map) {
-        register(challenger, new MatchDraft(mode, challenger.uuid(), 0, map));
+    void beginPure(Player challenger, MatchMode mode) {
+        register(challenger, new MatchDraft(mode, challenger.uuid(), 0));
     }
 
     MatchDraft draftOf(Player challenger) {
@@ -98,7 +98,7 @@ public final class MatchDrafts {
         challenger.sendMessage("[lightgray]Match setup cancelled.[]");
     }
 
-    // Done from a Pure grid: every team needs a player, then the usual invites go out.
+    // Done from a Pure grid: every team needs a player, then choose a map before inviting.
     boolean done(Player challenger, MatchDraft draft) {
         for (int index = 0; index < draft.teams.size(); index++) {
             if (draft.teams.get(index).isEmpty()) {
@@ -109,7 +109,12 @@ public final class MatchDrafts {
             }
         }
 
-        sendDraftInvites(challenger, draft);
+        matchmaking.pure.openMapMenu(challenger, draft.mode, draft.allPickedUuids(), map -> {
+            if (draftOf(challenger) == draft) {
+                draft.map = map;
+                sendDraftInvites(challenger, draft);
+            }
+        }, () -> draftsByChallengerUuid.remove(challenger.uuid(), draft));
         return true;
     }
 
@@ -320,6 +325,10 @@ public final class MatchDrafts {
     }
 
     private void sendDraftInvites(Player challenger, MatchDraft draft) {
+        if (draft.mode.pure() && matchmaking.isBusy(challenger.uuid())) {
+            cancelDraft(draft, "the challenger is already in another match setup");
+            return;
+        }
         List<String> inviteeUuids = new ArrayList<>();
 
         for (String uuid : draft.allPickedUuids()) {
@@ -441,6 +450,10 @@ public final class MatchDrafts {
     }
 
     private void launchDraft(MatchDraft draft) {
+        if (draft.mode.pure() && matchmaking.mapVetoes.blocks(draft.allPickedUuids(), draft.map)) {
+            cancelDraft(draft, "the chosen map was vetoed");
+            return;
+        }
         List<List<Player>> rosters = new ArrayList<>();
 
         if (draft.mode == MatchMode.TEAMS || draft.mode.pure()) {
