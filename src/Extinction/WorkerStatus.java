@@ -211,7 +211,8 @@ public final class WorkerStatus {
 
     // The label the sibling's handshake carries, or a port fallback for an older hub's file.
     private static String siblingLabel(File dir, int port) {
-        String label = MatchHandshake.read(new File(dir, MatchHandshake.FILE_NAME)).label;
-        return label.isEmpty() ? "Match on port " + port : label;
+        MatchHandshake handshake = MatchHandshake.read(new File(dir, MatchHandshake.FILE_NAME));
+        String label = handshake.label.isEmpty() ? "Match on port " + port : handshake.label;
+        return SpectateMenu.matchLabel(label, handshake.mode, handshake.map);
     }
 }

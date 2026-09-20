@@ -374,7 +374,7 @@ public final class Matches {
 
         for (MatchSlot slot : workers.values()) {
             if (isOngoing(slot)) {
-                duels.add(new ActiveDuel(slot.port, slot.label));
+                duels.add(new ActiveDuel(slot.port, SpectateMenu.matchLabel(slot.label, slot.mode, slot.map)));
             }
         }
 

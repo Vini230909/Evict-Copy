@@ -34,6 +34,19 @@ public final class SpectateMenu {
         }
     }
 
+    // Both /s lists show the roster above the game family, mode and optional Pure map.
+    static String matchLabel(String label, MatchMode mode, String map) {
+        String mapName = map == null || map.isBlank() ? null : map;
+        String oldSuffix = " [lightgray](" + Matchmaking.describe(mode, mapName) + ")[]";
+        if (mode != MatchMode.ONE_VS_ONE && label.endsWith(oldSuffix)) {
+            label = label.substring(0, label.length() - oldSuffix.length());
+        }
+
+        String modeName = mode.pure() ? mode.label().substring("Pure ".length()) : mode.label();
+        return label + "\n[lightgray]" + (mode.pure() ? "Pure" : "Extinction") + " • " + modeName
+                + (mapName == null ? "" : " on " + mapName.replace("[", "[[")) + "[]";
+    }
+
     // On a worker /s returns a spectator to the lobby (and refuses participants); on the hub it
     // opens the menu of matches to spectate.
     public void handleViewCommand(Player player) {
