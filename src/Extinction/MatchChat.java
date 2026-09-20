@@ -1,4 +1,5 @@
-package Extinction.duel;
+// Chat on a match worker: Ranked keeps global chat for the duelists and routes everyone else to /t.
+package Extinction;
 
 import arc.util.CommandHandler;
 import mindustry.Vars;
@@ -6,25 +7,15 @@ import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
 
-/**
- * Duel-worker chat routing. In most modes chat is untouched; a mode that
- * {@link Extinction.duel.modes.DuelMode#restrictsSpectatorChat() restricts
- * spectator chat} (Ranked) keeps global chat for the two duelists only and
- * routes everyone else - viewers and casting admins - to the spectators' chat.
- * A casting admin still reaches global, but through an inverted /t.
- */
-public final class DuelChat {
+public final class MatchChat {
 
-    private final DuelWorker referee;
+    private final Referee referee;
 
-    public DuelChat(DuelWorker referee) {
+    public MatchChat(Referee referee) {
         this.referee = referee;
     }
 
-    /**
-     * Routes normal (global) chat. Only a spectator-chat-restricted mode does
-     * anything; every other mode leaves chat completely alone.
-     */
+    // Only a spectator-chat-restricted mode does anything; every other mode leaves chat alone.
     public void installChatFilter() {
         if (Vars.netServer == null) {
             return;
@@ -35,7 +26,7 @@ public final class DuelChat {
                 return message;
             }
 
-            if (!referee.duelMode().restrictsSpectatorChat()) {
+            if (!referee.matchMode().restrictsSpectatorChat()) {
                 return message;
             }
 
@@ -44,21 +35,14 @@ public final class DuelChat {
                 return message;
             }
 
-            // Viewers and casting admins alike have their normal chat sent to
-            // the spectators' chat instead of global.
+            // Viewers and casting admins alike go to the spectators' chat instead of global.
             sendTeamChat(player, message);
             return null;
         });
     }
 
-    /**
-     * Overrides vanilla /t. Normally plain team chat, but in a
-     * spectator-chat-restricted mode a casting admin's /t is inverted to reach
-     * global chat instead: their normal chat already goes to the spectators, so
-     * /t is how they broadcast to the two duelists and everyone else at once.
-     * Hub admins are admins here too - the hub syncs them into every worker
-     * (see {@link Extinction.data.AdminSync}).
-     */
+    // Overrides vanilla /t. In a restricted mode a casting admin's /t is inverted to reach global:
+    // their normal chat already goes to the spectators. Hub admins are admins here (AdminSync).
     public void registerTeamChatCommand(CommandHandler handler) {
         handler.<Player>register(
                 "t",
@@ -72,7 +56,7 @@ public final class DuelChat {
                     String message = args[0];
 
                     if (
-                            referee.duelMode().restrictsSpectatorChat()
+                            referee.matchMode().restrictsSpectatorChat()
                                     && !referee.isParticipant(player.uuid())
                                     && player.admin
                     ) {

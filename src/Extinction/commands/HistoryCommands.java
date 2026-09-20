@@ -11,7 +11,7 @@ import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
 import mindustry.ui.Menus;
-import Extinction.duel.MatchMode;
+import Extinction.MatchMode;
 import Extinction.data.PlayerDataManager;
 import Extinction.PlayerNameFormatter;
 

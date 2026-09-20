@@ -17,7 +17,6 @@ public final class ClientCommands {
     private final InviteManager invites;
     private final RoundEndCommands roundEnd;
     private final RoundTimeCommands roundTime;
-    private final DuelCommands duels;
     private final HistoryCommands history;
     private final InfoCommands info;
     private final BanCommands bans;
@@ -30,7 +29,6 @@ public final class ClientCommands {
             InviteManager invites,
             RoundEndCommands roundEnd,
             RoundTimeCommands roundTime,
-            DuelCommands duels,
             HistoryCommands history,
             InfoCommands info,
             BanCommands bans,
@@ -42,7 +40,6 @@ public final class ClientCommands {
         this.invites = invites;
         this.roundEnd = roundEnd;
         this.roundTime = roundTime;
-        this.duels = duels;
         this.history = history;
         this.info = info;
         this.bans = bans;
@@ -56,7 +53,6 @@ public final class ClientCommands {
         invites.registerClientCommands(handler);
         roundEnd.registerClientCommands(handler);
         roundTime.registerClientCommands(handler);
-        duels.registerClientCommands(handler);
         history.registerClientCommands(handler);
         info.registerClientCommands(handler);
         bans.registerClientCommands(handler);

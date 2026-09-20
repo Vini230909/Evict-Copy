@@ -13,7 +13,6 @@ import Extinction.moderation.ban.BanManager;
 import Extinction.moderation.lock.PlayerLock;
 import Extinction.moderation.vpn.VpnScan;
 import Extinction.discord.DiscordStatusReporter;
-import Extinction.duel.DuelServerManager;
 
 import arc.util.CommandHandler;
 import arc.util.Log;
@@ -40,7 +39,6 @@ public final class ConsoleCommands {
     private final EvictTerrainGenerator terrain;
     private final TeamManager teamManager;
     private final PlayerDataManager playerDataManager;
-    private final DuelServerManager duelServerManager;
     private final RestartManager restartManager;
 
     /** Null on a duel worker, which never reports to Discord. */
@@ -76,7 +74,6 @@ public final class ConsoleCommands {
             EvictTerrainGenerator terrain,
             TeamManager teamManager,
             PlayerDataManager playerDataManager,
-            DuelServerManager duelServerManager,
             RestartManager restartManager,
             DiscordStatusReporter discordStatusReporter,
             BanLogReporter banLogReporter,
@@ -92,7 +89,6 @@ public final class ConsoleCommands {
         this.terrain = terrain;
         this.teamManager = teamManager;
         this.playerDataManager = playerDataManager;
-        this.duelServerManager = duelServerManager;
         this.restartManager = restartManager;
         this.discordStatusReporter = discordStatusReporter;
         this.banLogReporter = banLogReporter;
@@ -122,13 +118,6 @@ public final class ConsoleCommands {
                         ctx.str("action", "").trim().toLowerCase(),
                         ctx.str("value", "").trim()
                 ));
-
-        commands.command("matchstatus").console()
-                .description("The worker pool: its settings, the active match servers and who is in them.")
-                .run(ctx -> {
-                    Log.info("[EvictMapGenerator] duel server: @", settings.compactDuelServerSettings());
-                    duelServerManager.logStatus();
-                });
 
         commands.command("playerinfo").console()
                 .args("query:text?")
@@ -398,8 +387,8 @@ public final class ConsoleCommands {
             Log.info("[EvictMapGenerator] Discord chat mirror:");
 
             for (String line : chatLogReporter.statusLines(
-                    settings.duelServerPort(),
-                    settings.duelMaxWorkers()
+                    Config.duelServerPort,
+                    Config.duelMaxWorkers
             )) {
                 Log.info("[EvictMapGenerator]   @", line);
             }
@@ -433,8 +422,8 @@ public final class ConsoleCommands {
 
                 chatLogReporter.setupChannels(
                         value,
-                        settings.duelServerPort(),
-                        settings.duelMaxWorkers(),
+                        Config.duelServerPort,
+                        Config.duelMaxWorkers,
                         lines -> {
                             for (String line : lines) {
                                 Log.info("[EvictMapGenerator] @", line);
@@ -503,8 +492,8 @@ public final class ConsoleCommands {
             return;
         }
 
-        int basePort = settings.duelServerPort();
-        int lastPort = basePort + settings.duelMaxWorkers() - 1;
+        int basePort = Config.duelServerPort;
+        int lastPort = basePort + Config.duelMaxWorkers - 1;
 
         if (value.isEmpty()) {
             Log.err("[EvictMapGenerator] Use: chatlog @ <channel-id/off>", port);

@@ -2,7 +2,7 @@ package Extinction.data;
 
 import arc.util.Log;
 import mindustry.gen.Player;
-import Extinction.duel.DuelServerManager;
+import Extinction.WorkerFolder;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -12,7 +12,7 @@ import java.util.Set;
 
 /**
  * Worker-side admin recognition. A spawned duel worker has no access to the
- * hub's own admin list, so {@link DuelServerManager} writes the hub admins into
+ * hub's own admin list, so {@link WorkerFolder} writes the hub admins into
  * the worker's config at spawn and this reads them back: a hub admin joining a
  * match server keeps their powers there.
  * The hub is the only writer; a worker only reads. On the hub the set stays

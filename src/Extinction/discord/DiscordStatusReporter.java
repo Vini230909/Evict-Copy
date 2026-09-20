@@ -8,7 +8,7 @@ import mindustry.net.Administration;
 import Extinction.RestartManager;
 import Extinction.core.util.PluginLog;
 import Extinction.data.PlayerDataManager;
-import Extinction.duel.DuelServerManager;
+import Extinction.Matches;
 import Extinction.gameplay.WaveExtinction;
 import Extinction.gen.EvictSettings;
 import Extinction.round.TeamManager;
@@ -54,7 +54,7 @@ public final class DiscordStatusReporter {
     private final PlayerDataManager playerDataManager;
     private final TeamManager teamManager;
     private final WaveExtinction extinction;
-    private final DuelServerManager duelServerManager;
+    private final Matches pool;
     private final RestartManager restartManager;
 
     private final DiscordWebhook webhook;
@@ -70,14 +70,14 @@ public final class DiscordStatusReporter {
             PlayerDataManager playerDataManager,
             TeamManager teamManager,
             WaveExtinction extinction,
-            DuelServerManager duelServerManager,
+            Matches pool,
             RestartManager restartManager
     ) {
         this.settings = settings;
         this.playerDataManager = playerDataManager;
         this.teamManager = teamManager;
         this.extinction = extinction;
-        this.duelServerManager = duelServerManager;
+        this.pool = pool;
         this.restartManager = restartManager;
 
         // The webhook thread cannot write the settings file: the main thread
@@ -231,7 +231,7 @@ public final class DiscordStatusReporter {
      * mutating what it reads, and the offline message uses almost none of it.
      */
     private StatusSnapshot capture(boolean online) {
-        int duelPlayers = duelServerManager.connectedDuelPlayers();
+        int duelPlayers = pool.connectedDuelPlayers();
         List<StatusSnapshot.Match> matches = captureMatches();
 
         return new StatusSnapshot(
@@ -245,7 +245,7 @@ public final class DiscordStatusReporter {
                 extinction.hasBegun(),
                 restartManager.isQueued(),
                 matches.size(),
-                settings.duelMaxWorkers(),
+                Extinction.Config.duelMaxWorkers,
                 matches,
                 ladder,
                 System.currentTimeMillis() / 1000L
@@ -255,7 +255,7 @@ public final class DiscordStatusReporter {
     private List<StatusSnapshot.Match> captureMatches() {
         List<StatusSnapshot.Match> matches = new ArrayList<>();
 
-        for (DuelServerManager.MatchStatus status : duelServerManager.matchStatuses()) {
+        for (Matches.MatchStatus status : pool.matchStatuses()) {
             List<List<String>> teams = new ArrayList<>();
 
             for (List<String> roster : status.teamNames()) {

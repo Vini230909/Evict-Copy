@@ -28,10 +28,6 @@ import Extinction.gameplay.RulesApplier;
 import Extinction.gameplay.AttackManager;
 import Extinction.gameplay.WaveExtinction;
 import Extinction.discord.DiscordStatusReporter;
-import Extinction.duel.DuelChat;
-import Extinction.duel.DuelServerManager;
-import Extinction.duel.DuelWorker;
-import Extinction.duel.modes.DuelMode;
 import Extinction.commands.*;
 import Extinction.core.util.MessageIdFilter;
 import Extinction.core.util.PluginLog;
@@ -84,9 +80,9 @@ public class EvictMapPlugin extends Plugin {
     private final TeamManager teamManager =
             new TeamManager(this::handleVictory);
 
-    private final DuelWorker duelWorkerReferee = new DuelWorker();
+    private final Referee duelWorkerReferee = new Referee();
 
-    private final DuelChat duelChat = new DuelChat(duelWorkerReferee);
+    private final MatchChat duelChat = new MatchChat(duelWorkerReferee);
 
     private final AttritionManager attritionManager =
             new AttritionManager(teamManager, settings);
@@ -134,22 +130,18 @@ public class EvictMapPlugin extends Plugin {
                     duelWorker ? chatLogFile::append : chatLogReporter::hubLine
             );
 
-    private final DuelServerManager duelServerManager =
-            new DuelServerManager(
-                    settings,
-                    playerDataManager,
-                    this::seedBan,
-                    chatLogReporter
-            );
+    // The hub's match worker pool; inert on a worker (its copied settings blank the ip).
+    private final Matches matches =
+            new Matches(playerDataManager, this::seedBan, chatLogReporter);
 
     private final Extinction.metrics.MetricsReporter metricsReporter =
             new Extinction.metrics.MetricsReporter(
-                    () -> duelServerManager.activeDuels().size(),
-                    duelServerManager::connectedDuelPlayers
+                    () -> matches.activeDuels().size(),
+                    matches::connectedDuelPlayers
             );
 
-    private final DuelCommands duelCommands =
-            new DuelCommands(duelServerManager, duelWorkerReferee);
+    private final Matchmaking matchmaking = new Matchmaking(matches);
+    private final SpectateMenu spectateMenu = new SpectateMenu(matches, duelWorkerReferee);
 
     private final HistoryCommands historyCommands =
             new HistoryCommands(playerDataManager);
@@ -180,7 +172,6 @@ public class EvictMapPlugin extends Plugin {
                     inviteManager,
                     roundEndCommands,
                     roundTimeCommands,
-                    duelCommands,
                     historyCommands,
                     infoCommands,
                     banCommands,
@@ -198,7 +189,7 @@ public class EvictMapPlugin extends Plugin {
      */
     private final RestartManager restartManager =
             new RestartManager(
-                    () -> duelServerManager.activeDuels().size(),
+                    () -> matches.activeDuels().size(),
                     Groups.player::size,
                     teamManager::roundRuntimeMillis,
                     this::exitHubProcess
@@ -216,7 +207,7 @@ public class EvictMapPlugin extends Plugin {
                     playerDataManager,
                     teamManager,
                     waveExtinction,
-                    duelServerManager,
+                    matches,
                     restartManager
             );
 
@@ -345,7 +336,6 @@ public class EvictMapPlugin extends Plugin {
                     terrainGenerator,
                     teamManager,
                     playerDataManager,
-                    duelServerManager,
                     restartManager,
                     duelWorker ? null : discordStatusReporter,
                     duelWorker ? null : banLogReporter,
@@ -393,7 +383,7 @@ public class EvictMapPlugin extends Plugin {
             // startup bring every existing duel-worker folder onto the current
             // jar. This keeps idle workers off a version-mismatched server
             // without deleting the folders and losing their logs.
-            duelServerManager.refreshWorkerJars();
+            WorkerFolder.refreshJars();
 
             // Hub only: one live status message in Discord. Workers must stay
             // out of it - they would all edit the same message.
@@ -469,7 +459,7 @@ public class EvictMapPlugin extends Plugin {
                 // FFA and Teams matches keep running after a surrender, so
                 // the surrendered hexes need their Fallen backup cores back;
                 // 1v1/Training/Sandbox end right away and leave them derelict.
-                DuelMode workerMatchMode = duelWorkerReferee.duelMode();
+                MatchMode workerMatchMode = duelWorkerReferee.matchMode();
                 teamManager.setDuelSurrenderRestoresFallenCores(
                         workerMatchMode.restoresFallenCoresOnSurrender()
                 );
@@ -483,7 +473,7 @@ public class EvictMapPlugin extends Plugin {
 
                 if (workerMatchMode.allowsSpectatorInvites()) {
                     inviteManager.enableSandboxJoinMode(
-                            duelWorkerReferee::addSandboxParticipant
+                            duelWorkerReferee.sandbox::addParticipant
                     );
                 }
             }
@@ -492,7 +482,7 @@ public class EvictMapPlugin extends Plugin {
 
             // A sandbox session plays with infinite resources; applyRules
             // resets the flag, so re-apply it after every rules pass.
-            if (duelWorker && duelWorkerReferee.duelMode().infiniteResources()) {
+            if (duelWorker && duelWorkerReferee.matchMode().infiniteResources()) {
                 Vars.state.rules.infiniteResources = true;
             }
         });
@@ -517,7 +507,7 @@ public class EvictMapPlugin extends Plugin {
             // their worker instead of being onboarded into the FFA round.
             if (
                     !duelWorker
-                            && duelServerManager.tryReturnToActiveDuel(event.player)
+                            && matches.tryReturnToActiveDuel(event.player)
             ) {
                 // Still written down if they came through a VPN.
                 guarded("vpn scan", () -> vpnScan.handlePlayerJoin(event.player, null));
@@ -537,7 +527,7 @@ public class EvictMapPlugin extends Plugin {
                         "[accent]Spectating this match. Use [white]/s[accent] to return to the lobby.[]"
                 );
 
-                if (duelWorkerReferee.duelMode().allowsSpectatorInvites()) {
+                if (duelWorkerReferee.matchMode().allowsSpectatorInvites()) {
                     event.player.sendMessage(
                             "[accent]This is a sandbox - use [white]/invite[accent] to ask to join it.[]"
                     );
@@ -590,7 +580,8 @@ public class EvictMapPlugin extends Plugin {
         Events.on(PlayerLeave.class, event -> {
             guarded("playerData leave", () -> playerDataManager.handlePlayerLeave(event.player));
             guarded("invite leave", () -> inviteManager.handlePlayerLeave(event.player));
-            guarded("duelCommands leave", () -> duelCommands.handlePlayerLeave(event.player));
+            guarded("matchmaking leave", () -> matchmaking.handlePlayerLeave(event.player));
+            guarded("spectate leave", () -> spectateMenu.handlePlayerLeave(event.player));
             guarded("history leave", () -> historyCommands.handlePlayerLeave(event.player));
             guarded("info leave", () -> infoCommands.handlePlayerLeave(event.player));
             guarded("ban leave", () -> banCommands.handlePlayerLeave(event.player));
@@ -663,7 +654,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.14.0. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.14.3. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
@@ -809,7 +800,7 @@ public class EvictMapPlugin extends Plugin {
      * harmlessly: the victory resolves right after from the unchanged rosters.
      */
     private void freeEliminatedDuelTeam(Team team) {
-        DuelMode workerMode = duelWorkerReferee.duelMode();
+        MatchMode workerMode = duelWorkerReferee.matchMode();
 
         if (!workerMode.eliminatesWipedTeams()) {
             return;
@@ -824,7 +815,7 @@ public class EvictMapPlugin extends Plugin {
                 teamManager.assignSpectator(member);
                 member.sendMessage(
                         "[scarlet]You are out of the "
-                                + workerMode.mode().label()
+                                + workerMode.label()
                                 + " match.[] [accent]You are now spectating - use [white]/s[accent] to return to the lobby.[]"
                 );
             }
@@ -852,7 +843,7 @@ public class EvictMapPlugin extends Plugin {
         advertisedPlayerCountRefreshedAtMillis = Time.millis();
 
         int total =
-                Groups.player.size() + duelServerManager.connectedDuelPlayers();
+                Groups.player.size() + matches.connectedDuelPlayers();
 
         if (total != advertisedPlayerCount) {
             advertisedPlayerCount = total;
@@ -867,7 +858,8 @@ public class EvictMapPlugin extends Plugin {
         // /free, and no locked account in any /play picker (an invite is a
         // menu, which the lock's command gate cannot refuse).
         freeCommands.registerClientCommands(handler);
-        duelCommands.excludeFromPickers(player -> playerLock.isLocked(player.uuid()));
+        matchmaking.excludeFromPickers(player -> playerLock.isLocked(player.uuid()));
+        Extinction.commands.Player.register(handler, matchmaking, spectateMenu);
 
         // On a duel worker, replace vanilla /t so a ranked match can invert it
         // for casting admins. The hub keeps vanilla /t untouched. Registering
@@ -880,7 +872,7 @@ public class EvictMapPlugin extends Plugin {
     @Override
     public void registerServerCommands(CommandHandler handler) {
         consoleCommands.register(handler);
-        Console.register(handler);
+        Console.register(handler, matches);
     }
 
     /**

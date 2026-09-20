@@ -2,6 +2,7 @@
 package Extinction.commands;
 
 import Extinction.Config;
+import Extinction.Matches;
 import Extinction.WordFilter;
 import Extinction.core.cmd.Commands;
 import Extinction.core.util.PluginLog;
@@ -13,8 +14,15 @@ public final class Console {
     private Console() {
     }
 
-    public static void register(CommandHandler handler) {
+    public static void register(CommandHandler handler, Matches matches) {
         Commands commands = new Commands();
+
+        commands.command("matchstatus").console()
+                .description("The worker pool: its settings, the active match servers and who is in them.")
+                .run(ctx -> {
+                    PluginLog.info("duel server: @", duelServerSettings());
+                    matches.logStatus();
+                });
 
         commands.command("wordfilter").console()
                 .args("action:string?", "text:text?")
@@ -66,5 +74,18 @@ public final class Console {
                 });
 
         commands.installConsole(handler);
+    }
+
+    // "<ip> ports a-b (n workers, map=m)", or "not set" while /play is off.
+    private static String duelServerSettings() {
+        if (Config.duelServerIp.isBlank()) {
+            return "not set";
+        }
+
+        int lastPort = Config.duelServerPort + Config.duelMaxWorkers - 1;
+
+        return Config.duelServerIp
+                + " ports " + Config.duelServerPort + "-" + lastPort
+                + " (" + Config.duelMaxWorkers + " workers, map=" + Config.duelWorkerMap + ")";
     }
 }

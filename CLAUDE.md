@@ -5,13 +5,13 @@ procedurally generated hex map. Runs on a dedicated server; clients install noth
 Extinction started as a copy of the retired Evict plugin, so the code still says
 "Evict" in many places; the project's name is Extinction.
 
-Current version **1.14.0** — `plugin.json` `version` and the startup revision string
+Current version **1.14.3** — `plugin.json` `version` and the startup revision string
 in `EvictMapPlugin` must always match.
 
 One jar, two roles:
 - **Hub** — the normal FFA server players connect to.
 - **Worker** — an on-demand match server launched with `-Devict.duelWorker=true`;
-  runs the normal game plus the `DuelWorker` referee for one `/play` match and
+  runs the normal game plus the `Referee` for one `/play` match and
   self-terminates (`System.exit`) when empty.
 
 ## Read first, every session
@@ -37,7 +37,7 @@ Build after every code change; fix compile errors immediately.
 
 Deploy is done by the owner: copy the jar into the server's `config/mods/` and
 restart — nothing else. `duel-workers/` must **not** be deleted: every worker spawn
-re-copies `config/mods` into its folder and `refreshWorkerJars()` updates stale
+re-copies `config/mods` into its folder and `WorkerFolder.refreshJars()` updates stale
 server jars on hub startup, so workers pick up a new plugin automatically. The
 server console is not a shell: set the port with `config port <n>`, host with
 `host evict-map pvp`; `oregen auto` defaults ON, so hosting auto-generates a round.

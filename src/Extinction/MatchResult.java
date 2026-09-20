@@ -1,4 +1,5 @@
-package Extinction.duel.ipc;
+// The worker -> hub result file (result.properties): mode, winner and loser uuids, reason.
+package Extinction;
 
 import Extinction.core.io.PropertiesFile;
 
@@ -7,24 +8,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
-/**
- * The worker&rarr;hub match result contract ({@code result.properties}), as one
- * typed value instead of scattered {@code getProperty}/{@code setProperty} calls
- * on both sides of the process boundary.
- *
- * <p>Wire keys: {@code mode}, {@code winner.uuid} / {@code winner.uuids},
- * {@code loser.uuid} / {@code loser.uuids}, {@code reason}. The single
- * {@code *.uuid} keys carry the first roster member for readers that only need a
- * representative; the {@code *.uuids} keys carry the whole comma-separated list.
- */
-public final class DuelResult {
+public final class MatchResult {
 
     private final String modeId;
     private final List<String> winnerUuids;
     private final List<String> loserUuids;
     private final String reason;
 
-    public DuelResult(
+    public MatchResult(
             String modeId,
             List<String> winnerUuids,
             List<String> loserUuids,
@@ -36,7 +27,7 @@ public final class DuelResult {
         this.reason = reason == null ? "" : reason;
     }
 
-    /** The raw mode id, or {@code fallback} when it was absent/blank. */
+    // The raw mode id, or the fallback when it was absent/blank.
     public String modeId(String fallback) {
         return modeId.isBlank() ? fallback : modeId;
     }
@@ -49,7 +40,7 @@ public final class DuelResult {
         return loserUuids;
     }
 
-    /** The representative winner uuid ({@code winner.uuid}), or {@code ""}. */
+    // The representative winner (winner.uuid), or "".
     public String firstWinner() {
         return winnerUuids.isEmpty() ? "" : winnerUuids.get(0);
     }
@@ -62,6 +53,7 @@ public final class DuelResult {
         return reason.isBlank() ? "?" : reason;
     }
 
+    // winner.uuid / loser.uuid carry the first roster member; *.uuids the whole comma list.
     public void write(File file) {
         Properties properties = new Properties();
         properties.setProperty("mode", modeId);
@@ -73,9 +65,9 @@ public final class DuelResult {
         PropertiesFile.save(file, properties, "Evict duel result");
     }
 
-    public static DuelResult read(File file) {
+    public static MatchResult read(File file) {
         Properties properties = PropertiesFile.load(file);
-        return new DuelResult(
+        return new MatchResult(
                 PropertiesFile.getString(properties, "mode", "").trim(),
                 readList(properties, "winner.uuids", "winner.uuid"),
                 readList(properties, "loser.uuids", "loser.uuid"),
@@ -83,7 +75,7 @@ public final class DuelResult {
         );
     }
 
-    /** Prefers the comma list; falls back to the single uuid; drops blanks. */
+    // Prefers the comma list; falls back to the single uuid; drops blanks.
     private static List<String> readList(Properties p, String listKey, String singleKey) {
         List<String> result = new ArrayList<>();
         String list = PropertiesFile.getString(p, listKey, "").trim();

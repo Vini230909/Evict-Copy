@@ -7,7 +7,7 @@ import mindustry.gen.Call;
 import mindustry.gen.Player;
 import Extinction.core.cmd.CommandContext;
 import Extinction.core.cmd.Commands;
-import Extinction.duel.DuelWorker;
+import Extinction.Referee;
 import Extinction.round.TeamManager;
 
 /**
@@ -23,7 +23,7 @@ public final class RoundEndCommands {
             10f * 60f * 60f;
 
     private final TeamManager teamManager;
-    private final DuelWorker duelWorkerReferee;
+    private final Referee duelWorkerReferee;
 
     /**
      * On a duel worker `/die` is always available (no leader or opening-period
@@ -36,7 +36,7 @@ public final class RoundEndCommands {
 
     public RoundEndCommands(
             TeamManager teamManager,
-            DuelWorker duelWorkerReferee
+            Referee duelWorkerReferee
     ) {
         this.teamManager = teamManager;
         this.duelWorkerReferee = duelWorkerReferee;
@@ -76,7 +76,7 @@ public final class RoundEndCommands {
         // Sandbox /die is owner-only (it ends the room); guests are told to use
         // /s. It must not surrender the shared sandbox team, so intercept before
         // the normal surrender path.
-        if (duelWorker && duelWorkerReferee.handleSandboxDie(player)) {
+        if (duelWorker && duelWorkerReferee.sandbox.handleDie(player)) {
             return;
         }
 

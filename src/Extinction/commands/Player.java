@@ -1,0 +1,37 @@
+// Player commands: one entry each, nothing else. Registered by EvictMapPlugin.
+package Extinction.commands;
+
+import Extinction.Matchmaking;
+import Extinction.SpectateMenu;
+import Extinction.core.cmd.Commands;
+
+import arc.util.CommandHandler;
+
+public final class Player {
+
+    private Player() {
+    }
+
+    public static void register(CommandHandler handler, Matchmaking matchmaking, SpectateMenu spectate) {
+        Commands commands = new Commands();
+
+        commands.command("play").client()
+                .description("Start a match: Unranked, 1v1, Teams, Random Teams, FFA, Training or Sandbox.")
+                .run(ctx -> matchmaking.openModeMenu(ctx.sender()));
+
+        // Aliases are their own rows so /help folds them into their target's row.
+        commands.command("p").client()
+                .description("Alias for /play.")
+                .run(ctx -> matchmaking.openModeMenu(ctx.sender()));
+
+        commands.command("spectate").client()
+                .description("Spectate an ongoing match; while spectating, switch matches or return to the lobby.")
+                .run(ctx -> spectate.handleViewCommand(ctx.sender()));
+
+        commands.command("s").client()
+                .description("Alias for /spectate.")
+                .run(ctx -> spectate.handleViewCommand(ctx.sender()));
+
+        commands.installClient(handler);
+    }
+}
