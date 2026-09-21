@@ -23,7 +23,6 @@ import mindustry.game.Team;
 import mindustry.gen.Player;
 import mindustry.mod.Plugin;
 import mindustry.world.blocks.storage.CoreBlock;
-import Extinction.gameplay.AttritionManager;
 import Extinction.gameplay.WaveExtinction;
 import Extinction.discord.DiscordStatusReporter;
 import Extinction.commands.*;
@@ -82,8 +81,7 @@ public class EvictMapPlugin extends Plugin {
 
     private final MatchChat duelChat = new MatchChat(duelWorkerReferee);
 
-    private final AttritionManager attritionManager =
-            new AttritionManager(teamManager, settings);
+    private final Attrition attrition = new Attrition(teamManager);
 
     private final InviteManager inviteManager =
             new InviteManager(teamManager);
@@ -582,7 +580,7 @@ public class EvictMapPlugin extends Plugin {
                 return;
             }
 
-            teamManager.coreCapture().handleCoreChange(coreBuild, attritionManager);
+            teamManager.coreCapture().handleCoreChange(coreBuild, attrition);
         });
 
         Events.run(Trigger.update, () -> {
@@ -597,7 +595,7 @@ public class EvictMapPlugin extends Plugin {
             // players are kept slow.
             playerLock.update();
 
-            attritionManager.update();
+            attrition.update();
             fullAssault.update();
             waveExtinction.update();
 
@@ -630,7 +628,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.7. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.8. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
@@ -684,8 +682,9 @@ public class EvictMapPlugin extends Plugin {
         // in the ServerControl constructor, which has already run by now.
         MessageIdFilter.install();
 
-        settings.load();
+        // Config first: the settings' startup line prints values that now live in Config.
         Config.load();
+        settings.load();
         adminSync.load();
 
         // A duel worker has no player database of its own: it reads the hub's
@@ -856,7 +855,7 @@ public class EvictMapPlugin extends Plugin {
 
         teamManager.beginRound(round.slots(), round.filledSlots(), seed);
         playerDataManager.beginRound();
-        attritionManager.beginRound();
+        attrition.beginRound();
         fullAssault.beginRound();
         inviteManager.beginRound();
         roundEnd.beginRound();

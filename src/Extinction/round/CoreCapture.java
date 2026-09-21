@@ -12,7 +12,7 @@ import mindustry.game.Team;
 import mindustry.world.Block;
 import mindustry.world.Tile;
 import mindustry.world.blocks.storage.CoreBlock.CoreBuild;
-import Extinction.gameplay.AttritionManager;
+import Extinction.Attrition;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -92,10 +92,10 @@ public final class CoreCapture {
      * hex = the hex being captured, defender = who owned the core,
      * attacker = who destroyed it, serial = which round this belongs to.
      */
-    private record Capture(HexSlot hex, Team defender, Team attacker, long serial, AttritionManager attrition) {
+    private record Capture(HexSlot hex, Team defender, Team attacker, long serial, Attrition attrition) {
     }
 
-    public void handleCoreChange(CoreBuild core, AttritionManager attrition) {
+    public void handleCoreChange(CoreBuild core, Attrition attrition) {
         if (
                 !team.isRoundActiveForSystems()
                         || team.isCaptureSuppressed()
@@ -178,7 +178,7 @@ public final class CoreCapture {
         }
 
         int removed = explodeCore(c.hex.x, c.hex.y, true, null);
-        c.attrition.handleCoreExplosionAttrition(c.hex.x, c.hex.y);
+        c.attrition.onCoreCaptured(c.hex.x, c.hex.y);
 
         Log.info(
                 "[EvictMapGenerator] Cleared @ synthetic buildings from hex (@,@).",

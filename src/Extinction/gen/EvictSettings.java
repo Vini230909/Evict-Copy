@@ -84,15 +84,6 @@ public final class EvictSettings {
     private static final int MIN_WATER_PATCH_TILES = 1;
     private static final int MAX_WATER_PATCH_TILES = 64;
 
-    /**
-     * Capture attrition keeps the tier-based percentages.
-     * Range attrition is intentionally one flat percentage for every unit.
-     */
-    private double coreAttritionTier1To3Percent = 40d;
-    private double coreAttritionTier4Percent = 18d;
-    private double coreAttritionTier5Percent = 9d;
-    private double rangeAttritionPercent = 20d;
-
     private double fullWallPercent = 25d;
     private double smallWallPercent = 25d;
     private double openPercent = 25d;
@@ -232,44 +223,6 @@ public final class EvictSettings {
 
         try (FileInputStream input = new FileInputStream(SETTINGS_FILE)) {
             properties.load(input);
-
-            setCoreAttritionPercentagesWithoutSaving(
-                    readDouble(
-                            properties,
-                            "attrition.core.tier1To3Percent",
-                            readDouble(
-                                    properties,
-                                    "attrition.tier1To3Percent",
-                                    coreAttritionTier1To3Percent
-                            )
-                    ),
-                    readDouble(
-                            properties,
-                            "attrition.core.tier4Percent",
-                            readDouble(
-                                    properties,
-                                    "attrition.tier4Percent",
-                                    coreAttritionTier4Percent
-                            )
-                    ),
-                    readDouble(
-                            properties,
-                            "attrition.core.tier5Percent",
-                            readDouble(
-                                    properties,
-                                    "attrition.tier5Percent",
-                                    coreAttritionTier5Percent
-                            )
-                    )
-            );
-
-            setRangeAttritionPercentWithoutSaving(
-                    readDouble(
-                            properties,
-                            "attrition.range.percent",
-                            rangeAttritionPercent
-                    )
-            );
 
             setWallPercentagesWithoutSaving(
                     readDouble(
@@ -416,8 +369,8 @@ public final class EvictSettings {
 
             Log.info(
                     "[EvictMapGenerator] Loaded persistent settings: coreAttrition=@; rangeAttrition=@; walls=@; water=@; extinctionTerrain=@; unitBuildSpeed=@; bannedBlocks=@; ores=@",
-                    compactCoreAttritionSettings(),
-                    compactRangeAttritionSettings(),
+                    Extinction.Attrition.coreSummary(),
+                    Extinction.Attrition.rangeSummary(),
                     compactWallSettings(),
                     compactWaterSettings(),
                     compactExtinctionTerrainSettings(),
@@ -431,20 +384,6 @@ public final class EvictSettings {
                     exception
             );
         }
-    }
-
-    public void setCoreAttritionPercentages(
-            double tier1To3,
-            double tier4,
-            double tier5
-    ) {
-        setCoreAttritionPercentagesWithoutSaving(tier1To3, tier4, tier5);
-        save();
-    }
-
-    public void setRangeAttritionPercent(double percent) {
-        setRangeAttritionPercentWithoutSaving(percent);
-        save();
     }
 
     public void setWallPercentages(
@@ -728,26 +667,6 @@ public final class EvictSettings {
         return waterSettings;
     }
 
-    public double coreAttritionTier1To3Chance() {
-        return coreAttritionTier1To3Percent / 100d;
-    }
-
-    public double coreAttritionTier4Chance() {
-        return coreAttritionTier4Percent / 100d;
-    }
-
-    public double coreAttritionTier5Chance() {
-        return coreAttritionTier5Percent / 100d;
-    }
-
-    public float coreAttritionRadius() { return 40; }
-
-    public double rangeAttritionChance() {
-        return rangeAttritionPercent / 100d;
-    }
-
-    public float rangeAttritionInterval() { return 5f * 60f; }
-
     double fullWallChance() {
         return fullWallPercent / 100d;
     }
@@ -770,16 +689,6 @@ public final class EvictSettings {
 
     double unitBuildSpeedMultiplier() {
         return unitBuildSpeedMultiplier;
-    }
-
-    public String compactCoreAttritionSettings() {
-        return "T1-T3=" + formatPercent(coreAttritionTier1To3Percent)
-                + "%, T4=" + formatPercent(coreAttritionTier4Percent)
-                + "%, T5=" + formatPercent(coreAttritionTier5Percent) + "%";
-    }
-
-    public String compactRangeAttritionSettings() {
-        return formatPercent(rangeAttritionPercent) + "%";
     }
 
     public String compactWallSettings() {
@@ -832,24 +741,6 @@ public final class EvictSettings {
                 + ", octaves=" + formatNumber(ore.octaves())
                 + ", falloff=" + formatNumber(ore.falloff())
                 + ")";
-    }
-
-    private void setCoreAttritionPercentagesWithoutSaving(
-            double tier1To3,
-            double tier4,
-            double tier5
-    ) {
-        coreAttritionTier1To3Percent =
-                validatePercentage("T1-T3 core attrition", tier1To3);
-        coreAttritionTier4Percent =
-                validatePercentage("T4 core attrition", tier4);
-        coreAttritionTier5Percent =
-                validatePercentage("T5 core attrition", tier5);
-    }
-
-    private void setRangeAttritionPercentWithoutSaving(double percent) {
-        rangeAttritionPercent =
-                validatePercentage("Range attrition", percent);
     }
 
     private void setWallPercentagesWithoutSaving(
@@ -1170,22 +1061,6 @@ public final class EvictSettings {
 
         // Starts from the file so keys owned by Config (or unknown here) are never dropped.
         Properties properties = PropertiesFile.load(SETTINGS_FILE);
-        properties.setProperty(
-                "attrition.core.tier1To3Percent",
-                Double.toString(coreAttritionTier1To3Percent)
-        );
-        properties.setProperty(
-                "attrition.core.tier4Percent",
-                Double.toString(coreAttritionTier4Percent)
-        );
-        properties.setProperty(
-                "attrition.core.tier5Percent",
-                Double.toString(coreAttritionTier5Percent)
-        );
-        properties.setProperty(
-                "attrition.range.percent",
-                Double.toString(rangeAttritionPercent)
-        );
         properties.setProperty(
                 "wall.fullPercent",
                 Double.toString(fullWallPercent)
