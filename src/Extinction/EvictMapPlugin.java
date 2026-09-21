@@ -102,8 +102,7 @@ public class EvictMapPlugin extends Plugin {
                     teamManager
             );
 
-    private final RoundEndCommands roundEndCommands =
-            new RoundEndCommands(teamManager, duelWorkerReferee);
+    private final RoundEnd roundEnd = new RoundEnd(teamManager, duelWorkerReferee);
 
     private final RoundTimeCommands roundTimeCommands =
             new RoundTimeCommands(teamManager);
@@ -170,7 +169,6 @@ public class EvictMapPlugin extends Plugin {
             new ClientCommands(
                     attackManager,
                     inviteManager,
-                    roundEndCommands,
                     roundTimeCommands,
                     historyCommands,
                     infoCommands,
@@ -667,7 +665,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.0. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.1. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
@@ -861,7 +859,7 @@ public class EvictMapPlugin extends Plugin {
         // menu, which the lock's command gate cannot refuse).
         freeCommands.registerClientCommands(handler);
         matchmaking.excludeFromPickers(player -> playerLock.isLocked(player.uuid()));
-        Extinction.commands.Player.register(handler, matchmaking, spectateMenu, duelWorkerReferee);
+        Extinction.commands.Player.register(handler, matchmaking, spectateMenu, duelWorkerReferee, roundEnd);
 
         // On a duel worker, replace vanilla /t so a ranked match can invert it
         // for casting admins. The hub keeps vanilla /t untouched. Registering
@@ -896,7 +894,7 @@ public class EvictMapPlugin extends Plugin {
         attritionManager.beginRound();
         attackManager.beginRound();
         inviteManager.beginRound();
-        roundEndCommands.beginRound();
+        roundEnd.beginRound();
         roundTimeCommands.beginRound();
         waveExtinction.beginRound();
         assignConnectedPlayersAndRecordStats();

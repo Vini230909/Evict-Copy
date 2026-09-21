@@ -4,6 +4,7 @@ package Extinction.commands;
 import Extinction.Matchmaking;
 import Extinction.PureMatch;
 import Extinction.Referee;
+import Extinction.RoundEnd;
 import Extinction.SpectateMenu;
 import Extinction.core.cmd.Commands;
 
@@ -18,16 +19,25 @@ public final class Player {
             CommandHandler handler,
             Matchmaking matchmaking,
             SpectateMenu spectate,
-            Referee referee
+            Referee referee,
+            RoundEnd roundEnd
     ) {
         Commands commands = new Commands();
 
-        // A Pure worker has no Evict round for the normal /die; registered last, so it replaces it.
-        if (PureMatch.pureWorker()) {
-            commands.command("die").client()
-                    .description("Leader only: surrender your complete team after 10 minutes.")
-                    .run(ctx -> PureMatch.surrender(referee, ctx.sender()));
-        }
+        // A Pure worker has no Evict round: its /die surrenders the map team instead.
+        commands.command("die").client()
+                .description("Leader only: surrender your complete team after 10 minutes.")
+                .run(ctx -> {
+                    if (PureMatch.pureWorker()) {
+                        PureMatch.surrender(referee, ctx.sender());
+                    } else {
+                        roundEnd.surrender(ctx.sender());
+                    }
+                });
+
+        commands.command("over").client()
+                .description("End an eligible round immediately.")
+                .run(ctx -> roundEnd.endEarly(ctx.sender()));
 
         commands.command("play").client()
                 .description("Start an Extinction or Pure match.")

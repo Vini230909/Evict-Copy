@@ -15,7 +15,6 @@ public final class ClientCommands {
 
     private final AttackManager fullassault;
     private final InviteManager invites;
-    private final RoundEndCommands roundEnd;
     private final RoundTimeCommands roundTime;
     private final HistoryCommands history;
     private final InfoCommands info;
@@ -27,7 +26,6 @@ public final class ClientCommands {
     public ClientCommands(
             AttackManager fullassault,
             InviteManager invites,
-            RoundEndCommands roundEnd,
             RoundTimeCommands roundTime,
             HistoryCommands history,
             InfoCommands info,
@@ -38,7 +36,6 @@ public final class ClientCommands {
     ) {
         this.fullassault = fullassault;
         this.invites = invites;
-        this.roundEnd = roundEnd;
         this.roundTime = roundTime;
         this.history = history;
         this.info = info;
@@ -51,7 +48,6 @@ public final class ClientCommands {
     public void register(CommandHandler handler) {
         fullassault.registerClientCommands(handler);
         invites.registerClientCommands(handler);
-        roundEnd.registerClientCommands(handler);
         roundTime.registerClientCommands(handler);
         history.registerClientCommands(handler);
         info.registerClientCommands(handler);
