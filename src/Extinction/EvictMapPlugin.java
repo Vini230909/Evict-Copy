@@ -161,9 +161,6 @@ public class EvictMapPlugin extends Plugin {
     private final LeaderboardCommands leaderboardCommands =
             new LeaderboardCommands(playerDataManager);
 
-    private final HelpCommands helpCommands =
-            new HelpCommands();
-
     private final ClientCommands clientCommands =
             new ClientCommands(
                     attackManager,
@@ -172,8 +169,7 @@ public class EvictMapPlugin extends Plugin {
                     infoCommands,
                     banCommands,
                     jsCommands,
-                    leaderboardCommands,
-                    helpCommands
+                    leaderboardCommands
             );
 
     private final EvictTerrainGenerator terrainGenerator =
@@ -663,7 +659,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.2. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.3. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 

@@ -1,11 +1,10 @@
-src/Extinction/EvictMapPlugin.java 1103
+src/Extinction/EvictMapPlugin.java 1099
 src/Extinction/PlayerNameFormatter.java 75
 src/Extinction/RestartManager.java 294
 src/Extinction/commands/BanCommands.java 289
-src/Extinction/commands/ClientCommands.java 57
+src/Extinction/commands/ClientCommands.java 51
 src/Extinction/commands/ConsoleCommands.java 925
 src/Extinction/commands/FreeCommands.java 195
-src/Extinction/commands/HelpCommands.java 266
 src/Extinction/commands/HistoryCommands.java 355
 src/Extinction/commands/InfoCommands.java 301
 src/Extinction/commands/JsCommands.java 103

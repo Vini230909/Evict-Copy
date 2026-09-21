@@ -1,6 +1,7 @@
 // Player commands: one entry each, nothing else. Registered by EvictMapPlugin.
 package Extinction.commands;
 
+import Extinction.Help;
 import Extinction.Matchmaking;
 import Extinction.PureMatch;
 import Extinction.Referee;
@@ -65,6 +66,12 @@ public final class Player {
         commands.command("s").client()
                 .description("Alias for /spectate.")
                 .run(ctx -> spectate.handleViewCommand(ctx.sender()));
+
+        // Replaces vanilla /help: CommandHandler.register drops the earlier command of the same name.
+        commands.command("help").client()
+                .args("page:string?")
+                .description("Lists commands.")
+                .run(ctx -> ctx.reply(Help.page(handler, ctx.raw())));
 
         commands.installClient(handler);
     }

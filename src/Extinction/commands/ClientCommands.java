@@ -20,7 +20,6 @@ public final class ClientCommands {
     private final BanCommands bans;
     private final JsCommands js;
     private final LeaderboardCommands leaderboard;
-    private final HelpCommands help;
 
     public ClientCommands(
             AttackManager fullassault,
@@ -29,8 +28,7 @@ public final class ClientCommands {
             InfoCommands info,
             BanCommands bans,
             JsCommands js,
-            LeaderboardCommands leaderboard,
-            HelpCommands help
+            LeaderboardCommands leaderboard
     ) {
         this.fullassault = fullassault;
         this.invites = invites;
@@ -39,7 +37,6 @@ public final class ClientCommands {
         this.bans = bans;
         this.js = js;
         this.leaderboard = leaderboard;
-        this.help = help;
     }
 
     public void register(CommandHandler handler) {
@@ -50,8 +47,5 @@ public final class ClientCommands {
         bans.registerClientCommands(handler);
         js.registerClientCommands(handler);
         leaderboard.registerClientCommands(handler);
-
-        // Register last so the filtered menu replaces vanilla /help.
-        help.registerClientCommands(handler);
     }
 }
