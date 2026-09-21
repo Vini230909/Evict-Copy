@@ -255,7 +255,7 @@ public final class InfoCommands {
         }
 
         message.append("\n[accent]Total playtime: [white]")
-                .append(ConsoleCommands.formatDuration(info.totalPlaytimeMillis()))
+                .append(RoundTime.formatDuration(info.totalPlaytimeMillis()))
                 .append("[]")
                 .append("\n[accent]Normal: [white]")
                 .append(info.normalWins())

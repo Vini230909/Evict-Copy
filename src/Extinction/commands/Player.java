@@ -5,6 +5,7 @@ import Extinction.Matchmaking;
 import Extinction.PureMatch;
 import Extinction.Referee;
 import Extinction.RoundEnd;
+import Extinction.RoundTime;
 import Extinction.SpectateMenu;
 import Extinction.core.cmd.Commands;
 
@@ -20,7 +21,8 @@ public final class Player {
             Matchmaking matchmaking,
             SpectateMenu spectate,
             Referee referee,
-            RoundEnd roundEnd
+            RoundEnd roundEnd,
+            RoundTime roundTime
     ) {
         Commands commands = new Commands();
 
@@ -38,6 +40,10 @@ public final class Player {
         commands.command("over").client()
                 .description("End an eligible round immediately.")
                 .run(ctx -> roundEnd.endEarly(ctx.sender()));
+
+        commands.command("time").client()
+                .description("Show round time and your time since first joining this round.")
+                .run(ctx -> ctx.reply(roundTime.show(ctx.sender())));
 
         commands.command("play").client()
                 .description("Start an Extinction or Pure match.")

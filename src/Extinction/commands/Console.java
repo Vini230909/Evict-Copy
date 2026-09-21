@@ -3,6 +3,7 @@ package Extinction.commands;
 
 import Extinction.Config;
 import Extinction.Matches;
+import Extinction.RoundTime;
 import Extinction.WordFilter;
 import Extinction.core.cmd.Commands;
 import Extinction.core.util.PluginLog;
@@ -14,7 +15,7 @@ public final class Console {
     private Console() {
     }
 
-    public static void register(CommandHandler handler, Matches matches) {
+    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime) {
         Commands commands = new Commands();
 
         commands.command("matchstatus").console()
@@ -22,6 +23,26 @@ public final class Console {
                 .run(ctx -> {
                     PluginLog.info("duel server: @", duelServerSettings());
                     matches.logStatus();
+                });
+
+        commands.command("round").console()
+                .args("action:string?", "value:string?")
+                .description("This round: team assignment and elapsed time; 'time <seconds>' sets the time.")
+                .run(ctx -> {
+                    String action = ctx.str("action", "").trim().toLowerCase();
+                    String value = ctx.str("value", "").trim();
+
+                    switch (action) {
+                        case "" -> roundTime.logStatus();
+                        case "time" -> {
+                            if (value.isEmpty()) {
+                                roundTime.logElapsed();
+                            } else {
+                                roundTime.setElapsed(value);
+                            }
+                        }
+                        default -> PluginLog.err("Use: round [time <seconds>]");
+                    }
                 });
 
         commands.command("wordfilter").console()

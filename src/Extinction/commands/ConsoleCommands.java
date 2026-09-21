@@ -111,14 +111,6 @@ public final class ConsoleCommands {
                         ctx.str("value", "").trim()
                 ));
 
-        commands.command("round").console()
-                .args("action:string?", "value:string?")
-                .description("This round: team assignment and elapsed time; 'time <seconds>' sets the time.")
-                .run(ctx -> handleRoundCommand(
-                        ctx.str("action", "").trim().toLowerCase(),
-                        ctx.str("value", "").trim()
-                ));
-
         commands.command("playerinfo").console()
                 .args("query:text?")
                 .description("Look up a stored player by name or UUID; no argument lists all.")
@@ -204,18 +196,6 @@ public final class ConsoleCommands {
                 Log.info("[EvictMapGenerator] Automatic generation is now @.", runtime.autoGenerate ? "ON" : "OFF");
             }
             default -> Log.err("[EvictMapGenerator] Use: oregen [gen [seed] | seed <n/random> | auto on/off]");
-        }
-    }
-
-    /** round: no argument prints the team assignment and the elapsed time; 'time <seconds>' sets it. */
-    private void handleRoundCommand(String action, String value) {
-        switch (action) {
-            case "" -> {
-                teamManager.logStatus();
-                handleSetTimeCommand(new String[0]);
-            }
-            case "time" -> handleSetTimeCommand(value.isEmpty() ? new String[0] : new String[]{value});
-            default -> Log.err("[EvictMapGenerator] Use: round [time <seconds>]");
         }
     }
 
@@ -794,24 +774,6 @@ public final class ConsoleCommands {
         terrain.logStatus();
     }
 
-    private void handleSetTimeCommand(String[] args) {
-        if (args.length == 0) {
-            Log.info("[EvictMapGenerator] time = @", teamManager.roundRuntimeMillis() / 1000);
-            return;
-        }
-
-        long parsedTime;
-        try {
-            parsedTime = Long.parseLong(args[0]);
-        } catch (NumberFormatException e) {
-            Log.err("[EvictMapGenerator] time must be a long");
-            return;
-        }
-
-        Log.info("[EvictMapGenerator] setting time to @", parsedTime);
-        teamManager.setElapsedTimeMillis(parsedTime * 1000);
-    }
-
     private void addCoreCap(String[] args) {
         final int additional;
 
@@ -920,7 +882,7 @@ public final class ConsoleCommands {
         return info.lastName()
                 + " | uuid=" + info.uuid()
                 + " | names=" + String.join(", ", info.knownNames())
-                + " | playtime=" + formatDuration(info.totalPlaytimeMillis());
+                + " | playtime=" + RoundTime.formatDuration(info.totalPlaytimeMillis());
     }
 
     private String plainPlayerInfo(PlayerDataManager.PlayerInfo info) {
@@ -928,7 +890,7 @@ public final class ConsoleCommands {
                 + " | uuid=" + info.uuid()
                 + " | names=" + String.join(", ", info.knownNames())
                 + ipInfo(info.uuid())
-                + " | totalPlaytime=" + formatDuration(info.totalPlaytimeMillis())
+                + " | totalPlaytime=" + RoundTime.formatDuration(info.totalPlaytimeMillis())
                 + " | normalWins=" + info.normalWins()
                 + " | normalLosses=" + info.normalLosses()
                 + " | normalPlayed=" + info.normalMatchesPlayed()
@@ -959,25 +921,5 @@ public final class ConsoleCommands {
 
         return " | lastIP=" + vanilla.lastIP
                 + " | knownIPs=" + vanilla.ips.toString(", ");
-    }
-
-    static String formatDuration(long durationMillis) {
-        long totalSeconds = Math.max(0L, durationMillis / 1000L);
-        long hours = totalSeconds / 3600L;
-        long minutes = (totalSeconds % 3600L) / 60L;
-        long seconds = totalSeconds % 60L;
-
-        StringBuilder result = new StringBuilder();
-
-        if (hours > 0L) {
-            result.append(hours).append("h ");
-        }
-
-        if (hours > 0L || minutes > 0L) {
-            result.append(minutes).append("m ");
-        }
-
-        result.append(seconds).append("s");
-        return result.toString();
     }
 }

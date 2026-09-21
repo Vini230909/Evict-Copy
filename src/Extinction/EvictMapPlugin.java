@@ -104,8 +104,7 @@ public class EvictMapPlugin extends Plugin {
 
     private final RoundEnd roundEnd = new RoundEnd(teamManager, duelWorkerReferee);
 
-    private final RoundTimeCommands roundTimeCommands =
-            new RoundTimeCommands(teamManager);
+    private final RoundTime roundTime = new RoundTime(teamManager);
 
     /**
      * Hub-only Discord chat mirror (one channel for the hub, one per worker
@@ -169,7 +168,6 @@ public class EvictMapPlugin extends Plugin {
             new ClientCommands(
                     attackManager,
                     inviteManager,
-                    roundTimeCommands,
                     historyCommands,
                     infoCommands,
                     banCommands,
@@ -569,7 +567,7 @@ public class EvictMapPlugin extends Plugin {
             // after it - above all the referee's disconnect-pause bookkeeping,
             // which has to see every join or a paused match never resumes.
             guarded("playerData join", () -> playerDataManager.handlePlayerJoin(event.player));
-            guarded("roundTime join", () -> roundTimeCommands.handlePlayerJoin(event.player));
+            guarded("roundTime join", () -> roundTime.handlePlayerJoin(event.player));
 
             // Hub: the lock gate looks at the join first. A locked account
             // stays on the Fallen team; a first join through a VPN is parked
@@ -665,7 +663,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.1. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.2. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
@@ -859,7 +857,7 @@ public class EvictMapPlugin extends Plugin {
         // menu, which the lock's command gate cannot refuse).
         freeCommands.registerClientCommands(handler);
         matchmaking.excludeFromPickers(player -> playerLock.isLocked(player.uuid()));
-        Extinction.commands.Player.register(handler, matchmaking, spectateMenu, duelWorkerReferee, roundEnd);
+        Extinction.commands.Player.register(handler, matchmaking, spectateMenu, duelWorkerReferee, roundEnd, roundTime);
 
         // On a duel worker, replace vanilla /t so a ranked match can invert it
         // for casting admins. The hub keeps vanilla /t untouched. Registering
@@ -872,7 +870,7 @@ public class EvictMapPlugin extends Plugin {
     @Override
     public void registerServerCommands(CommandHandler handler) {
         consoleCommands.register(handler);
-        Console.register(handler, matches);
+        Console.register(handler, matches, roundTime);
     }
 
     /**
@@ -895,7 +893,7 @@ public class EvictMapPlugin extends Plugin {
         attackManager.beginRound();
         inviteManager.beginRound();
         roundEnd.beginRound();
-        roundTimeCommands.beginRound();
+        roundTime.beginRound();
         waveExtinction.beginRound();
         assignConnectedPlayersAndRecordStats();
 
@@ -1056,7 +1054,7 @@ public class EvictMapPlugin extends Plugin {
     }
 
     private void assignConnectedPlayersAndRecordStats() {
-        roundTimeCommands.rememberConnectedPlayers();
+        roundTime.rememberConnectedPlayers();
         teamManager.assignConnectedPlayers(this::isDuelSpectator, this::isLockedOrHeld);
     }
 
