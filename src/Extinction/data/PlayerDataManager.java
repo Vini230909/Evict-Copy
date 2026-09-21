@@ -29,7 +29,7 @@ public final class PlayerDataManager {
 
     private static final File DATABASE_FILE =
             new File("config/evict-players.db");
-    private static final int DEFAULT_ELO = EloCalculator.STARTING_ELO;
+    private static final int DEFAULT_ELO = Extinction.Elo.STARTING_ELO;
 
     /**
      * Database every read goes to. Defaults to this server's own DB. A duel
@@ -137,7 +137,7 @@ public final class PlayerDataManager {
     /**
      * Records a finished ranked 1v1: a win for the winner, a loss for the loser,
      * a played match for both, the ELO swing on both profiles (see
-     * {@link EloCalculator}) and one ranked row in the match history carrying the
+     * {@link Extinction.Elo}) and one ranked row in the match history carrying the
      * before/after ratings. Called on the hub once a worker reports its result;
      * no-op if either UUID is missing (e.g. the worker could not identify a
      * winner). Only the Ranked mode reaches this path; casual 1v1 goes through
@@ -163,7 +163,7 @@ public final class PlayerDataManager {
             String winnerName,
             String loserUuid,
             String loserName,
-            Consumer<EloCalculator.Result> outcome
+            Consumer<Extinction.Elo.Result> outcome
     ) {
         if (
                 winnerUuid == null
@@ -177,7 +177,7 @@ public final class PlayerDataManager {
         long playedAtMillis = System.currentTimeMillis();
 
         enqueue(() -> {
-            EloCalculator.Result elo = applyRankedResult(
+            Extinction.Elo.Result elo = applyRankedResult(
                     winnerUuid,
                     safeName(winnerName),
                     loserUuid,
@@ -580,7 +580,7 @@ public final class PlayerDataManager {
      * win/loss counters for every casual 1v1, so upgraded databases carry
      * casual games inside their ranked numbers. The repair recounts both
      * counter sets from the match history and replays every ranked match
-     * through {@link EloCalculator} so ratings match the recorded games.
+     * through {@link Extinction.Elo} so ratings match the recorded games.
      */
     private static final int STATS_REPAIR_VERSION = 1;
 
@@ -616,7 +616,7 @@ public final class PlayerDataManager {
     /**
      * Rebuilds every player's normal and ranked counters from the duel_matches
      * rows and replays all ranked matches chronologically through
-     * {@link EloCalculator}, rewriting each ranked row's before/after ratings
+     * {@link Extinction.Elo}, rewriting each ranked row's before/after ratings
      * and every player's current and peak ELO. Normal counts every competitive
      * duel row - 1v1, Teams and /play FFA (Training/Sandbox never leave rows);
      * ranked counts only ranked rows. Playtime and any legacy columns are
@@ -690,8 +690,8 @@ public final class PlayerDataManager {
                         case "ranked" -> {
                             StatTally winner = tally(tallies, row.winnerUuids());
                             StatTally loser = tally(tallies, row.loserUuids());
-                            EloCalculator.Result result =
-                                    EloCalculator.apply(winner.elo, loser.elo);
+                            Extinction.Elo.Result result =
+                                    Extinction.Elo.apply(winner.elo, loser.elo);
 
                             winner.rankedWins++;
                             loser.rankedLosses++;
@@ -900,7 +900,7 @@ public final class PlayerDataManager {
         }
     }
 
-    private EloCalculator.Result applyRankedResult(
+    private Extinction.Elo.Result applyRankedResult(
             String winnerUuid,
             String winnerName,
             String loserUuid,
@@ -910,7 +910,7 @@ public final class PlayerDataManager {
         try (Connection connection = connect()) {
             // Read both ratings before either is written, so the calculation
             // uses the pre-match ratings for both players.
-            EloCalculator.Result elo = EloCalculator.apply(
+            Extinction.Elo.Result elo = Extinction.Elo.apply(
                     currentElo(connection, winnerUuid),
                     currentElo(connection, loserUuid)
             );
@@ -969,7 +969,7 @@ public final class PlayerDataManager {
     }
 
     /**
-     * The stored current ELO for a UUID, or {@link EloCalculator#STARTING_ELO}
+     * The stored current ELO for a UUID, or {@link Extinction.Elo#STARTING_ELO}
      * if the player has no row yet (they are treated as an unrated newcomer).
      */
     private int currentElo(Connection connection, String uuid)
@@ -988,7 +988,7 @@ public final class PlayerDataManager {
             }
         }
 
-        return EloCalculator.STARTING_ELO;
+        return Extinction.Elo.STARTING_ELO;
     }
 
     /**

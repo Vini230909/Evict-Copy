@@ -3,6 +3,7 @@ package Extinction.commands;
 
 import Extinction.Config;
 import Extinction.Matches;
+import Extinction.PlayerStats;
 import Extinction.RoundTime;
 import Extinction.WordFilter;
 import Extinction.core.cmd.Commands;
@@ -15,7 +16,7 @@ public final class Console {
     private Console() {
     }
 
-    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime) {
+    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime, PlayerStats playerStats) {
         Commands commands = new Commands();
 
         commands.command("matchstatus").console()
@@ -24,6 +25,16 @@ public final class Console {
                     PluginLog.info("duel server: @", duelServerSettings());
                     matches.logStatus();
                 });
+
+        commands.command("playerinfo").console()
+                .args("query:text?")
+                .description("Look up a stored player by name or UUID; no argument lists all.")
+                .run(ctx -> playerStats.log(ctx.str("query", "").trim()));
+
+        commands.command("elo").console()
+                .args("name/uuid:string", "value:string")
+                .description("Set a stored player's ranked ELO.")
+                .run(ctx -> playerStats.setElo(ctx.raw()));
 
         commands.command("round").console()
                 .args("action:string?", "value:string?")

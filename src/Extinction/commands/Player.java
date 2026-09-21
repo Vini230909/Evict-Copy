@@ -2,7 +2,10 @@
 package Extinction.commands;
 
 import Extinction.Help;
+import Extinction.History;
+import Extinction.Leaderboard;
 import Extinction.Matchmaking;
+import Extinction.PlayerStats;
 import Extinction.PureMatch;
 import Extinction.Referee;
 import Extinction.RoundEnd;
@@ -23,7 +26,10 @@ public final class Player {
             SpectateMenu spectate,
             Referee referee,
             RoundEnd roundEnd,
-            RoundTime roundTime
+            RoundTime roundTime,
+            History history,
+            PlayerStats playerStats,
+            Leaderboard leaderboard
     ) {
         Commands commands = new Commands();
 
@@ -66,6 +72,24 @@ public final class Player {
         commands.command("s").client()
                 .description("Alias for /spectate.")
                 .run(ctx -> spectate.handleViewCommand(ctx.sender()));
+
+        commands.command("history").client()
+                .description("Pick a player and view their Unranked, 1v1, Teams and FFA match history.")
+                .run(ctx -> history.openPicker(ctx.sender()));
+
+        commands.command("h").client()
+                .description("Alias for /history.")
+                .run(ctx -> history.openPicker(ctx.sender()));
+
+        commands.command("info").client()
+                .args("player:text?")
+                .description("View a player's stats and playtime. No name opens a picker.")
+                .run(ctx -> playerStats.show(ctx.sender(), ctx.str("player", "").trim()));
+
+        commands.command("top").client()
+                .args("count:int?")
+                .description("Show the top 1v1 players by ELO.")
+                .run(ctx -> leaderboard.show(ctx.sender(), ctx.getInt("count", Leaderboard.DEFAULT_COUNT)));
 
         // Replaces vanilla /help: CommandHandler.register drops the earlier command of the same name.
         commands.command("help").client()

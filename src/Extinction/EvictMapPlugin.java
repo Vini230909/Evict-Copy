@@ -141,11 +141,9 @@ public class EvictMapPlugin extends Plugin {
     private final Matchmaking matchmaking = new Matchmaking(matches);
     private final SpectateMenu spectateMenu = new SpectateMenu(matches, duelWorkerReferee);
 
-    private final HistoryCommands historyCommands =
-            new HistoryCommands(playerDataManager);
-
-    private final InfoCommands infoCommands =
-            new InfoCommands(playerDataManager);
+    private final History history = new History(playerDataManager);
+    private final PlayerStats playerStats = new PlayerStats(playerDataManager);
+    private final Leaderboard leaderboard = new Leaderboard(playerDataManager);
 
     /**
      * /ban works on the hub and on a match server; a worker's ban is applied
@@ -158,18 +156,12 @@ public class EvictMapPlugin extends Plugin {
     private final JsCommands jsCommands =
             new JsCommands();
 
-    private final LeaderboardCommands leaderboardCommands =
-            new LeaderboardCommands(playerDataManager);
-
     private final ClientCommands clientCommands =
             new ClientCommands(
                     attackManager,
                     inviteManager,
-                    historyCommands,
-                    infoCommands,
                     banCommands,
-                    jsCommands,
-                    leaderboardCommands
+                    jsCommands
             );
 
     private final EvictTerrainGenerator terrainGenerator =
@@ -587,8 +579,8 @@ public class EvictMapPlugin extends Plugin {
             guarded("invite leave", () -> inviteManager.handlePlayerLeave(event.player));
             guarded("matchmaking leave", () -> matchmaking.handlePlayerLeave(event.player));
             guarded("spectate leave", () -> spectateMenu.handlePlayerLeave(event.player));
-            guarded("history leave", () -> historyCommands.handlePlayerLeave(event.player));
-            guarded("info leave", () -> infoCommands.handlePlayerLeave(event.player));
+            guarded("history leave", () -> history.handlePlayerLeave(event.player));
+            guarded("info leave", () -> playerStats.handlePlayerLeave(event.player));
             guarded("ban leave", () -> banCommands.handlePlayerLeave(event.player));
             guarded("free leave", () -> freeCommands.handlePlayerLeave(event.player));
             guarded("duelWorker leave", () -> duelWorkerReferee.handlePlayerLeave(event.player));
@@ -659,7 +651,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.3. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.4. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
@@ -853,7 +845,7 @@ public class EvictMapPlugin extends Plugin {
         // menu, which the lock's command gate cannot refuse).
         freeCommands.registerClientCommands(handler);
         matchmaking.excludeFromPickers(player -> playerLock.isLocked(player.uuid()));
-        Extinction.commands.Player.register(handler, matchmaking, spectateMenu, duelWorkerReferee, roundEnd, roundTime);
+        Extinction.commands.Player.register(handler, matchmaking, spectateMenu, duelWorkerReferee, roundEnd, roundTime, history, playerStats, leaderboard);
 
         // On a duel worker, replace vanilla /t so a ranked match can invert it
         // for casting admins. The hub keeps vanilla /t untouched. Registering
@@ -866,7 +858,7 @@ public class EvictMapPlugin extends Plugin {
     @Override
     public void registerServerCommands(CommandHandler handler) {
         consoleCommands.register(handler);
-        Console.register(handler, matches, roundTime);
+        Console.register(handler, matches, roundTime, playerStats);
     }
 
     /**

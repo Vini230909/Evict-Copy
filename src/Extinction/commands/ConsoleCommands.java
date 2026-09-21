@@ -111,20 +111,10 @@ public final class ConsoleCommands {
                         ctx.str("value", "").trim()
                 ));
 
-        commands.command("playerinfo").console()
-                .args("query:text?")
-                .description("Look up a stored player by name or UUID; no argument lists all.")
-                .run(ctx -> showStoredPlayerInfo(ctx.str("query", "").trim()));
-
         commands.command("banplayer").console()
                 .args("name/uuid:text")
                 .description("Ban a stored player by name or UUID, online or not.")
                 .run(ctx -> handleBanCommand(ctx.str("name/uuid", "").trim()));
-
-        commands.command("elo").console()
-                .args("name/uuid:string", "value:string")
-                .description("Set a stored player's ranked ELO.")
-                .run(ctx -> handleEloCommand(ctx.raw()));
 
         commands.command("corecap").console()
                 .args("additional-per-core:int")
@@ -692,7 +682,7 @@ public final class ConsoleCommands {
             if (matches.size() > 1) {
                 Log.err("[EvictMapGenerator] '@' matches @ players; be more specific or use a UUID:", query, matches.size());
                 for (PlayerDataManager.PlayerInfo info : matches) {
-                    Log.info("[EvictMapGenerator] @", compactPlayerInfo(info));
+                    Log.info("[EvictMapGenerator] @", PlayerStats.compactLine(info));
                 }
                 return;
             }
@@ -809,117 +799,5 @@ public final class ConsoleCommands {
         extraCoreCapPerCore += additional;
 
         Log.info("Added " + additional + " unit cap per core. Total added bonus per core: " + extraCoreCapPerCore + ".");
-    }
-
-    private void handleEloCommand(String[] args) {
-        if (args.length < 2) {
-            Log.err("[EvictMapGenerator] Use: elo <name/uuid> <value>");
-            return;
-        }
-
-        int newElo;
-        try {
-            newElo = Integer.parseInt(args[1].trim());
-        } catch (NumberFormatException exception) {
-            Log.err("[EvictMapGenerator] ELO must be a whole number.");
-            return;
-        }
-
-        if (newElo < 0) {
-            Log.err("[EvictMapGenerator] ELO cannot be negative.");
-            return;
-        }
-
-        String query = args[0].trim();
-
-        playerDataManager.searchPlayerInfo(query, matches -> {
-            if (matches.isEmpty()) {
-                Log.err("[EvictMapGenerator] No stored players match '@'.", query);
-                return;
-            }
-
-            if (matches.size() > 1) {
-                Log.err("[EvictMapGenerator] '@' matches @ players; be more specific or use a UUID:", query, matches.size());
-                for (PlayerDataManager.PlayerInfo info : matches) {
-                    Log.info("[EvictMapGenerator] @", compactPlayerInfo(info));
-                }
-                return;
-            }
-
-            PlayerDataManager.PlayerInfo target = matches.get(0);
-            int previousElo = target.elo();
-
-            playerDataManager.setElo(target.uuid(), newElo, updated -> {
-                if (updated) {
-                    Log.info("[EvictMapGenerator] Set @'s ELO to @ (was @).", target.lastName(), newElo, previousElo);
-                } else {
-                    Log.err("[EvictMapGenerator] Could not update ELO for @.", target.lastName());
-                }
-            });
-        });
-    }
-
-    private void showStoredPlayerInfo(String query) {
-        playerDataManager.searchPlayerInfo(query, matches -> {
-            if (matches.isEmpty()) {
-                Log.err("[EvictMapGenerator] No stored players match '@'.", query);
-                return;
-            }
-
-            if (matches.size() == 1) {
-                Log.info("[EvictMapGenerator] @", plainPlayerInfo(matches.get(0)));
-                return;
-            }
-
-            Log.info("[EvictMapGenerator] Stored player matches (@):", matches.size());
-            for (PlayerDataManager.PlayerInfo info : matches) {
-                Log.info("[EvictMapGenerator] @", compactPlayerInfo(info));
-            }
-        });
-    }
-
-    private String compactPlayerInfo(PlayerDataManager.PlayerInfo info) {
-        return info.lastName()
-                + " | uuid=" + info.uuid()
-                + " | names=" + String.join(", ", info.knownNames())
-                + " | playtime=" + RoundTime.formatDuration(info.totalPlaytimeMillis());
-    }
-
-    private String plainPlayerInfo(PlayerDataManager.PlayerInfo info) {
-        return info.lastName()
-                + " | uuid=" + info.uuid()
-                + " | names=" + String.join(", ", info.knownNames())
-                + ipInfo(info.uuid())
-                + " | totalPlaytime=" + RoundTime.formatDuration(info.totalPlaytimeMillis())
-                + " | normalWins=" + info.normalWins()
-                + " | normalLosses=" + info.normalLosses()
-                + " | normalPlayed=" + info.normalMatchesPlayed()
-                + " | rankedWins=" + info.rankedWins()
-                + " | rankedLosses=" + info.rankedLosses()
-                + " | rankedPlayed=" + info.rankedMatchesPlayed()
-                + " | elo=" + info.elo()
-                + " | peakElo=" + info.peakElo();
-    }
-
-    /**
-     * The player's last and all known IPs for the console only (to feed
-     * {@code ban ip <ip>}). Nothing IP-related lives in the plugin's own DB -
-     * this reads Mindustry's built-in admin store, which already tracks every
-     * IP a UUID ever connected with.
-     */
-    private String ipInfo(String uuid) {
-        if (Vars.netServer == null) {
-            return "";
-        }
-
-        mindustry.net.Administration.PlayerInfo vanilla =
-                Vars.netServer.admins.getInfoOptional(uuid);
-
-        if (vanilla == null) {
-            return " | lastIP=never connected here";
-        }
-
-        return " | lastIP=" + vanilla.lastIP
-                + " | knownIPs=" + vanilla.ips.toString(", ");
     }
 }

@@ -1,4 +1,12 @@
-package Extinction.commands;
+// /history: pick a player, then page through their Ranked, 1v1, Teams and FFA matches.
+package Extinction;
+
+import Extinction.data.PlayerDataManager;
+
+import mindustry.gen.Call;
+import mindustry.gen.Groups;
+import mindustry.gen.Player;
+import mindustry.ui.Menus;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -6,33 +14,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import arc.util.CommandHandler;
-import mindustry.gen.Call;
-import mindustry.gen.Groups;
-import mindustry.gen.Player;
-import mindustry.ui.Menus;
-import Extinction.MatchMode;
-import Extinction.data.PlayerDataManager;
-import Extinction.PlayerNameFormatter;
-
-/**
- * /history (alias /h): first pick a player, then page through that player's
- * Ranked, 1v1, Teams and FFA matches.
- * A Ranked entry is win/lose from the picked player's perspective, both names,
- * and an elo line showing the points swing from that match. Casual 1v1, Teams
- * and FFA entries are unranked, so they show just win/lose with no elo line.
- * Training and Sandbox sessions leave no history.
- */
-public final class HistoryCommands {
+public final class History {
 
     private static final int ENTRIES_PER_PAGE = 10;
     private static final int PICKER_MENU_COLUMNS = 2;
 
-    /**
-     * Caps how many FFA participants an entry spells out before folding the
-     * rest into "+N more" - FFA has no participant cap, and a match with a
-     * lot of players in it used to render as one huge, broken-looking line.
-     */
+    // FFA has no participant cap; past this many names an entry folds the rest into "+N more".
     private static final int MAX_PARTICIPANT_NAMES = 4;
 
     // Pagination button option indices (row-major across the button grid).
@@ -43,39 +30,34 @@ public final class HistoryCommands {
     private static final int OPTION_LAST = 4;
     private static final int OPTION_CLOSE = 5;
 
-    private final PlayerDataManager playerDataManager;
+    // One viewer's open history: whose it is, the cached list and the page they are on.
+    private static final class View {
+        final String subjectUuid;
+        final String subjectName;
+        final List<PlayerDataManager.DuelMatch> matches;
+        int page;
+
+        View(String subjectUuid, String subjectName, List<PlayerDataManager.DuelMatch> matches) {
+            this.subjectUuid = subjectUuid;
+            this.subjectName = subjectName;
+            this.matches = matches;
+        }
+    }
+
+    private final PlayerDataManager playerData;
     private final int pickerMenuId;
     private final int historyMenuId;
 
-    /**
-     * Viewer UUID -> ordered player UUIDs shown in their picker.
-     */
-    private final Map<String, List<String>> pickerTargetsByViewerUuid =
-            new HashMap<>();
+    // Viewer UUID -> ordered player UUIDs shown in their picker.
+    private final Map<String, List<String>> pickerTargetsByViewerUuid = new HashMap<>();
 
-    /**
-     * Viewer UUID -> their open history view (subject + cached list + page).
-     */
-    private final Map<String, HistoryView> viewsByViewerUuid = new HashMap<>();
+    // Viewer UUID -> their open history view.
+    private final Map<String, View> viewsByViewerUuid = new HashMap<>();
 
-    public HistoryCommands(PlayerDataManager playerDataManager) {
-        this.playerDataManager = playerDataManager;
+    public History(PlayerDataManager playerData) {
+        this.playerData = playerData;
         this.pickerMenuId = Menus.registerMenu(this::handlePicker);
         this.historyMenuId = Menus.registerMenu(this::handleMenu);
-    }
-
-    void registerClientCommands(CommandHandler handler) {
-        handler.<Player>register(
-                "history",
-                "Pick a player and view their Unranked, 1v1, Teams and FFA match history.",
-                (args, player) -> openPicker(player)
-        );
-
-        handler.<Player>register(
-                "h",
-                "Alias for /history.",
-                (args, player) -> openPicker(player)
-        );
     }
 
     public void handlePlayerLeave(Player player) {
@@ -85,7 +67,8 @@ public final class HistoryCommands {
         }
     }
 
-    private void openPicker(Player player) {
+    // /history: a picker of the online players, two per row, Cancel at the bottom.
+    public void openPicker(Player player) {
         if (player == null) {
             return;
         }
@@ -132,27 +115,18 @@ public final class HistoryCommands {
             return;
         }
 
-        List<String> targetUuids =
-                pickerTargetsByViewerUuid.remove(player.uuid());
+        List<String> targetUuids = pickerTargetsByViewerUuid.remove(player.uuid());
 
-        if (
-                targetUuids == null
-                        || option < 0
-                        || option >= targetUuids.size()
-        ) {
+        if (targetUuids == null || option < 0 || option >= targetUuids.size()) {
             return;
         }
 
         String subjectUuid = targetUuids.get(option);
-        Player subject = Groups.player.find(
-                online -> online != null && online.uuid().equals(subjectUuid)
-        );
-        String subjectName = subject != null
-                ? PlayerNameFormatter.displayName(subject)
-                : subjectUuid;
+        Player subject = Groups.player.find(online -> online != null && online.uuid().equals(subjectUuid));
+        String subjectName = subject != null ? PlayerNameFormatter.displayName(subject) : subjectUuid;
 
-        playerDataManager.findDuelHistory(subjectUuid, matches -> {
-            HistoryView view = new HistoryView(subjectUuid, subjectName, matches);
+        playerData.findDuelHistory(subjectUuid, matches -> {
+            View view = new View(subjectUuid, subjectName, matches);
             viewsByViewerUuid.put(player.uuid(), view);
             showPage(player, view);
         });
@@ -163,7 +137,7 @@ public final class HistoryCommands {
             return;
         }
 
-        HistoryView view = viewsByViewerUuid.get(player.uuid());
+        View view = viewsByViewerUuid.get(player.uuid());
 
         if (view == null) {
             return;
@@ -191,7 +165,7 @@ public final class HistoryCommands {
         showPage(player, view);
     }
 
-    private void showPage(Player player, HistoryView view) {
+    private void showPage(Player player, View view) {
         List<PlayerDataManager.DuelMatch> matches = view.matches;
         int pages = pageCount(matches.size());
         view.page = Math.max(0, Math.min(view.page, pages - 1));
@@ -233,12 +207,8 @@ public final class HistoryCommands {
         );
     }
 
-    private String formatMatch(
-            String subjectUuid,
-            PlayerDataManager.DuelMatch match
-    ) {
-        // An FFA entry lists every participant with just win/lose below it -
-        // FFAs are unranked, so there is no elo line.
+    // Ranked shows the ELO swing; casual 1v1, Teams and FFA are unranked, so just win/lose.
+    private String formatMatch(String subjectUuid, PlayerDataManager.DuelMatch match) {
         if (MatchMode.FFA.id().equals(match.mode())) {
             String participants = PlayerNameFormatter.joinShortened(
                     List.of(match.participantNamesPacked().split("\n")),
@@ -250,8 +220,7 @@ public final class HistoryCommands {
                     + winLose(subjectUuid.equals(match.winnerUuid()));
         }
 
-        // A Teams entry shows both rosters (winners listed first); the uuid
-        // columns pack the whole roster, so membership decides win/lose.
+        // Teams packs whole rosters in the uuid columns (winners first), so membership decides win/lose.
         if (MatchMode.TEAMS.id().equals(match.mode())) {
             return "[lightgray]Teams[]\n"
                     + match.winnerName() + " [white]vs[] " + match.loserName()
@@ -263,8 +232,6 @@ public final class HistoryCommands {
         String subject = won ? match.winnerName() : match.loserName();
         String opponent = won ? match.loserName() : match.winnerName();
 
-        // Ranked 1v1 shows the ELO swing; casual 1v1 is unranked, so like Teams
-        // and FFA it shows just win/lose with no elo line.
         if (MatchMode.RANKED.id().equals(match.mode())) {
             int eloDelta = won
                     ? match.winnerEloAfter() - match.winnerEloBefore()
@@ -283,10 +250,7 @@ public final class HistoryCommands {
         return won ? "[green]win[]" : "[scarlet]lose[]";
     }
 
-    /**
-     * A signed, colored ELO swing: green gain, red loss, gray for no change
-     * (older 1v1 rows recorded before ELO was tracked carry a zero swing).
-     */
+    // Signed, coloured swing; gray zero for old 1v1 rows recorded before ELO was tracked.
     private static String formatEloDelta(int delta) {
         if (delta > 0) {
             return "[green]+" + delta + "[]";
@@ -313,7 +277,7 @@ public final class HistoryCommands {
         return false;
     }
 
-    private List<Player> onlinePlayers() {
+    private static List<Player> onlinePlayers() {
         List<Player> players = new ArrayList<>();
 
         Groups.player.each(player -> {
@@ -322,34 +286,11 @@ public final class HistoryCommands {
             }
         });
 
-        players.sort(
-                Comparator.comparing(
-                        Player::plainName,
-                        String.CASE_INSENSITIVE_ORDER
-                )
-        );
-
+        players.sort(Comparator.comparing(Player::plainName, String.CASE_INSENSITIVE_ORDER));
         return players;
     }
 
     private static int pageCount(int matchCount) {
         return Math.max(1, (matchCount + ENTRIES_PER_PAGE - 1) / ENTRIES_PER_PAGE);
-    }
-
-    private static final class HistoryView {
-        final String subjectUuid;
-        final String subjectName;
-        final List<PlayerDataManager.DuelMatch> matches;
-        int page;
-
-        HistoryView(
-                String subjectUuid,
-                String subjectName,
-                List<PlayerDataManager.DuelMatch> matches
-        ) {
-            this.subjectUuid = subjectUuid;
-            this.subjectName = subjectName;
-            this.matches = matches;
-        }
     }
 }

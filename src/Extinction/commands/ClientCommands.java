@@ -15,37 +15,25 @@ public final class ClientCommands {
 
     private final AttackManager fullassault;
     private final InviteManager invites;
-    private final HistoryCommands history;
-    private final InfoCommands info;
     private final BanCommands bans;
     private final JsCommands js;
-    private final LeaderboardCommands leaderboard;
 
     public ClientCommands(
             AttackManager fullassault,
             InviteManager invites,
-            HistoryCommands history,
-            InfoCommands info,
             BanCommands bans,
-            JsCommands js,
-            LeaderboardCommands leaderboard
+            JsCommands js
     ) {
         this.fullassault = fullassault;
         this.invites = invites;
-        this.history = history;
-        this.info = info;
         this.bans = bans;
         this.js = js;
-        this.leaderboard = leaderboard;
     }
 
     public void register(CommandHandler handler) {
         fullassault.registerClientCommands(handler);
         invites.registerClientCommands(handler);
-        history.registerClientCommands(handler);
-        info.registerClientCommands(handler);
         bans.registerClientCommands(handler);
         js.registerClientCommands(handler);
-        leaderboard.registerClientCommands(handler);
     }
 }
