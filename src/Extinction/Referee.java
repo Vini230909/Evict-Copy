@@ -18,7 +18,6 @@ import java.util.function.Supplier;
 import arc.Core;
 import arc.util.Align;
 import arc.util.Log;
-import arc.util.Time;
 import mindustry.Vars;
 import mindustry.core.GameState;
 import mindustry.game.Team;
@@ -31,7 +30,6 @@ public final class Referee {
     private static final File HANDSHAKE_FILE = new File(MatchHandshake.FILE_NAME);
     private static final File RESULT_FILE = new File("result.properties");
     private static final int STATUS_INTERVAL_SECONDS = 1;
-    private static final float RETURN_DELAY_TICKS = 5f * 60f;
     // One popup id, so each HUD update replaces the previous one; raised just above centre.
     private static final String HUD_ID = "duel-hud";
     private static final int HUD_RAISE = 220;
@@ -169,8 +167,7 @@ public final class Referee {
         }
     }
 
-    // Called once the worker has hosted its round. Vanilla reloads a Pure map after its game over;
-    // the second PlayEvent must not start the referee over.
+    // Called once the worker has hosted its round; another PlayEvent must not restart the referee.
     public void begin() {
         if (!active || begun) {
             return;
@@ -299,7 +296,7 @@ public final class Referee {
     }
 
     // Wired in place of the hub's round-victory handler: records the result, returns everyone.
-    // On a Pure worker vanilla's PvP game over calls this with its winner.
+    // Pure core counts (or an explicit game over) call this with the winning map team.
     public void handleVictory(Team winner) {
         if (!active || resolved) {
             return;
@@ -321,9 +318,8 @@ public final class Referee {
                         && isParticipant(player.uuid())
         );
 
-        List<String> winnerUuids = winnerPlayer != null
-                ? rosterOf(winnerPlayer.uuid())
-                : new ArrayList<>();
+        List<String> winnerUuids = mode.pure() ? pure.winnerUuids(winner)
+                : winnerPlayer != null ? rosterOf(winnerPlayer.uuid()) : new ArrayList<>();
 
         // Losers come from the full rosters, so eliminated (demoted) FFA players still count.
         List<String> loserUuids = new ArrayList<>();
@@ -338,17 +334,16 @@ public final class Referee {
 
         writeResult(winnerUuids, loserUuids, "victory");
 
-        String winnerName = winnerPlayer != null
+        String winnerName = !winnerUuids.isEmpty()
                 ? winningRosterNames(winnerUuids, winnerPlayer)
                 : "The winner";
 
-        Call.sendMessage(
-                "[accent]" + winnerName
-                        + "[accent] won the " + mode.label()
-                        + ". Returning to the lobby in 5 seconds...[]"
-        );
+        String outcome = mode.pure() && winnerUuids.isEmpty()
+                ? "The " + mode.label() + " match ended without a surviving roster."
+                : winnerName + "[accent] won the " + mode.label() + ".";
+        Call.sendMessage("[accent]" + outcome + " Returning to the lobby in 5 seconds...[]");
 
-        Time.run(RETURN_DELAY_TICKS, exit::returnPlayersToHub);
+        exit.scheduleReturnToHub();
 
         Log.info(
                 "[EvictMapGenerator] Match result (@): winner=@ loser=@.",
@@ -387,7 +382,7 @@ public final class Referee {
                     player -> player != null && player.uuid().equals(uuid)
             );
 
-            if (member == null) {
+            if (member == null && !mode.pure()) {
                 continue;
             }
 
@@ -395,7 +390,7 @@ public final class Referee {
                 names.append("[accent], ");
             }
 
-            names.append(PlayerNames.displayName(member));
+            names.append(member == null ? pause.nameOf(uuid) : PlayerNames.displayName(member));
         }
 
         return names.isEmpty()
@@ -440,7 +435,7 @@ public final class Referee {
                         + " session is over. Returning to the lobby in 5 seconds...[]"
         );
 
-        Time.run(RETURN_DELAY_TICKS, exit::returnPlayersToHub);
+        exit.scheduleReturnToHub();
 
         Log.info(
                 "[EvictMapGenerator] @ session ended (@).",

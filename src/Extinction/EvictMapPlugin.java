@@ -431,13 +431,6 @@ public class EvictMapPlugin extends Plugin {
             }
         });
 
-        // A Pure worker: vanilla PvP's game over names the winner, the referee does the rest.
-        Events.on(GameOverEvent.class, event -> {
-            if (duelWorker && duelWorkerReferee.matchMode().pure()) {
-                duelWorkerReferee.handleVictory(event.winner);
-            }
-        });
-
         Events.on(PlayerJoin.class, event -> {
             // First: a hit bans and kicks, so there is nothing to onboard.
             if (wordFilter.checkName(event.player)) {
@@ -605,7 +598,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.10. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.11. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 

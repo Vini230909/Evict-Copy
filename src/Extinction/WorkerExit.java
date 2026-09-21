@@ -98,6 +98,12 @@ public final class WorkerExit {
         return true;
     }
 
+    // A map reset clears Time.run tasks; returning players must survive both resets and pauses.
+    void scheduleReturnToHub() {
+        referee.status.write();
+        scheduler.schedule(() -> Core.app.post(this::returnPlayersToHub), 5, TimeUnit.SECONDS);
+    }
+
     void returnPlayersToHub() {
         if (hubIp == null || hubIp.isBlank()) {
             Log.err(
