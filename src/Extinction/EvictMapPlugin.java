@@ -152,16 +152,11 @@ public class EvictMapPlugin extends Plugin {
     private final BanCommands banCommands =
             new BanCommands(playerDataManager, !duelWorker, this::seedBan);
 
-    /** /js: the console's js command in chat, admin-only, hub and worker. */
-    private final JsCommands jsCommands =
-            new JsCommands();
-
     private final ClientCommands clientCommands =
             new ClientCommands(
                     attackManager,
                     inviteManager,
-                    banCommands,
-                    jsCommands
+                    banCommands
             );
 
     private final EvictTerrainGenerator terrainGenerator =
@@ -840,6 +835,7 @@ public class EvictMapPlugin extends Plugin {
     @Override
     public void registerClientCommands(CommandHandler handler) {
         clientCommands.register(handler);
+        Extinction.commands.Admin.register(handler);
 
         // /free, and no locked account in any /play picker (an invite is a
         // menu, which the lock's command gate cannot refuse).

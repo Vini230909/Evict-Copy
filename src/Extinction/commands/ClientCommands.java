@@ -16,24 +16,20 @@ public final class ClientCommands {
     private final AttackManager fullassault;
     private final InviteManager invites;
     private final BanCommands bans;
-    private final JsCommands js;
 
     public ClientCommands(
             AttackManager fullassault,
             InviteManager invites,
-            BanCommands bans,
-            JsCommands js
+            BanCommands bans
     ) {
         this.fullassault = fullassault;
         this.invites = invites;
         this.bans = bans;
-        this.js = js;
     }
 
     public void register(CommandHandler handler) {
         fullassault.registerClientCommands(handler);
         invites.registerClientCommands(handler);
         bans.registerClientCommands(handler);
-        js.registerClientCommands(handler);
     }
 }
