@@ -1,7 +1,6 @@
-src/Extinction/EvictMapPlugin.java 1069
-src/Extinction/RestartManager.java 294
+src/Extinction/EvictMapPlugin.java 1029
 src/Extinction/commands/BanCommands.java 279
-src/Extinction/commands/ConsoleCommands.java 803
+src/Extinction/commands/ConsoleCommands.java 779
 src/Extinction/commands/FreeCommands.java 195
 src/Extinction/core/cmd/Arg.java 46
 src/Extinction/core/cmd/ArgType.java 111

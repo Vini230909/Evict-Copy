@@ -4,6 +4,7 @@ package Extinction.commands;
 import Extinction.Config;
 import Extinction.Matches;
 import Extinction.PlayerStats;
+import Extinction.Restart;
 import Extinction.RoundTime;
 import Extinction.WordFilter;
 import Extinction.core.cmd.Commands;
@@ -16,7 +17,7 @@ public final class Console {
     private Console() {
     }
 
-    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime, PlayerStats playerStats) {
+    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime, PlayerStats playerStats, Restart restart) {
         Commands commands = new Commands();
 
         commands.command("matchstatus").console()
@@ -102,6 +103,18 @@ public final class Console {
                             }
                         }
                         default -> PluginLog.err("Usage: wordfilter [on/off/test <text>]");
+                    }
+                });
+
+        commands.command("restart").console()
+                .args("action:string?")
+                .description("Queue a graceful restart; 'cancel' drops it, 'now' exits.")
+                .run(ctx -> {
+                    switch (ctx.str("action", "").trim().toLowerCase()) {
+                        case "" -> restart.request();
+                        case "cancel" -> restart.cancel();
+                        case "now" -> restart.now();
+                        default -> PluginLog.err("Use: restart [cancel/now]");
                     }
                 });
 

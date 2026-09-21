@@ -5,7 +5,7 @@ import arc.util.Time;
 import mindustry.Vars;
 import mindustry.gen.Groups;
 import mindustry.net.Administration;
-import Extinction.RestartManager;
+import Extinction.Restart;
 import Extinction.core.util.PluginLog;
 import Extinction.data.PlayerDataManager;
 import Extinction.Matches;
@@ -55,7 +55,7 @@ public final class DiscordStatusReporter {
     private final TeamManager teamManager;
     private final WaveExtinction extinction;
     private final Matches pool;
-    private final RestartManager restartManager;
+    private final Restart restart;
 
     private final DiscordWebhook webhook;
 
@@ -71,14 +71,14 @@ public final class DiscordStatusReporter {
             TeamManager teamManager,
             WaveExtinction extinction,
             Matches pool,
-            RestartManager restartManager
+            Restart restart
     ) {
         this.settings = settings;
         this.playerDataManager = playerDataManager;
         this.teamManager = teamManager;
         this.extinction = extinction;
         this.pool = pool;
-        this.restartManager = restartManager;
+        this.restart = restart;
 
         // The webhook thread cannot write the settings file: the main thread
         // saves it too. Hop back before persisting a newly created message id.
@@ -243,7 +243,7 @@ public final class DiscordStatusReporter {
                 teamManager.roundRuntimeMillis() / 1000L,
                 (long) extinction.secondsUntilExtinction(),
                 extinction.hasBegun(),
-                restartManager.isQueued(),
+                restart.isQueued(),
                 matches.size(),
                 Extinction.Config.duelMaxWorkers,
                 matches,

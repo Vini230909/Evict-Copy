@@ -5,7 +5,7 @@ procedurally generated hex map. Runs on a dedicated server; clients install noth
 Extinction started as a copy of the retired Evict plugin, so the code still says
 "Evict" in many places; the project's name is Extinction.
 
-Current version **1.15.8** — `plugin.json` `version` and the startup revision string
+Current version **1.15.9** — `plugin.json` `version` and the startup revision string
 in `EvictMapPlugin` must always match.
 
 One jar, two roles:

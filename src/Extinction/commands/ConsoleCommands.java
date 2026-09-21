@@ -39,7 +39,6 @@ public final class ConsoleCommands {
     private final EvictTerrainGenerator terrain;
     private final TeamManager teamManager;
     private final PlayerDataManager playerDataManager;
-    private final RestartManager restartManager;
 
     /** Null on a duel worker, which never reports to Discord. */
     private final DiscordStatusReporter discordStatusReporter;
@@ -74,7 +73,6 @@ public final class ConsoleCommands {
             EvictTerrainGenerator terrain,
             TeamManager teamManager,
             PlayerDataManager playerDataManager,
-            RestartManager restartManager,
             DiscordStatusReporter discordStatusReporter,
             BanLogReporter banLogReporter,
             BanManager banManager,
@@ -89,7 +87,6 @@ public final class ConsoleCommands {
         this.terrain = terrain;
         this.teamManager = teamManager;
         this.playerDataManager = playerDataManager;
-        this.restartManager = restartManager;
         this.discordStatusReporter = discordStatusReporter;
         this.banLogReporter = banLogReporter;
         this.banManager = banManager;
@@ -156,11 +153,6 @@ public final class ConsoleCommands {
                 .args("target:text?")
                 .description("Free a locked account by name or UUID; no argument lists the locked ones.")
                 .run(ctx -> handleFreeCommand(ctx.str("target", "").trim()));
-
-        commands.command("restart").console()
-                .args("action:string?")
-                .description("Queue a graceful restart; 'cancel' drops it, 'now' exits.")
-                .run(ctx -> handleRestartCommand(ctx.str("action", "").trim().toLowerCase()));
 
         commands.installConsole(handler);
     }
@@ -704,22 +696,6 @@ public final class ConsoleCommands {
 
             Log.info("[EvictMapGenerator] Banned @ (@). The line above shows everything the ban covered.", target.lastName(), target.uuid());
         });
-    }
-
-    private void handleRestartCommand(String action) {
-        switch (action) {
-            case "":
-                restartManager.requestRestart();
-                break;
-            case "cancel":
-                restartManager.cancelRestart();
-                break;
-            case "now":
-                restartManager.restartNow();
-                break;
-            default:
-                Log.err("[EvictMapGenerator] Use: restart [cancel/now]");
-        }
     }
 
     private void generateTerrain(String[] args) {

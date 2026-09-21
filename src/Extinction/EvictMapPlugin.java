@@ -51,13 +51,6 @@ public class EvictMapPlugin extends Plugin {
     private static final long ADVERTISED_COUNT_REFRESH_MILLIS = 1000L;
 
     /**
-     * How long the exit's shutdown hooks may take before the halt guard
-     * forces the JVM down. Generous: the hooks (worker cleanup, player-DB
-     * flush) are themselves capped well below this.
-     */
-    private static final long EXIT_HALT_GUARD_MILLIS = 10_000L;
-
-    /**
      * When launched with -Devict.duelWorker=true this process is a spawned 1v1
      * worker. It runs Evict normally but shuts itself down once the match is
      * empty so the hub can free the slot.
@@ -144,17 +137,7 @@ public class EvictMapPlugin extends Plugin {
     private final EvictTerrainGenerator terrainGenerator =
             new EvictTerrainGenerator(settings);
 
-    /**
-     * Graceful-restart coordinator. The plugin only exits cleanly; an external
-     * start-script loop (docs/RESTART_LOOP.md) brings the server back up.
-     */
-    private final RestartManager restartManager =
-            new RestartManager(
-                    () -> matches.activeDuels().size(),
-                    Groups.player::size,
-                    teamManager::roundRuntimeMillis,
-                    this::exitHubProcess
-            );
+    private final Restart restart = new Restart(matches, teamManager);
 
     /**
      * Hub-only live status message in Discord. Constructed on a worker too (it
@@ -169,7 +152,7 @@ public class EvictMapPlugin extends Plugin {
                     teamManager,
                     waveExtinction,
                     matches,
-                    restartManager
+                    restart
             );
 
     /**
@@ -297,7 +280,6 @@ public class EvictMapPlugin extends Plugin {
                     terrainGenerator,
                     teamManager,
                     playerDataManager,
-                    restartManager,
                     duelWorker ? null : discordStatusReporter,
                     duelWorker ? null : banLogReporter,
                     duelWorker ? null : banManager,
@@ -609,7 +591,7 @@ public class EvictMapPlugin extends Plugin {
 
                 // Lets a queued restart fire once the hub runs empty, instead
                 // of only when the round ends.
-                restartManager.update();
+                restart.update();
 
                 metrics.update();
                 discordStatusReporter.update();
@@ -628,30 +610,8 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.8. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.9. Use 'help' for the commands and 'oregen' for the generator settings."
         );
-    }
-
-    // Exit path for RestartManager: close the net, then System.exit(0) like a worker (Core.app.exit
-    // proved unreliable on the host); the halt guard takes the JVM down if a shutdown hook wedges.
-    private void exitHubProcess() {
-        Thread haltGuard = new Thread(() -> {
-            try {
-                Thread.sleep(EXIT_HALT_GUARD_MILLIS);
-            } catch (InterruptedException ignored) {
-                return;
-            }
-
-            System.err.println(
-                    "[EvictMapGenerator] Shutdown hooks hung; halting the JVM."
-            );
-            Runtime.getRuntime().halt(0);
-        }, "evict-exit-halt-guard");
-        haltGuard.setDaemon(true);
-        haltGuard.start();
-
-        Vars.net.dispose();
-        System.exit(0);
     }
 
     /**
@@ -836,7 +796,7 @@ public class EvictMapPlugin extends Plugin {
     @Override
     public void registerServerCommands(CommandHandler handler) {
         consoleCommands.register(handler);
-        Console.register(handler, matches, roundTime, playerStats);
+        Console.register(handler, matches, roundTime, playerStats, restart);
     }
 
     /**
@@ -956,7 +916,7 @@ public class EvictMapPlugin extends Plugin {
 
         // Best moment for a queued update restart: the fresh process will
         // generate the next round, so no player loses progress.
-        restartManager.onRoundEnded();
+        restart.onRoundEnded();
     }
 
     /**
