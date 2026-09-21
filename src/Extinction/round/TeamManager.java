@@ -2,7 +2,7 @@ package Extinction.round;
 
 import Extinction.gen.StartLoadout;
 
-import Extinction.PlayerNameFormatter;
+import Extinction.PlayerNames;
 
 import Extinction.gen.HexGrid;
 
@@ -394,7 +394,7 @@ public final class TeamManager {
             ) {
                 playerNameByTeamId.put(
                         existingTeamId,
-                        PlayerNameFormatter.displayName(player)
+                        PlayerNames.displayName(player)
                 );
             }
 
@@ -479,7 +479,7 @@ public final class TeamManager {
         teamIdByPlayerUuid.put(uuid, teamId);
         playerNameByTeamId.put(
                 teamId,
-                PlayerNameFormatter.displayName(player)
+                PlayerNames.displayName(player)
         );
         leaderUuidByTeamId.put(teamId, uuid);
         personalTeamCreationOrder.add(teamId);

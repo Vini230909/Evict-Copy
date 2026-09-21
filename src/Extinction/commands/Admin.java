@@ -12,8 +12,14 @@ public final class Admin {
     private Admin() {
     }
 
-    public static void register(CommandHandler handler) {
+    public static void register(CommandHandler handler, BanCommands bans) {
         Commands commands = new Commands();
+
+        // Gated in the handler, like /js; the picker and confirmation live in BanCommands.
+        commands.command("ban").client()
+                .args("player:text?")
+                .description("Admin only: ban a player and their known addresses. No name opens a picker.")
+                .run(ctx -> bans.handleBan(ctx.raw(), ctx.sender()));
 
         // Gated in the handler, not by Perm, so the reply stays the one /js has always given.
         commands.command("js").client()

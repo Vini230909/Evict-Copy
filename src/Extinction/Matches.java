@@ -106,7 +106,7 @@ public final class Matches {
                 slot.participants.add(new MatchSlot.Participant(
                         player.uuid(),
                         player.plainName(),
-                        PlayerNameFormatter.displayName(player),
+                        PlayerNames.displayName(player),
                         teamIndex
                 ));
             }
@@ -147,11 +147,11 @@ public final class Matches {
 
             for (List<Player> roster : rosterTeams) {
                 for (Player player : roster) {
-                    allNames.add(PlayerNameFormatter.displayName(player));
+                    allNames.add(PlayerNames.displayName(player));
                 }
             }
 
-            label = PlayerNameFormatter.joinShortened(
+            label = PlayerNames.joinShortened(
                     allNames, "[white], []", MatchSlot.MAX_LABEL_NAMES
             );
         } else {
@@ -161,11 +161,11 @@ public final class Matches {
                 List<String> names = new ArrayList<>();
 
                 for (Player player : roster) {
-                    names.add(PlayerNameFormatter.displayName(player));
+                    names.add(PlayerNames.displayName(player));
                 }
 
                 teamNames.add(
-                        PlayerNameFormatter.joinShortened(
+                        PlayerNames.joinShortened(
                                 names, "[white], []", MatchSlot.MAX_LABEL_NAMES
                         )
                 );
@@ -422,7 +422,7 @@ public final class Matches {
                         + " as a spectator...[]"
         );
         Call.sendMessage(
-                PlayerNameFormatter.displayName(viewer)
+                PlayerNames.displayName(viewer)
                         + "[accent] is now spectating[] " + slot.label
         );
         Call.connect(viewer.con, Config.duelServerIp, port);

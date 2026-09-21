@@ -79,7 +79,7 @@ public final class PlayerStats {
 
         for (Player target : players) {
             targetUuids.add(target.uuid());
-            labels.add(PlayerNameFormatter.displayName(target));
+            labels.add(PlayerNames.displayName(target));
         }
 
         showPickerMenu(player, targetUuids, labels, "Select a player to view their stats.");
@@ -149,7 +149,7 @@ public final class PlayerStats {
 
         String subjectUuid = targetUuids.get(option);
         Player subject = Groups.player.find(online -> online != null && online.uuid().equals(subjectUuid));
-        String subjectName = subject != null ? PlayerNameFormatter.displayName(subject) : subjectUuid;
+        String subjectName = subject != null ? PlayerNames.displayName(subject) : subjectUuid;
 
         playerData.findPlayerInfoByUuid(subjectUuid, info -> {
             if (info == null) {

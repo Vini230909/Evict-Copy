@@ -395,11 +395,11 @@ public final class Referee {
                 names.append("[accent], ");
             }
 
-            names.append(PlayerNameFormatter.displayName(member));
+            names.append(PlayerNames.displayName(member));
         }
 
         return names.isEmpty()
-                ? PlayerNameFormatter.displayName(fallback)
+                ? PlayerNames.displayName(fallback)
                 : names.toString();
     }
 

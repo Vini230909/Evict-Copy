@@ -1,8 +1,7 @@
 package Extinction.round;
 
-import Extinction.PlayerNameFormatter;
+import Extinction.PlayerNames;
 
-import arc.util.CommandHandler;
 import mindustry.game.Team;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
@@ -57,15 +56,6 @@ public final class InviteManager {
     private boolean isEligibleRequester(Player player) {
         return teamManager.isFallenPlayer(player)
                 || (sandboxJoinMode && teamManager.isSpectatorPlayer(player));
-    }
-
-    public void registerClientCommands(CommandHandler handler) {
-        handler.register(
-                "invite",
-                "[number]",
-                "List or use team invitations.",
-                this::handleInvite
-        );
     }
 
     public void beginRound() {
@@ -123,7 +113,7 @@ public final class InviteManager {
         claimedOrderByPlayerUuid.remove(playerUuid);
     }
 
-    private void handleInvite(String[] args, Player player) {
+    public void handleInvite(String[] args, Player player) {
         if (player == null || !teamManager.isRoundActiveForSystems()) {
             if (player != null) {
                 player.sendMessage("[scarlet]No active Evict round.[]");
@@ -197,7 +187,7 @@ public final class InviteManager {
         joinRequests.add(
                 new JoinRequest(
                         player.uuid(),
-                        PlayerNameFormatter.displayName(player),
+                        PlayerNames.displayName(player),
                         targetTeam.id,
                         nextSequence()
                 )
@@ -211,7 +201,7 @@ public final class InviteManager {
 
         leader.sendMessage(
                 "[accent]"
-                        + PlayerNameFormatter.displayName(player)
+                        + PlayerNames.displayName(player)
                         + " wants to join your team. Use /invite to view pending requests.[]"
         );
     }
@@ -265,7 +255,7 @@ public final class InviteManager {
 
         leader.sendMessage(
                 "[green]"
-                        + PlayerNameFormatter.displayName(entry.player)
+                        + PlayerNames.displayName(entry.player)
                         + " joined your team.[]"
         );
     }
@@ -384,7 +374,7 @@ public final class InviteManager {
                 message.append("\n[lightgray]")
                         .append(index + 1)
                         .append(". []")
-                        .append(PlayerNameFormatter.displayName(entry.player))
+                        .append(PlayerNames.displayName(entry.player))
                         .append(entry.type == EntryType.REQUEST
                                 ? " [accent][request][]"
                                 : " [orange][claimed][]");

@@ -86,7 +86,7 @@ public final class History {
 
         for (Player target : players) {
             targetUuids.add(target.uuid());
-            currentRow.add(PlayerNameFormatter.displayName(target));
+            currentRow.add(PlayerNames.displayName(target));
 
             if (currentRow.size() == PICKER_MENU_COLUMNS) {
                 rows.add(currentRow.toArray(new String[0]));
@@ -123,7 +123,7 @@ public final class History {
 
         String subjectUuid = targetUuids.get(option);
         Player subject = Groups.player.find(online -> online != null && online.uuid().equals(subjectUuid));
-        String subjectName = subject != null ? PlayerNameFormatter.displayName(subject) : subjectUuid;
+        String subjectName = subject != null ? PlayerNames.displayName(subject) : subjectUuid;
 
         playerData.findDuelHistory(subjectUuid, matches -> {
             View view = new View(subjectUuid, subjectName, matches);
@@ -210,7 +210,7 @@ public final class History {
     // Ranked shows the ELO swing; casual 1v1, Teams and FFA are unranked, so just win/lose.
     private String formatMatch(String subjectUuid, PlayerDataManager.DuelMatch match) {
         if (MatchMode.FFA.id().equals(match.mode())) {
-            String participants = PlayerNameFormatter.joinShortened(
+            String participants = PlayerNames.joinShortened(
                     List.of(match.participantNamesPacked().split("\n")),
                     " [white]vs[] ",
                     MAX_PARTICIPANT_NAMES

@@ -12,6 +12,8 @@ import Extinction.RoundEnd;
 import Extinction.RoundTime;
 import Extinction.SpectateMenu;
 import Extinction.core.cmd.Commands;
+import Extinction.gameplay.AttackManager;
+import Extinction.round.InviteManager;
 
 import arc.util.CommandHandler;
 
@@ -29,9 +31,24 @@ public final class Player {
             RoundTime roundTime,
             History history,
             PlayerStats playerStats,
-            Leaderboard leaderboard
+            Leaderboard leaderboard,
+            AttackManager attack,
+            InviteManager invites
     ) {
         Commands commands = new Commands();
+
+        commands.command("fullassault").client()
+                .description("Send your team's idle combat units at the nearest enemy core every 5 seconds.")
+                .run(ctx -> attack.handleFullassaultCommand(ctx.raw(), ctx.sender()));
+
+        commands.command("fa").client()
+                .description("Alias for /fullassault.")
+                .run(ctx -> attack.handleFullassaultCommand(ctx.raw(), ctx.sender()));
+
+        commands.command("invite").client()
+                .args("number:string?")
+                .description("List or use team invitations.")
+                .run(ctx -> invites.handleInvite(ctx.raw(), ctx.sender()));
 
         // A Pure worker has no Evict round: its /die surrenders the map team instead.
         commands.command("die").client()

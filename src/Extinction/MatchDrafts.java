@@ -49,7 +49,7 @@ public final class MatchDrafts {
             if (draft.involves(uuid)) {
                 cancelDraft(
                         draft,
-                        PlayerNameFormatter.displayName(player)
+                        PlayerNames.displayName(player)
                                 + "[scarlet] left the server"
                 );
             }
@@ -126,7 +126,7 @@ public final class MatchDrafts {
         if (previous != null && previous.inviting) {
             cancelDraft(
                     previous,
-                    PlayerNameFormatter.displayName(challenger)
+                    PlayerNames.displayName(challenger)
                             + "[scarlet] started a new match setup"
             );
         } else {
@@ -156,7 +156,7 @@ public final class MatchDrafts {
             currentRow.add(
                     candidate == null
                             ? "?"
-                            : PlayerNameFormatter.displayName(candidate)
+                            : PlayerNames.displayName(candidate)
             );
 
             if (currentRow.size() == Matchmaking.SELECTION_MENU_COLUMNS) {
@@ -349,7 +349,7 @@ public final class MatchDrafts {
             if (matchmaking.isBusy(uuid)) {
                 cancelDraft(
                         draft,
-                        PlayerNameFormatter.displayName(invitee)
+                        PlayerNames.displayName(invitee)
                                 + "[scarlet] is already in another match setup"
                 );
                 return;
@@ -376,7 +376,7 @@ public final class MatchDrafts {
                     invitee.con,
                     inviteMenuId,
                     "[accent]" + draft.mode.label() + " invite",
-                    PlayerNameFormatter.displayName(challenger)
+                    PlayerNames.displayName(challenger)
                             + "[white] invited you to a "
                             + Matchmaking.describe(draft.mode, draft.map) + " match.\n\n" + summary,
                     new String[][]{
@@ -424,7 +424,7 @@ public final class MatchDrafts {
         if (option != Matchmaking.ACCEPT_OPTION) {
             cancelDraft(
                     draft,
-                    PlayerNameFormatter.displayName(invitee)
+                    PlayerNames.displayName(invitee)
                             + "[scarlet] declined"
             );
             return;
@@ -437,7 +437,7 @@ public final class MatchDrafts {
         if (challenger != null && !draft.pendingInviteeUuids.isEmpty()) {
             challenger.sendMessage(
                     "[accent]"
-                            + PlayerNameFormatter.displayName(invitee)
+                            + PlayerNames.displayName(invitee)
                             + "[accent] accepted ("
                             + draft.pendingInviteeUuids.size()
                             + " left).[]"

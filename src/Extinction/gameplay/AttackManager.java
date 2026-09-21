@@ -1,6 +1,5 @@
 package Extinction.gameplay;
 
-import arc.util.CommandHandler;
 import mindustry.ai.UnitCommand;
 import mindustry.ai.types.CommandAI;
 import mindustry.gen.Groups;
@@ -41,25 +40,6 @@ public final class AttackManager implements GameplayManagerInterface {
         this.teamManager = teamManager;
     }
 
-    /**
-     * Register commands to the handler (/fullassault and its /fa alias).
-     *
-     * @param handler Where to register the commands to.
-     */
-    public void registerClientCommands(CommandHandler handler) {
-        handler.register(
-                "fullassault",
-                "Send your team's idle combat units at the nearest enemy core every 5 seconds.",
-                this::handleFullassaultCommand
-        );
-
-        handler.register(
-                "fa",
-                "Alias for /fullassault.",
-                this::handleFullassaultCommand
-        );
-    }
-
     @Override
     public void beginRound() {
         fullAssaultTeamIds.clear();
@@ -95,7 +75,7 @@ public final class AttackManager implements GameplayManagerInterface {
     /**
      * {@code /fullassault} command handler.
      */
-    private void handleFullassaultCommand(String[] args, Player player) {
+    public void handleFullassaultCommand(String[] args, Player player) {
         if (args.length != 0) {
             player.sendMessage("Too many arguments. Usage: /fullassault");
             return;

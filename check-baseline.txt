@@ -1,8 +1,6 @@
-src/Extinction/EvictMapPlugin.java 1087
-src/Extinction/PlayerNameFormatter.java 75
+src/Extinction/EvictMapPlugin.java 1075
 src/Extinction/RestartManager.java 294
-src/Extinction/commands/BanCommands.java 289
-src/Extinction/commands/ClientCommands.java 35
+src/Extinction/commands/BanCommands.java 279
 src/Extinction/commands/ConsoleCommands.java 803
 src/Extinction/commands/FreeCommands.java 195
 src/Extinction/core/cmd/Arg.java 46
@@ -43,7 +41,7 @@ src/Extinction/discord/DiscordWebhook.java 347
 src/Extinction/discord/SlashInteraction.java 147
 src/Extinction/discord/StatusMessage.java 254
 src/Extinction/discord/StatusSnapshot.java 54
-src/Extinction/gameplay/AttackManager.java 138
+src/Extinction/gameplay/AttackManager.java 118
 src/Extinction/gameplay/AttritionManager.java 253
 src/Extinction/gameplay/GameplayManagerInterface.java 10
 src/Extinction/gameplay/RulesApplier.java 183
@@ -55,7 +53,6 @@ src/Extinction/gen/EvictTerrainGenerator.java 1498
 src/Extinction/gen/HexGrid.java 27
 src/Extinction/gen/ResourceGenerator.java 990
 src/Extinction/gen/StartLoadout.java 120
-src/Extinction/metrics/MetricsReporter.java 46
 src/Extinction/moderation/ban/BanCascade.java 248
 src/Extinction/moderation/ban/BanForwarder.java 153
 src/Extinction/moderation/ban/BanList.java 160
@@ -84,6 +81,6 @@ src/Extinction/moderation/vpn/VpnVerdictCache.java 116
 src/Extinction/round/CoreCapture.java 530
 src/Extinction/round/HexGeometry.java 179
 src/Extinction/round/HexSlot.java 34
-src/Extinction/round/InviteManager.java 488
+src/Extinction/round/InviteManager.java 478
 src/Extinction/round/TeamColors.java 96
 src/Extinction/round/TeamManager.java 2071

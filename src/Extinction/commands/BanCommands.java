@@ -1,11 +1,10 @@
 package Extinction.commands;
 
-import Extinction.PlayerNameFormatter;
+import Extinction.PlayerNames;
 import Extinction.data.PlayerDataManager;
 import Extinction.moderation.ban.BanOrigin;
 import Extinction.moderation.ban.BanRequest;
 
-import arc.util.CommandHandler;
 import mindustry.Vars;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
@@ -80,15 +79,6 @@ public final class BanCommands {
         this.confirmMenuId = Menus.registerMenu(this::handleConfirm);
     }
 
-    public void registerClientCommands(CommandHandler handler) {
-        handler.<Player>register(
-                "ban",
-                "[player...]",
-                "Admin only: ban a player and their known addresses. No name opens a picker.",
-                this::handleBan
-        );
-    }
-
     public void handlePlayerLeave(Player player) {
         if (player != null) {
             pickerTargetsByAdminUuid.remove(player.uuid());
@@ -96,7 +86,7 @@ public final class BanCommands {
         }
     }
 
-    private void handleBan(String[] args, Player player) {
+    public void handleBan(String[] args, Player player) {
         if (player == null) {
             return;
         }
@@ -141,7 +131,7 @@ public final class BanCommands {
             if (online != null && !online.uuid().equals(admin.uuid())) {
                 targets.add(new Target(
                         online.uuid(),
-                        PlayerNameFormatter.displayName(online)
+                        PlayerNames.displayName(online)
                 ));
             }
         });

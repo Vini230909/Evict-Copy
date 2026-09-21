@@ -173,7 +173,7 @@ public final class PureRoster {
             }
 
             candidates.add(candidate.uuid());
-            currentRow.add(PlayerNameFormatter.displayName(candidate));
+            currentRow.add(PlayerNames.displayName(candidate));
 
             if (currentRow.size() == Matchmaking.SELECTION_MENU_COLUMNS) {
                 rows.add(currentRow.toArray(new String[0]));

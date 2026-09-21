@@ -4,7 +4,7 @@ import arc.util.Strings;
 import mindustry.gen.Call;
 import mindustry.gen.Groups;
 import mindustry.gen.Player;
-import Extinction.PlayerNameFormatter;
+import Extinction.PlayerNames;
 
 /**
  * Fluent builder for coloured chat strings.
@@ -87,7 +87,7 @@ public final class Text {
 
     /** Appends a player's colour-formatted display name. */
     public Text player(Player player) {
-        sb.append(PlayerNameFormatter.displayName(player));
+        sb.append(PlayerNames.displayName(player));
         return this;
     }
 

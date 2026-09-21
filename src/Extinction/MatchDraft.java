@@ -93,7 +93,7 @@ public final class MatchDraft {
             names.append(
                     player == null
                             ? "[lightgray](left)[]"
-                            : PlayerNameFormatter.displayName(player)
+                            : PlayerNames.displayName(player)
             );
         }
 

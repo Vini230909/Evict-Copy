@@ -132,11 +132,7 @@ public class EvictMapPlugin extends Plugin {
     private final Matches matches =
             new Matches(playerDataManager, this::seedBan, chatLogReporter);
 
-    private final Extinction.metrics.MetricsReporter metricsReporter =
-            new Extinction.metrics.MetricsReporter(
-                    () -> matches.activeDuels().size(),
-                    matches::connectedDuelPlayers
-            );
+    private final Metrics metrics = new Metrics(matches);
 
     private final Matchmaking matchmaking = new Matchmaking(matches);
     private final SpectateMenu spectateMenu = new SpectateMenu(matches, duelWorkerReferee);
@@ -151,13 +147,6 @@ public class EvictMapPlugin extends Plugin {
      */
     private final BanCommands banCommands =
             new BanCommands(playerDataManager, !duelWorker, this::seedBan);
-
-    private final ClientCommands clientCommands =
-            new ClientCommands(
-                    attackManager,
-                    inviteManager,
-                    banCommands
-            );
 
     private final EvictTerrainGenerator terrainGenerator =
             new EvictTerrainGenerator(settings);
@@ -527,7 +516,7 @@ public class EvictMapPlugin extends Plugin {
                     // Tell the sandbox players someone arrived who could be
                     // invited in.
                     String viewerName =
-                            PlayerNameFormatter.displayName(event.player);
+                            PlayerNames.displayName(event.player);
 
                     Groups.player.each(online -> {
                         if (
@@ -629,7 +618,7 @@ public class EvictMapPlugin extends Plugin {
                 // of only when the round ends.
                 restartManager.update();
 
-                metricsReporter.update();
+                metrics.update();
                 discordStatusReporter.update();
 
                 // Runs the one-off import of pre-existing bans once the admin
@@ -646,7 +635,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.4. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.5. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
@@ -834,14 +823,13 @@ public class EvictMapPlugin extends Plugin {
 
     @Override
     public void registerClientCommands(CommandHandler handler) {
-        clientCommands.register(handler);
-        Extinction.commands.Admin.register(handler);
+        Extinction.commands.Admin.register(handler, banCommands);
 
         // /free, and no locked account in any /play picker (an invite is a
         // menu, which the lock's command gate cannot refuse).
         freeCommands.registerClientCommands(handler);
         matchmaking.excludeFromPickers(player -> playerLock.isLocked(player.uuid()));
-        Extinction.commands.Player.register(handler, matchmaking, spectateMenu, duelWorkerReferee, roundEnd, roundTime, history, playerStats, leaderboard);
+        Extinction.commands.Player.register(handler, matchmaking, spectateMenu, duelWorkerReferee, roundEnd, roundTime, history, playerStats, leaderboard, attackManager, inviteManager);
 
         // On a duel worker, replace vanilla /t so a ranked match can invert it
         // for casting admins. The hub keeps vanilla /t untouched. Registering

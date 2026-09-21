@@ -71,7 +71,7 @@ public final class Challenges {
 
         for (Player opponent : opponents) {
             targetUuids.add(opponent.uuid());
-            currentRow.add(PlayerNameFormatter.displayName(opponent));
+            currentRow.add(PlayerNames.displayName(opponent));
 
             if (currentRow.size() == Matchmaking.SELECTION_MENU_COLUMNS) {
                 rows.add(currentRow.toArray(new String[0]));
@@ -146,7 +146,7 @@ public final class Challenges {
         if (matchmaking.isBusy(opponent.uuid())) {
             player.sendMessage(
                     "[scarlet]"
-                            + PlayerNameFormatter.displayName(opponent)
+                            + PlayerNames.displayName(opponent)
                             + "[scarlet] is already in another match setup. Try again shortly.[]"
             );
             return;
@@ -166,7 +166,7 @@ public final class Challenges {
 
         player.sendMessage(
                 "[accent]Challenge sent to "
-                        + PlayerNameFormatter.displayName(opponent)
+                        + PlayerNames.displayName(opponent)
                         + "[accent].[]"
         );
 
@@ -174,7 +174,7 @@ public final class Challenges {
                 opponent.con,
                 challengeMenuId,
                 "[accent]" + mode.label() + " Challenge",
-                PlayerNameFormatter.displayName(player)
+                PlayerNames.displayName(player)
                         + "[white] has challenged you to a "
                         + Matchmaking.describe(mode, map) + ".",
                 new String[][]{
@@ -218,7 +218,7 @@ public final class Challenges {
         if (option != Matchmaking.ACCEPT_OPTION) {
             challenger.sendMessage(
                     "[scarlet]"
-                            + PlayerNameFormatter.displayName(opponent)
+                            + PlayerNames.displayName(opponent)
                             + "[scarlet] declined your "
                             + mode.label() + ".[]"
             );
@@ -265,7 +265,7 @@ public final class Challenges {
                     "[scarlet]"
                             + (opponent == null
                             ? "Your opponent"
-                            : PlayerNameFormatter.displayName(opponent))
+                            : PlayerNames.displayName(opponent))
                             + "[scarlet] did not answer your "
                             + modeLabel + " challenge in time.[]"
             );

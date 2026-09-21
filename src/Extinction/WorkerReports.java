@@ -512,7 +512,7 @@ public final class WorkerReports {
 
         return names.isEmpty()
                 ? "?"
-                : PlayerNameFormatter.joinShortened(
+                : PlayerNames.joinShortened(
                         names, "[white], []", MatchSlot.MAX_LABEL_NAMES
                 );
     }

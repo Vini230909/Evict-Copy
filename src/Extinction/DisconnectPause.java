@@ -87,7 +87,7 @@ public final class DisconnectPause {
     public void rememberName(Player player) {
         lastKnownNameByUuid.put(
                 player.uuid(),
-                PlayerNameFormatter.displayName(player)
+                PlayerNames.displayName(player)
         );
     }
 
@@ -98,7 +98,7 @@ public final class DisconnectPause {
         );
 
         if (online != null) {
-            return PlayerNameFormatter.displayName(online);
+            return PlayerNames.displayName(online);
         }
 
         return lastKnownNameByUuid.getOrDefault(uuid, "A player");
@@ -111,7 +111,7 @@ public final class DisconnectPause {
         if (remainingSeconds(player.uuid()) <= 0) {
             waive(player.uuid());
             Call.sendMessage(
-                    "[scarlet]" + PlayerNameFormatter.displayName(player)
+                    "[scarlet]" + PlayerNames.displayName(player)
                             + "[scarlet] left but has no rejoin time left this match. The match continues.[]"
             );
             return;
@@ -145,7 +145,7 @@ public final class DisconnectPause {
         if (remainingSeconds(uuid) <= 0) {
             waive(uuid);
             Call.sendMessage(
-                    "[scarlet]" + PlayerNameFormatter.displayName(player)
+                    "[scarlet]" + PlayerNames.displayName(player)
                             + "[scarlet] left but has no rejoin time left this match.[]"
             );
             return;

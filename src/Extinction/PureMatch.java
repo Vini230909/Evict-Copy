@@ -146,7 +146,7 @@ public final class PureMatch {
 
         referee.gate.release();
         Call.sendMessage(
-                "[scarlet]" + PlayerNameFormatter.displayName(player)
+                "[scarlet]" + PlayerNames.displayName(player)
                         + "[scarlet] surrendered for team " + player.team().name + ".[]"
         );
 
