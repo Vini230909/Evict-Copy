@@ -23,7 +23,6 @@ import mindustry.game.Team;
 import mindustry.gen.Player;
 import mindustry.mod.Plugin;
 import mindustry.world.blocks.storage.CoreBlock;
-import Extinction.gameplay.WaveExtinction;
 import Extinction.discord.DiscordStatusReporter;
 import Extinction.commands.*;
 import Extinction.core.util.MessageIdFilter;
@@ -79,12 +78,8 @@ public class EvictMapPlugin extends Plugin {
     private final InviteManager inviteManager =
             new InviteManager(teamManager);
 
-    /**
-     * The late-game collapse. Driven by the round clock alone; there is no
-     * command that starts it.
-     */
-    private final WaveExtinction waveExtinction =
-            new WaveExtinction(teamManager);
+    // The late-game collapse. Driven by the round clock alone; there is no command that starts it.
+    private final ExtinctionWave extinctionWave = new ExtinctionWave(teamManager);
 
     private final FullAssault fullAssault = new FullAssault(teamManager);
 
@@ -150,7 +145,7 @@ public class EvictMapPlugin extends Plugin {
                     settings,
                     playerDataManager,
                     teamManager,
-                    waveExtinction,
+                    extinctionWave,
                     matches,
                     restart
             );
@@ -579,7 +574,7 @@ public class EvictMapPlugin extends Plugin {
 
             attrition.update();
             fullAssault.update();
-            waveExtinction.update();
+            extinctionWave.update();
 
             // Only the hub is listed in the multiplayer browser; keep its
             // advertised count folded with the players inside the duel workers.
@@ -610,7 +605,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.9. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.10. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
@@ -820,7 +815,7 @@ public class EvictMapPlugin extends Plugin {
         inviteManager.beginRound();
         roundEnd.beginRound();
         roundTime.beginRound();
-        waveExtinction.beginRound();
+        extinctionWave.beginRound();
         assignConnectedPlayersAndRecordStats();
 
         runtime.lastSeed = seed;

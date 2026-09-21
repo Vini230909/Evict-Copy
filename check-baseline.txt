@@ -1,4 +1,4 @@
-src/Extinction/EvictMapPlugin.java 1029
+src/Extinction/EvictMapPlugin.java 1024
 src/Extinction/commands/BanCommands.java 279
 src/Extinction/commands/ConsoleCommands.java 779
 src/Extinction/commands/FreeCommands.java 195
@@ -40,11 +40,9 @@ src/Extinction/discord/DiscordWebhook.java 347
 src/Extinction/discord/SlashInteraction.java 147
 src/Extinction/discord/StatusMessage.java 254
 src/Extinction/discord/StatusSnapshot.java 54
-src/Extinction/gameplay/GameplayManagerInterface.java 10
-src/Extinction/gameplay/WaveExtinction.java 646
 src/Extinction/gen/CoreMarkerFloor.java 33
 src/Extinction/gen/EvictRuntimeState.java 40
-src/Extinction/gen/EvictSettings.java 1185
+src/Extinction/gen/EvictSettings.java 1138
 src/Extinction/gen/EvictTerrainGenerator.java 1498
 src/Extinction/gen/HexGrid.java 27
 src/Extinction/gen/ResourceGenerator.java 990

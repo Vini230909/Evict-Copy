@@ -32,6 +32,9 @@ public final class Config {
     public static double attritionCoreTier5Percent = 9d;
     public static double attritionRangePercent = 20d;
 
+    // Extinction terrain changes per tick: loaded and saved for the file, read by nothing (see GAMEPLAY.md).
+    public static int extinctionTerrainChangesPerTick = 120;
+
     private Config() {
     }
 
@@ -65,6 +68,10 @@ public final class Config {
                 PropertiesFile.getDouble(file, "attrition.range.percent", attritionRangePercent),
                 attritionRangePercent);
 
+        extinctionTerrainChangesPerTick = range("Extinction terrain changes per tick",
+                PropertiesFile.getInt(file, "extinction.terrainChangesPerTick", extinctionTerrainChangesPerTick),
+                1, 4096, extinctionTerrainChangesPerTick);
+
         save();
     }
 
@@ -83,6 +90,8 @@ public final class Config {
         file.setProperty("attrition.core.tier4Percent", Double.toString(attritionCoreTier4Percent));
         file.setProperty("attrition.core.tier5Percent", Double.toString(attritionCoreTier5Percent));
         file.setProperty("attrition.range.percent", Double.toString(attritionRangePercent));
+
+        file.setProperty("extinction.terrainChangesPerTick", Integer.toString(extinctionTerrainChangesPerTick));
 
         PropertiesFile.save(FILE, file, COMMENT);
     }

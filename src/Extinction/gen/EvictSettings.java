@@ -72,9 +72,6 @@ public final class EvictSettings {
     private static final double DEFAULT_UNIT_BUILD_SPEED_MULTIPLIER = 1.4d;
     private static final double MIN_UNIT_BUILD_SPEED_MULTIPLIER = 0d;
     private static final double MAX_UNIT_BUILD_SPEED_MULTIPLIER = 100d;
-    private static final int DEFAULT_EXTINCTION_TERRAIN_CHANGES_PER_TICK = 120;
-    private static final int MIN_EXTINCTION_TERRAIN_CHANGES_PER_TICK = 1;
-    private static final int MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK = 4096;
     private static final double DEFAULT_WATER_PATCH_ATTEMPTS_PER_HEX = 1d;
     private static final int DEFAULT_WATER_NORMAL_PATCH_TILES = 3;
     private static final double DEFAULT_WATER_LARGE_PATCH_CHANCE_PERCENT =
@@ -88,8 +85,6 @@ public final class EvictSettings {
     private double smallWallPercent = 25d;
     private double openPercent = 25d;
     private double passagePercent = 25d;
-    private int extinctionTerrainChangesPerTick =
-            DEFAULT_EXTINCTION_TERRAIN_CHANGES_PER_TICK;
 
     /**
      * Multiplier applied to unit factory build speed every round via
@@ -247,14 +242,6 @@ public final class EvictSettings {
                     )
             );
 
-            setExtinctionTerrainChangesPerTickWithoutSaving(
-                    readInt(
-                            properties,
-                            "extinction.terrainChangesPerTick",
-                            extinctionTerrainChangesPerTick
-                    )
-            );
-
             setUnitBuildSpeedMultiplierWithoutSaving(
                     readDouble(
                             properties,
@@ -373,7 +360,7 @@ public final class EvictSettings {
                     Extinction.Attrition.rangeSummary(),
                     compactWallSettings(),
                     compactWaterSettings(),
-                    compactExtinctionTerrainSettings(),
+                    Extinction.Config.extinctionTerrainChangesPerTick,
                     compactUnitBuildSpeedSettings(),
                     compactBannedBlockSettings(),
                     compactOreSettings()
@@ -398,11 +385,6 @@ public final class EvictSettings {
                 open,
                 passage
         );
-        save();
-    }
-
-    void setExtinctionTerrainChangesPerTick(int amount) {
-        setExtinctionTerrainChangesPerTickWithoutSaving(amount);
         save();
     }
 
@@ -683,10 +665,6 @@ public final class EvictSettings {
         return passagePercent / 100d;
     }
 
-    int extinctionTerrainChangesPerTick() {
-        return extinctionTerrainChangesPerTick;
-    }
-
     double unitBuildSpeedMultiplier() {
         return unitBuildSpeedMultiplier;
     }
@@ -696,10 +674,6 @@ public final class EvictSettings {
                 + "%, small-wall=" + formatPercent(smallWallPercent)
                 + "%, open=" + formatPercent(openPercent)
                 + "%, passage=" + formatPercent(passagePercent) + "%";
-    }
-
-    String compactExtinctionTerrainSettings() {
-        return Integer.toString(extinctionTerrainChangesPerTick);
     }
 
     public String compactUnitBuildSpeedSettings() {
@@ -766,23 +740,6 @@ public final class EvictSettings {
         smallWallPercent = smallWall;
         openPercent = open;
         passagePercent = passage;
-    }
-
-    private void setExtinctionTerrainChangesPerTickWithoutSaving(int amount) {
-        if (
-                amount < MIN_EXTINCTION_TERRAIN_CHANGES_PER_TICK
-                        || amount > MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK
-        ) {
-            throw new IllegalArgumentException(
-                    "Extinction terrain changes per tick must be between "
-                            + MIN_EXTINCTION_TERRAIN_CHANGES_PER_TICK
-                            + " and "
-                            + MAX_EXTINCTION_TERRAIN_CHANGES_PER_TICK
-                            + "."
-            );
-        }
-
-        extinctionTerrainChangesPerTick = amount;
     }
 
     private void setUnitBuildSpeedMultiplierWithoutSaving(double multiplier) {
@@ -1076,10 +1033,6 @@ public final class EvictSettings {
         properties.setProperty(
                 "wall.passagePercent",
                 Double.toString(passagePercent)
-        );
-        properties.setProperty(
-                "extinction.terrainChangesPerTick",
-                Integer.toString(extinctionTerrainChangesPerTick)
         );
         properties.setProperty(
                 "rules.unitBuildSpeedMultiplier",

@@ -9,7 +9,7 @@ import Extinction.Restart;
 import Extinction.core.util.PluginLog;
 import Extinction.data.PlayerDataManager;
 import Extinction.Matches;
-import Extinction.gameplay.WaveExtinction;
+import Extinction.ExtinctionWave;
 import Extinction.gen.EvictSettings;
 import Extinction.round.TeamManager;
 
@@ -53,7 +53,7 @@ public final class DiscordStatusReporter {
     private final EvictSettings settings;
     private final PlayerDataManager playerDataManager;
     private final TeamManager teamManager;
-    private final WaveExtinction extinction;
+    private final ExtinctionWave extinction;
     private final Matches pool;
     private final Restart restart;
 
@@ -69,7 +69,7 @@ public final class DiscordStatusReporter {
             EvictSettings settings,
             PlayerDataManager playerDataManager,
             TeamManager teamManager,
-            WaveExtinction extinction,
+            ExtinctionWave extinction,
             Matches pool,
             Restart restart
     ) {
