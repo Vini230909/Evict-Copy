@@ -1,6 +1,7 @@
 // Player commands: one entry each, nothing else. Registered by EvictMapPlugin.
 package Extinction.commands;
 
+import Extinction.FullAssault;
 import Extinction.Help;
 import Extinction.History;
 import Extinction.Leaderboard;
@@ -12,7 +13,6 @@ import Extinction.RoundEnd;
 import Extinction.RoundTime;
 import Extinction.SpectateMenu;
 import Extinction.core.cmd.Commands;
-import Extinction.gameplay.AttackManager;
 import Extinction.round.InviteManager;
 
 import arc.util.CommandHandler;
@@ -32,18 +32,18 @@ public final class Player {
             History history,
             PlayerStats playerStats,
             Leaderboard leaderboard,
-            AttackManager attack,
+            FullAssault fullAssault,
             InviteManager invites
     ) {
         Commands commands = new Commands();
 
         commands.command("fullassault").client()
                 .description("Send your team's idle combat units at the nearest enemy core every 5 seconds.")
-                .run(ctx -> attack.handleFullassaultCommand(ctx.raw(), ctx.sender()));
+                .run(ctx -> fullAssault.toggle(ctx.raw(), ctx.sender()));
 
         commands.command("fa").client()
                 .description("Alias for /fullassault.")
-                .run(ctx -> attack.handleFullassaultCommand(ctx.raw(), ctx.sender()));
+                .run(ctx -> fullAssault.toggle(ctx.raw(), ctx.sender()));
 
         commands.command("invite").client()
                 .args("number:string?")

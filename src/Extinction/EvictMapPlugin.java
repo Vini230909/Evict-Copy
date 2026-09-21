@@ -24,8 +24,6 @@ import mindustry.gen.Player;
 import mindustry.mod.Plugin;
 import mindustry.world.blocks.storage.CoreBlock;
 import Extinction.gameplay.AttritionManager;
-import Extinction.gameplay.RulesApplier;
-import Extinction.gameplay.AttackManager;
 import Extinction.gameplay.WaveExtinction;
 import Extinction.discord.DiscordStatusReporter;
 import Extinction.commands.*;
@@ -97,10 +95,7 @@ public class EvictMapPlugin extends Plugin {
     private final WaveExtinction waveExtinction =
             new WaveExtinction(teamManager);
 
-    private final AttackManager attackManager =
-            new AttackManager(
-                    teamManager
-            );
+    private final FullAssault fullAssault = new FullAssault(teamManager);
 
     private final RoundEnd roundEnd = new RoundEnd(teamManager, duelWorkerReferee);
 
@@ -452,9 +447,9 @@ public class EvictMapPlugin extends Plugin {
                 }
             }
 
-            RulesApplier.applyRules();
+            Rules.apply();
 
-            // A sandbox session plays with infinite resources; applyRules
+            // A sandbox session plays with infinite resources; Rules.apply
             // resets the flag, so re-apply it after every rules pass.
             if (duelWorker && duelWorkerReferee.matchMode().infiniteResources()) {
                 Vars.state.rules.infiniteResources = true;
@@ -603,7 +598,7 @@ public class EvictMapPlugin extends Plugin {
             playerLock.update();
 
             attritionManager.update();
-            attackManager.update();
+            fullAssault.update();
             waveExtinction.update();
 
             // Only the hub is listed in the multiplayer browser; keep its
@@ -635,7 +630,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.5. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.7. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
@@ -735,7 +730,7 @@ public class EvictMapPlugin extends Plugin {
         }
 
         // A Pure worker stays vanilla: no Extinction rules, no turret or core-unit damage tweaks.
-        if (!PureMatch.pureWorker()) RulesApplier.applyRules();
+        if (!PureMatch.pureWorker()) Rules.apply();
         teamManager.setInviteManager(inviteManager);
         teamManager.setDuelMode(duelWorker);
     }
@@ -829,7 +824,7 @@ public class EvictMapPlugin extends Plugin {
         // menu, which the lock's command gate cannot refuse).
         freeCommands.registerClientCommands(handler);
         matchmaking.excludeFromPickers(player -> playerLock.isLocked(player.uuid()));
-        Extinction.commands.Player.register(handler, matchmaking, spectateMenu, duelWorkerReferee, roundEnd, roundTime, history, playerStats, leaderboard, attackManager, inviteManager);
+        Extinction.commands.Player.register(handler, matchmaking, spectateMenu, duelWorkerReferee, roundEnd, roundTime, history, playerStats, leaderboard, fullAssault, inviteManager);
 
         // On a duel worker, replace vanilla /t so a ranked match can invert it
         // for casting admins. The hub keeps vanilla /t untouched. Registering
@@ -862,7 +857,7 @@ public class EvictMapPlugin extends Plugin {
         teamManager.beginRound(round.slots(), round.filledSlots(), seed);
         playerDataManager.beginRound();
         attritionManager.beginRound();
-        attackManager.beginRound();
+        fullAssault.beginRound();
         inviteManager.beginRound();
         roundEnd.beginRound();
         roundTime.beginRound();

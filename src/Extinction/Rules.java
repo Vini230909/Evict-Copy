@@ -1,7 +1,7 @@
-package Extinction.gameplay;
+// Game rules: the state rules and banned blocks set at every PlayEvent, plus the one-time turret and core-unit damage tweaks.
+package Extinction;
 
-import java.util.HashSet;
-import java.util.Set;
+import Extinction.round.TeamManager;
 
 import arc.struct.ObjectMap;
 import arc.util.Log;
@@ -18,45 +18,34 @@ import mindustry.world.blocks.defense.turrets.ContinuousTurret;
 import mindustry.world.blocks.defense.turrets.ItemTurret;
 import mindustry.world.blocks.defense.turrets.LiquidTurret;
 import mindustry.world.blocks.defense.turrets.PowerTurret;
-import Extinction.round.TeamManager;
 
-/**
- * Apply static rules to the map.
- * <p>
- * Included are all changes to Vars.state.rules, banned blocks, building damage modifiers,
- * and core unit damage modifiers. The last two are only applied once per-process, but the first two
- * must be reapplied every time the map is reloaded (at each PlayEvent).
- * </p>
- */
-public final class RulesApplier {
-    /**
-     * BvB damage multiplier to be used.
-     */
+import java.util.HashSet;
+import java.util.Set;
+
+public final class Rules {
+
+    // Building-fired bullets deal this share of their damage to buildings.
     private static final float BVB_DAMAGE_MULTIPLIER = 0.1f;
-    /**
-     * If the rules have been applied at least once before (for building and core unit damage modifiers).
-     */
-    private static boolean rulesAppliedAtLeastOnce = false;
 
-    /**
-     * Apply the rules to the current game state.
-     */
-    public static void applyRules() {
-        // Set the parameter to true to enable god mode (hacks) for development.
-        applyVarsStateRulesChanges();
+    // Bullet damage is content, shared by every map: scaled once per process.
+    private static boolean damageApplied = false;
+
+    private Rules() {
+    }
+
+    public static void apply() {
+        applyStateRules();
         applyBannedBlocks();
-        if (rulesAppliedAtLeastOnce) return;
-        applyBuildingDamageModifiers();
-        applyCoreUnitDamageModifiers();
-        rulesAppliedAtLeastOnce = true;
+        if (damageApplied) return;
+        applyBuildingDamage();
+        applyCoreUnitDamage();
+        damageApplied = true;
 
         Log.info("[EvictMapGenerator] Applied rules.");
     }
 
-    /**
-     * Apply changes to {@link Vars#state#rules}.
-     */
-    private static void applyVarsStateRulesChanges() {
+    private static void applyStateRules() {
+        // -Dgod-mode=true gives every team cheats and infinite resources, for development.
         boolean isGodMode = System.getProperty("god-mode", "false").equals("true");
         if (isGodMode) Log.info("God Mode enabled");
         Vars.state.rules.allowEditRules = isGodMode;
@@ -78,15 +67,7 @@ public final class RulesApplier {
         Vars.state.rules.unitBuildSpeedMultiplier = 1.0f;
         Vars.state.rules.cleanupDeadTeams = false;
 
-        /*
-         * Team 6 (neoplastic) is the only team Mindustry ships with
-         * ignoreUnitCap = true, and Units.getCap honours that flag before it
-         * ever looks at the game mode - PvP included. Personal teams are handed
-         * out from ids 1..128, so a player rolling that id would play with no
-         * unit cap at all while everyone else is capped by their cores. The
-         * field lives on the shared Team object, so clearing it once per rules
-         * pass is enough; nothing here uses neoplastic for anything else.
-         */
+        // Neoplastic ships with no unit cap and a player can roll its id; see docs/GAMEPLAY.md, Teams.
         Team.neoplastic.ignoreUnitCap = false;
 
         for (Team team : Team.all) {
@@ -99,9 +80,6 @@ public final class RulesApplier {
         Vars.state.rules.loadout.clear();
     }
 
-    /**
-     * Apply banned blocks settings.
-     */
     private static void applyBannedBlocks() {
         Vars.state.rules.bannedBlocks.clear();
 
@@ -121,10 +99,8 @@ public final class RulesApplier {
         Vars.state.rules.bannedBlocks.add(Blocks.tileLogicDisplay);
     }
 
-    /**
-     * Apply building damage modifiers.
-     */
-    private static void applyBuildingDamageModifiers() {
+    // Every turret's bullets do BVB_DAMAGE_MULTIPLIER of their damage to buildings.
+    private static void applyBuildingDamage() {
         Set<BulletType> visited = new HashSet<>();
         for (Block block : Vars.content.blocks()) {
             if (block instanceof ItemTurret turret)
@@ -140,11 +116,8 @@ public final class RulesApplier {
         }
     }
 
-    /**
-     * Disable combat damage for vanilla core units while keeping their building
-     * and mining behavior intact.
-     */
-    private static void applyCoreUnitDamageModifiers() {
+    // Vanilla core units keep building and mining but deal no combat damage.
+    private static void applyCoreUnitDamage() {
         Set<BulletType> visited = new HashSet<>();
         disableUnitDamage(UnitTypes.alpha, visited);
         disableUnitDamage(UnitTypes.beta, visited);
