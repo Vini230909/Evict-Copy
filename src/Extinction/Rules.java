@@ -62,6 +62,7 @@ public final class Rules {
         Vars.state.rules.unitDamageMultiplier = 0.5f;
         Vars.state.rules.unitCrashDamageMultiplier = 0.0f;
         Vars.state.rules.disableWorldProcessors = true;
+        Vars.state.rules.logicUnitBuild = false; // processors may not run "ucontrol build"
         Vars.state.rules.blockDamageMultiplier = 0.5f;
         Vars.state.rules.buildSpeedMultiplier = 1.4f;
         Vars.state.rules.unitBuildSpeedMultiplier = 1.0f;
@@ -94,9 +95,18 @@ public final class Rules {
         Vars.state.rules.bannedBlocks.add(Blocks.hyperProcessor);
         Vars.state.rules.bannedBlocks.add(Blocks.memoryCell);
         Vars.state.rules.bannedBlocks.add(Blocks.memoryBank);
-        Vars.state.rules.bannedBlocks.add(Blocks.logicDisplay);
-        Vars.state.rules.bannedBlocks.add(Blocks.largeLogicDisplay);
-        Vars.state.rules.bannedBlocks.add(Blocks.tileLogicDisplay);
+    }
+
+    // What a match mode changes on top of the rules above; apply resets them, so this runs after it.
+    public static void applyMatchMode(MatchMode mode) {
+        if (mode.infiniteResources()) {
+            Vars.state.rules.infiniteResources = true;
+        }
+
+        // A sandbox is a build room: nothing is banned there, processors included.
+        if (mode.noBlockBans()) {
+            Vars.state.rules.bannedBlocks.clear();
+        }
     }
 
     // Every turret's bullets do BVB_DAMAGE_MULTIPLIER of their damage to buildings.

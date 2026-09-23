@@ -424,10 +424,10 @@ public class EvictMapPlugin extends Plugin {
 
             Rules.apply();
 
-            // A sandbox session plays with infinite resources; Rules.apply
-            // resets the flag, so re-apply it after every rules pass.
-            if (duelWorker && duelWorkerReferee.matchMode().infiniteResources()) {
-                Vars.state.rules.infiniteResources = true;
+            // Rules.apply resets what a mode changes (sandbox resources, its
+            // buildable processors), so the mode's own pass runs after it.
+            if (duelWorker) {
+                Rules.applyMatchMode(duelWorkerReferee.matchMode());
             }
         });
 
@@ -598,7 +598,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.11. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.12. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 

@@ -25,7 +25,7 @@ public enum MatchMode {
     TRAINING("training", "Training", Rule.SOLO),
 
     // Training with infinite resources and no gate: a persistent room spectators may /invite into.
-    SANDBOX("sandbox", "Sandbox", Rule.UNGATED, Rule.SOLO, Rule.INFINITE_RESOURCES, Rule.ALLOWS_SPECTATOR_INVITES),
+    SANDBOX("sandbox", "Sandbox", Rule.UNGATED, Rule.SOLO, Rule.INFINITE_RESOURCES, Rule.ALLOWS_SPECTATOR_INVITES, Rule.NO_BLOCK_BANS),
 
     // Pure: vanilla PvP on a real map from config/maps, nothing recorded. See docs/GAMEPLAY.md, Pure matches.
     PURE_TRAINING("pure-training", "Pure Training", Rule.PURE, Rule.SOLO),
@@ -35,8 +35,8 @@ public enum MatchMode {
 
     // What a mode may switch on; everything defaults to the plain competitive answer.
     private enum Rule {
-        UNGATED, SOLO, RANKED, INFINITE_RESOURCES, RESTORES_FALLEN_CORES,
-        REDUCED_START_DISTANCE, ALLOWS_SPECTATOR_INVITES, ELIMINATES_WIPED_TEAMS, RESTRICTS_SPECTATOR_CHAT, PURE
+        UNGATED, SOLO, RANKED, INFINITE_RESOURCES, RESTORES_FALLEN_CORES, REDUCED_START_DISTANCE,
+        ALLOWS_SPECTATOR_INVITES, ELIMINATES_WIPED_TEAMS, RESTRICTS_SPECTATOR_CHAT, NO_BLOCK_BANS, PURE
     }
 
     // The wire format shared between hub and worker (duel.properties / result.properties): stable.
@@ -74,6 +74,11 @@ public enum MatchMode {
 
     public boolean infiniteResources() {
         return rules.contains(Rule.INFINITE_RESOURCES);
+    }
+
+    // Every block is buildable, processors included: the round's block bans do not apply.
+    public boolean noBlockBans() {
+        return rules.contains(Rule.NO_BLOCK_BANS);
     }
 
     // The match keeps running after a surrender, so the hexes get their Fallen backup cores back.
