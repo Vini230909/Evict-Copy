@@ -67,7 +67,7 @@ public final class LockGate {
                 }
 
                 if (verdict != null && !verdict.flagged()) {
-                    lock.free(uuid, "a clean address (automatic)", false);
+                    lock.free(uuid, PlayerLock.AUTO_FREE_ACTOR, false);
                 } else {
                     lock.noteJoin(uuid, lockedName, lockedIp, verdict, lockedJoins);
                 }

@@ -37,6 +37,9 @@ public final class PlayerLock {
     // The game's own padlock glyph in red, in front of a locked player's name; synced to every client like any name.
     public static final String NAME_PREFIX = "[scarlet]" + Iconc.lock + "[] ";
 
+    // Who frees a locked account that came back from a clean address: no admin, the lock gate itself.
+    public static final String AUTO_FREE_ACTOR = "a clean address (automatic)";
+
     // A worker re-reads the hub's list this often.
     private static final long WORKER_SYNC_MILLIS = 5_000L;
 
@@ -308,11 +311,14 @@ public final class PlayerLock {
 
         PluginLog.info("Freed @ (@) - by @.", plainName, uuid, who);
 
-        if (log != null) {
-            log.accept(Event.freed(entry.name(), uuid, entry.ip(), who));
-        }
-
         Player online = find(uuid);
+
+        // The automatic free names the clean address it came back from; an admin's the one it was locked at.
+        String ip = !verify && online != null && online.con != null ? online.con.address : entry.ip();
+
+        if (log != null) {
+            log.accept(Event.freed(entry.name(), uuid, ip, who));
+        }
 
         if (online != null) {
             clearSlow(online);

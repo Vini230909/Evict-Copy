@@ -1,4 +1,4 @@
-// The Discord ban log: one plain-text message per ban, unban, VPN check or free, queued and posted to a staff-only webhook.
+// The Discord ban log: one plain-text message per ban, unban, free, VPN check or ban evasion, posted to a staff-only webhook.
 package Extinction;
 
 import Extinction.core.util.MessageIdFilter;
@@ -11,7 +11,6 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
-import java.util.Set;
 
 // Hub only: every worker would report the same ban. Never edits: a log is a sequence. Layout as on Fish (see GAMEPLAY.md, Bans).
 public final class BanLog {
@@ -34,9 +33,6 @@ public final class BanLog {
 
     // Discord's hard limit on one message.
     private static final int MAX_MESSAGE = 2000;
-
-    // Actors that are not a person's name read as the start of a sentence: "The console banned ...".
-    private static final Set<String> PHRASE_ACTORS = Set.of(Bans.Origin.CONSOLE, Bans.Origin.WORD_FILTER_ACTOR, Bans.Origin.UNKNOWN_ADMIN);
 
     // Players choose their names, so nothing in an entry may ping (a player called @everyone).
     private static final String NO_MENTIONS = "{\"parse\":[]}";
@@ -111,6 +107,15 @@ public final class BanLog {
         }
 
         enqueue(lockMessage(event));
+    }
+
+    // A banned address or account that tried to join again.
+    public void logEvasion(Evasion.Entry entry) {
+        if (entry == null || !webhook.isConfigured()) {
+            return;
+        }
+
+        enqueue(evasionMessage(entry));
     }
 
     // The console test's verdict, so the test proves the channel too.
@@ -246,15 +251,50 @@ public final class BanLog {
                 + "\n**ip:** " + codes(report.ips());
     }
 
-    // "VPN check: <name> joined first time" for a lock, "... joined 3 times" for a locked account back; a free says who.
+    // "VPN check: <name> joined first time" for a lock, "... joined 3 times" for a locked account back; a free like a ban.
     private static String lockMessage(PlayerLock.Event event) {
+        if (event.kind() == PlayerLock.Event.Kind.FREED && PlayerLock.AUTO_FREE_ACTOR.equals(event.actor())) {
+            return "VPN check: " + coloredName(event.name()) + " joined without a VPN and was freed"
+                    + "\n**uuid:** " + code(event.uuid())
+                    + "\n**ip:** " + code(event.ip());
+        }
+
         if (event.kind() == PlayerLock.Event.Kind.FREED) {
-            return "VPN check: " + coloredName(event.name()) + " was freed by " + DiscordFormat.escapeMarkdown(event.actor())
+            return actor(event.actor()) + " freed " + coloredName(event.name())
+                    + "\n**Server:** hub"
                     + "\n**uuid:** " + code(event.uuid())
                     + "\n**ip:** " + code(event.ip());
         }
 
         return vpnCheck(event.name(), event.joins(), event.verdict(), event.uuid(), event.ip());
+    }
+
+    // "Ban evasion: <name> tried to join ..." - what the address is, and whether it is banned now too.
+    private static String evasionMessage(Evasion.Entry entry) {
+        if (entry.outcome() == Evasion.Outcome.KNOWN_ADDRESS) {
+            List<String> names = new ArrayList<>();
+
+            for (String name : entry.bannedNames()) {
+                names.add(coloredName(name));
+            }
+
+            return "Ban evasion: someone tried to join from "
+                    + (names.isEmpty() ? "a banned address" : "the banned address of " + String.join(", ", names))
+                    + "\n**Server:** hub"
+                    + "\n**ip:** " + code(entry.ip());
+        }
+
+        String what = switch (entry.outcome()) {
+            case ADDRESS_BANNED -> "from a new address, which is banned now too";
+            case VPN -> "through a VPN or proxy, so the address is not banned";
+            default -> "from a new address that could not be checked, so it is not banned";
+        };
+
+        return "Ban evasion: " + coloredName(entry.name()) + " tried to join " + what
+                + (entry.verdict() == null ? "" : "\n**Address:** " + triggered(entry.verdict()))
+                + "\n**Server:** hub"
+                + "\n**uuid:** " + code(entry.uuid())
+                + "\n**ip:** " + code(entry.ip());
     }
 
     private static String vpnCheck(String name, int joins, VpnVerdict verdict, String uuid, String ip) {
@@ -282,11 +322,11 @@ public final class BanLog {
             return typed == null || typed.isBlank() ? "none given" : DiscordFormat.playerText(typed);
         }
 
-        String word = "banned word \"" + DiscordFormat.escapeMarkdown(hit.word()) + "\"";
+        String word = "\"" + DiscordFormat.escapeMarkdown(hit.word()) + "\"";
 
         return hit.source() == WordFilter.Hit.Source.CHAT
-                ? word + " in the chat message: " + DiscordFormat.playerText(hit.text())
-                : word + " in the player name";
+                ? word + " in chat: " + DiscordFormat.playerText(hit.text())
+                : word + " in the name";
     }
 
     // What was acted on; an address ban is named after the first account it hit, when there is one.
@@ -300,15 +340,16 @@ public final class BanLog {
         return seed;
     }
 
-    // An admin's name as it is; "the console" or "an admin" start the sentence with a capital.
+    // An admin's name as it is; the console and the word filter are named like one.
     private static String actor(String actor) {
         String name = actor == null || actor.isBlank() ? Bans.Origin.UNKNOWN_ADMIN : actor;
 
-        if (PHRASE_ACTORS.contains(name)) {
-            name = Character.toUpperCase(name.charAt(0)) + name.substring(1);
-        }
-
-        return DiscordFormat.escapeMarkdown(name);
+        return switch (name) {
+            case Bans.Origin.CONSOLE -> "Console";
+            case Bans.Origin.WORD_FILTER_ACTOR -> "Word filter";
+            case Bans.Origin.UNKNOWN_ADMIN -> "An admin";
+            default -> DiscordFormat.escapeMarkdown(name);
+        };
     }
 
     // "hub" or "port-6568"; a ban with no origin is a vanilla one, and those happen on the hub.

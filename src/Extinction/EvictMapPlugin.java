@@ -185,9 +185,9 @@ public class EvictMapPlugin extends Plugin {
     /**
      * What a banned player reads: the ban plus the Discord invite to appeal it.
      * Every ban kick goes through it, on the hub and on a match server, and it
-     * refuses a banned player's later join attempts with the same text.
+     * refuses a banned player's later join attempts - on the hub also telling Evasion.
      */
-    private final BanScreen banScreen = new BanScreen();
+    private final BanScreen banScreen = new BanScreen(duelWorker ? null : refusal -> this.evasion.refused(refusal));
 
     /**
      * Widens every ban to the accounts and addresses linked to it, and writes
@@ -206,10 +206,10 @@ public class EvictMapPlugin extends Plugin {
                     banScreen
             );
 
-    /**
-     * Turns a Discord {@code /ban} or {@code /unban} into an ordinary ban, so
-     * it is widened, kicked, synced, announced and logged like any other.
-     */
+    // Hub only: a banned address or account that tries again is written up; a banned account's new address is banned.
+    private final Evasion evasion = new Evasion(bans, vpnScan, banScreen, banLog::logEvasion);
+
+    // Turns a Discord /ban or /unban into an ordinary ban, widened, kicked, synced, announced and logged like any other.
     private final RemoteBan remoteBan = new RemoteBan(bans);
 
     /**
@@ -557,7 +557,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.21. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.22. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 

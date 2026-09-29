@@ -10,6 +10,8 @@ import mindustry.game.EventType.ConnectionEvent;
 import mindustry.net.Administration;
 import mindustry.net.NetConnection;
 
+import java.util.function.Consumer;
+
 // Vanilla kicks with a fixed enum that has no room for an invite; a kick with a string shows it verbatim.
 // Both roles: a banned player can aim their client straight at a worker's port.
 public final class BanScreen {
@@ -19,7 +21,18 @@ public final class BanScreen {
     private static final String WORD_FILTER =
             "You were banned for using a word that is not allowed on this server.";
 
+    // One refused comeback: a banned address (name and uuid blank - the game does not know them yet) or account.
+    public record Refusal(String name, String uuid, String ip) {
+    }
+
+    // Hub: where a refused comeback goes (Evasion); null on a worker, which only refuses.
+    private final Consumer<Refusal> refused;
+
     private boolean installed;
+
+    public BanScreen(Consumer<Refusal> refused) {
+        this.refused = refused;
+    }
 
     // The plain ban screen.
     public String message() {
@@ -61,6 +74,7 @@ public final class BanScreen {
                     && (admins.isIPBanned(con.address)
                     || admins.isSubnetBanned(con.address))) {
                 kick(con);
+                report(new Refusal("", "", con.address));
             }
         });
 
@@ -77,6 +91,7 @@ public final class BanScreen {
 
             if (admins != null && uuid != null && admins.isIDBanned(uuid)) {
                 kick(con);
+                report(new Refusal(event.packet.name == null ? "" : event.packet.name, uuid, con.address));
             }
         });
 
@@ -84,6 +99,19 @@ public final class BanScreen {
                 "Ban screen armed: @",
                 hasAppeal() ? "appeals go to " + Config.banAppealUrl.trim() : "no appeal link set"
         );
+    }
+
+    // Hands a refusal on without letting a failure there reach vanilla's connect handler.
+    private void report(Refusal refusal) {
+        if (refused == null) {
+            return;
+        }
+
+        try {
+            refused.accept(refusal);
+        } catch (Exception exception) {
+            PluginLog.err("Ban evasion could not be handled: @", exception.toString());
+        }
     }
 
     // True while an appeal link is configured.

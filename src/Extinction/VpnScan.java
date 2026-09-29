@@ -111,7 +111,7 @@ public final class VpnScan {
         }
 
         PluginLog.info(
-                "VPN scan is on, log only: every join's address is looked up (@) and a VPN, proxy or hosting range is written to the console and the ban log. Nothing is blocked. @ address(es) remembered from before.",
+                "VPN scan is on (@): new and locked accounts are looked up for the lock, a banned account's new address before it is banned. @ address(es) remembered from before.",
                 sourceNames(),
                 cache.size()
         );
@@ -176,6 +176,7 @@ public final class VpnScan {
 
         if (remembered != null && complete(remembered)) {
             cachedToday++;
+            count(remembered);
 
             if (!decide(decision, remembered)) {
                 report(name, uuid, ip, remembered, true);
@@ -188,6 +189,8 @@ public final class VpnScan {
             if (verdict != null) {
                 cache.put(verdict);
             }
+
+            count(verdict);
 
             if (!decide(decision, verdict) && verdict != null) {
                 report(name, uuid, ip, verdict, false);
@@ -211,6 +214,53 @@ public final class VpnScan {
         } catch (Exception exception) {
             PluginLog.err("VPN scan: the lock decision failed: @", exception.toString());
             return false;
+        }
+    }
+
+    // One address asked about outside a join - a banned account's new address (Evasion): the remembered verdict or a
+    // lookup; done runs exactly once, with null when nothing could be learned (scan off, local address, no source).
+    public void check(String ip, Consumer<VpnVerdict> done) {
+        if (!started || !Config.vpnScan || ip == null || ip.isBlank() || isLocal(ip)) {
+            done.accept(null);
+            return;
+        }
+
+        rollDay();
+
+        VpnVerdict remembered = cache.get(ip);
+
+        if (remembered != null && complete(remembered)) {
+            cachedToday++;
+            count(remembered);
+            done.accept(remembered);
+            return;
+        }
+
+        boolean asked = lookup(ip, verdict -> {
+            if (verdict != null) {
+                cache.put(verdict);
+            }
+
+            count(verdict);
+            done.accept(verdict);
+        });
+
+        if (!asked) {
+            skippedToday++;
+            done.accept(null);
+        }
+    }
+
+    // Today's tally for the checklist: flagged or clean, however the verdict was asked for.
+    private void count(VpnVerdict verdict) {
+        if (verdict == null) {
+            return;
+        }
+
+        if (verdict.flagged()) {
+            hitsToday++;
+        } else {
+            cleanToday++;
         }
     }
 
@@ -244,11 +294,11 @@ public final class VpnScan {
             out.accept(
                     address + ": " + verdict.flags() + " - " + verdict.network()
                             + (verdict.flagged()
-                            ? " - a join from here is written to the ban log."
-                            : " - a join from here passes without a line.")
+                            ? " - a new account from here would be locked, a banned account's address not banned."
+                            : " - a new account from here passes, a banned account's address would be banned.")
                             + (logConfigured.getAsBoolean()
                             ? " A test line is on its way to the ban log channel."
-                            : " The ban log is not set ('banlog <url>'), so hits reach the console only.")
+                            : " The ban log is not set ('banlog <url>'), so the test reaches the console only.")
             );
         });
 
@@ -266,7 +316,7 @@ public final class VpnScan {
 
         lines.add(
                 "VPN scan: " + (Config.vpnScan
-                        ? "on, log only - nothing is blocked, kicked or locked"
+                        ? "on - looks up new and locked accounts (the lock) and banned accounts' new addresses (ban evasion)"
                         : "off ('vpn on' starts it)")
         );
 
@@ -304,14 +354,14 @@ public final class VpnScan {
         }
 
         lines.add(
-                "  Hits go to: " + (logConfigured.getAsBoolean()
-                        ? "the console and the ban log"
-                        : "the console only - the ban log is not set ('banlog <url>')")
+                "  Ban log: " + (logConfigured.getAsBoolean()
+                        ? "set - locks and ban evasion are written there and to the console"
+                        : "not set ('banlog <url>') - locks and ban evasion reach the console only")
         );
 
         lines.add(
-                "  Today (UTC): " + cachedToday + " join(s) answered from the cache, "
-                        + hitsToday + " hit(s), " + cleanToday + " clean, "
+                "  Today (UTC): " + cachedToday + " answered from the cache, "
+                        + hitsToday + " flagged (VPN, proxy or hosting), " + cleanToday + " clean, "
                         + skippedToday + " skipped (no source could be asked)"
         );
 
@@ -443,11 +493,8 @@ public final class VpnScan {
             boolean cached
     ) {
         if (!verdict.flagged()) {
-            cleanToday++;
             return;
         }
-
-        hitsToday++;
 
         int joins = timesJoined(uuid);
 

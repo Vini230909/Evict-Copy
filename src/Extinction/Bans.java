@@ -453,7 +453,7 @@ public final class Bans {
     }
 
     // Rewrites the workers' ban file from the live admin store, in full, so hand-made bans and unbans are in it too.
-    private void publishList() {
+    void publishList() {
         if (Vars.netServer == null) {
             return;
         }
