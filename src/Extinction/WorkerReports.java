@@ -186,7 +186,7 @@ public final class WorkerReports {
         }
     }
 
-    // What the worker published about a ban: who banned, its console time, what the filter saw.
+    // What the worker published about a ban: who banned and why, its console time, what the filter saw.
     private static Bans.Request workerBanRequest(
             Properties status,
             String uuid,
@@ -199,7 +199,8 @@ public final class WorkerReports {
                 Bans.Origin.fromWorker(
                         status.getProperty(prefix + "actor", ""),
                         port,
-                        status.getProperty(prefix + "time", "")
+                        status.getProperty(prefix + "time", ""),
+                        status.getProperty(prefix + "reason", "")
                 ),
                 WordFilter.Hit.fromWorker(
                         status.getProperty(prefix + "source", ""),

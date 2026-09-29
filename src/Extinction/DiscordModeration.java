@@ -31,6 +31,11 @@ public final class DiscordModeration {
     private static final String COMMAND_UNBAN = "unban";
     private static final String COMMAND_FREE = "free";
 
+    // What /ban runs: the target, who asked, and why - the reason is required.
+    public interface BanAction {
+        String apply(String target, String actor, String reason);
+    }
+
     // One slash command as Discord delivered it, reduced to what the plugin acts on. Crosses from the gateway's thread.
     private record Interaction(
             String id,
@@ -38,6 +43,7 @@ public final class DiscordModeration {
             String guildId,
             String command,
             String argument,
+            String reason,
             List<String> roles,
             boolean administrator,
             String actor
@@ -49,8 +55,9 @@ public final class DiscordModeration {
         // Discord's ADMINISTRATOR permission bit.
         private static final long ADMINISTRATOR = 1L << 3;
 
-        // The single option every command takes.
+        // The option every command takes, and the one /ban takes on top.
         private static final String ARGUMENT = "target";
+        private static final String REASON = "reason";
 
         // Shown when Discord sends no usable name for the member.
         private static final String UNKNOWN_ACTOR = "someone on Discord";
@@ -83,14 +90,15 @@ public final class DiscordModeration {
                     token,
                     payload.getString("guild_id", ""),
                     command,
-                    argument(data),
+                    option(data, ARGUMENT),
+                    option(data, REASON),
                     roles(member),
                     (permissions(member.getString("permissions", "0")) & ADMINISTRATOR) != 0L,
                     actor(member)
             );
         }
 
-        private static String argument(Jval data) {
+        private static String option(Jval data, String name) {
             Jval options = data.get("options");
 
             if (options == null || !options.isArray()) {
@@ -100,7 +108,7 @@ public final class DiscordModeration {
             for (Jval option : options.asArray()) {
                 if (option != null
                         && option.isObject()
-                        && ARGUMENT.equals(option.getString("name", ""))) {
+                        && name.equals(option.getString("name", ""))) {
                     return option.getString("value", "");
                 }
             }
@@ -153,8 +161,8 @@ public final class DiscordModeration {
         }
     }
 
-    // (target, actor) - the reply line. Run on the main thread.
-    private final BinaryOperator<String> ban;
+    // (target, actor[, reason]) - the reply line. Run on the main thread.
+    private final BanAction ban;
     private final BinaryOperator<String> unban;
     private final BinaryOperator<String> free;
 
@@ -178,7 +186,7 @@ public final class DiscordModeration {
     private volatile String lastRegistration = "";
 
     public DiscordModeration(
-            BinaryOperator<String> ban,
+            BanAction ban,
             BinaryOperator<String> unban,
             BinaryOperator<String> free
     ) {
@@ -523,10 +531,11 @@ public final class DiscordModeration {
         }
 
         String target = interaction.argument().trim();
+        String reason = interaction.reason().trim();
         String actor = interaction.actor() + " (Discord)";
 
         String reply = switch (interaction.command()) {
-            case COMMAND_BAN -> onMainThread(() -> ban.apply(target, actor));
+            case COMMAND_BAN -> onMainThread(() -> ban.apply(target, actor, reason));
             case COMMAND_UNBAN -> onMainThread(() -> unban.apply(target, actor));
             case COMMAND_FREE -> onMainThread(() -> free.apply(target, actor));
             default -> "That command is not handled by this server.";

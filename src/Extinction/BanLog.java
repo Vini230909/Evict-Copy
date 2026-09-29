@@ -38,7 +38,7 @@ public final class BanLog {
     private static final int MAX_MESSAGE = 2000;
 
     // Actors that are not a person's name read as the start of a sentence: "The console banned ...".
-    private static final Set<String> PHRASE_ACTORS = Set.of("the console", Bans.Origin.WORD_FILTER_ACTOR, Bans.Origin.UNKNOWN_ADMIN);
+    private static final Set<String> PHRASE_ACTORS = Set.of(Bans.Origin.CONSOLE, Bans.Origin.WORD_FILTER_ACTOR, Bans.Origin.UNKNOWN_ADMIN);
 
     // Players choose their names, so nothing in an entry may ping (a player called @everyone).
     private static final String NO_MENTIONS = "{\"parse\":[]}";
@@ -207,11 +207,11 @@ public final class BanLog {
 
         enqueue(banMessage(new Bans.Report(
                 Bans.Report.Kind.BAN,
-                "nobody (ban log test, nothing was banned)",
+                "nobody",
                 List.of(),
                 List.of(),
                 List.of(),
-                Bans.Origin.now("the console", Bans.Origin.HUB),
+                Bans.Origin.now(Bans.Origin.CONSOLE, Bans.Origin.HUB, "ban log test - nothing was banned"),
                 null
         )));
 
@@ -275,12 +275,13 @@ public final class BanLog {
         return DiscordFormat.escapeMarkdown(verdict.flags()) + " **|** " + DiscordFormat.escapeMarkdown(verdict.network());
     }
 
-    // No reason is asked for yet except by the word filter, whose reason is the word and where it stood.
+    // What the admin typed; the word filter's reason is the word and where it stood. Only a console ban has none.
     private static String reason(Bans.Report report) {
         WordFilter.Hit hit = report.wordFilterHit();
 
         if (hit == null) {
-            return "none given";
+            String typed = report.origin() == null ? "" : report.origin().reason();
+            return typed == null || typed.isBlank() ? "none given" : DiscordFormat.playerText(typed);
         }
 
         String word = "banned word \"" + DiscordFormat.escapeMarkdown(hit.word()) + "\"";

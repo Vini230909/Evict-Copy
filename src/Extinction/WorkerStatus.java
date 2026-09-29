@@ -33,7 +33,7 @@ public final class WorkerStatus {
     // Accounts banned here, cumulative and republished every write: banning is idempotent on the hub.
     private final Set<String> banRequestUuids = new LinkedHashSet<>();
 
-    // Who banned each account and, for the word filter, what it saw - for the hub's ban log.
+    // Who banned each account and why and, for the word filter, what it saw - for the hub's ban log.
     private final Map<String, Bans.Request> banRequestDetails = new LinkedHashMap<>();
 
     // Per-UUID playtime on this worker; the hub credits it, the worker never writes the database.
@@ -96,6 +96,7 @@ public final class WorkerStatus {
 
             properties.setProperty(prefix + "actor", request.origin().actor());
             properties.setProperty(prefix + "time", request.origin().consoleTime());
+            properties.setProperty(prefix + "reason", request.origin().reason());
 
             WordFilter.Hit hit = request.wordFilterHit();
 

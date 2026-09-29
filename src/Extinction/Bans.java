@@ -45,13 +45,16 @@ public final class Bans {
         }
     }
 
-    // Who decided a ban, on which server, and when - in the console's own format, so the log line can be found again.
-    public record Origin(String actor, String server, String consoleTime) {
+    // Who decided a ban, where, when - in the console's own format, so the log line can be found again - and why.
+    public record Origin(String actor, String server, String consoleTime, String reason) {
 
         // The word filter is not a person, but it is an actor like any other.
         public static final String WORD_FILTER_ACTOR = "the word filter";
 
-        // Shown when a match server forwards a ban nobody signed.
+        // A ban or unban typed into a server console carries no name: the console is its actor.
+        public static final String CONSOLE = "the console";
+
+        // Shown when nobody signed a ban at all.
         public static final String UNKNOWN_ADMIN = "an admin";
 
         public static final String HUB = "the hub";
@@ -59,23 +62,29 @@ public final class Bans {
         private static final DateTimeFormatter CONSOLE_TIME =
                 DateTimeFormatter.ofPattern("MM-dd-yyyy HH:mm:ss");
 
-        // Stamped the moment the ban is decided, on the server deciding it.
+        // Stamped the moment the ban is decided, on the server deciding it; no reason (the console, the word filter).
         public static Origin now(String actor, String server) {
+            return now(actor, server, "");
+        }
+
+        public static Origin now(String actor, String server, String reason) {
             return new Origin(
                     actor == null || actor.isBlank() ? UNKNOWN_ADMIN : actor,
                     server,
-                    CONSOLE_TIME.format(LocalDateTime.now())
+                    CONSOLE_TIME.format(LocalDateTime.now()),
+                    reason == null ? "" : reason.trim()
             );
         }
 
         // Rebuilds what a match server published, tagged with its own log.
-        public static Origin fromWorker(String actor, int port, String consoleTime) {
+        public static Origin fromWorker(String actor, int port, String consoleTime, String reason) {
             return new Origin(
                     actor == null || actor.isBlank() ? UNKNOWN_ADMIN : actor,
                     matchServer(port),
                     consoleTime == null || consoleTime.isBlank()
                             ? CONSOLE_TIME.format(LocalDateTime.now())
-                            : consoleTime
+                            : consoleTime,
+                    reason == null ? "" : reason.trim()
             );
         }
 
@@ -150,6 +159,9 @@ public final class Bans {
     // The request being seeded right now. banPlayerID fires its event before it returns, so the handler finds it here.
     private Request pending;
 
+    // The same for an address ban or an unban asked for from Discord, which take vanilla's own route.
+    private Origin pendingOrigin;
+
     private boolean installed;
     private boolean startupDone;
 
@@ -215,6 +227,38 @@ public final class Bans {
         }
     }
 
+    // An address ban with its story - Discord's /ban with an IP - through vanilla's banPlayerIP, as console 'ban ip' does it.
+    public void banAddress(String ip, Origin origin) {
+        if (Vars.netServer == null) {
+            return;
+        }
+
+        pendingOrigin = origin;
+
+        try {
+            Vars.netServer.admins.banPlayerIP(ip);
+        } finally {
+            pendingOrigin = null;
+        }
+    }
+
+    // Lifts one ban with its story - Discord's /unban - exactly as vanilla does; true when there was one to lift.
+    public boolean unban(String target, boolean address, Origin origin) {
+        if (Vars.netServer == null) {
+            return false;
+        }
+
+        pendingOrigin = origin;
+
+        try {
+            return address
+                    ? Vars.netServer.admins.unbanPlayerIP(target)
+                    : Vars.netServer.admins.unbanPlayerID(target);
+        } finally {
+            pendingOrigin = null;
+        }
+    }
+
     private void handleBan(BanCascade.Result result, boolean addressSeeded) {
         if (applying || result.isEmpty()) {
             return;
@@ -227,19 +271,26 @@ public final class Bans {
 
         WordFilter.Hit hit = request == null ? null : request.wordFilterHit();
 
+        // Nothing seeded it, so it was typed into the console: the hammer, /ban, Discord and the filter all seed theirs.
+        Origin origin = request != null
+                ? request.origin()
+                : pendingOrigin != null ? pendingOrigin : Origin.now(Origin.CONSOLE, Origin.HUB);
+
         Report report = apply(
                 result,
                 hit == null ? Report.Kind.BAN : Report.Kind.WORD_FILTER,
-                request == null ? null : request.origin(),
+                origin,
                 hit
         );
 
         PluginLog.info(
-                "@ on @ covers @ account(s) and @ address(es).",
+                "@ on @ by @ covers @ account(s) and @ address(es). Reason: @",
                 hit == null ? "Ban" : "Word filter ban",
                 report.seedLabel(),
+                origin.actor(),
                 report.uuids().size(),
-                report.ips().size()
+                report.ips().size(),
+                hit != null ? "'" + hit.word() + "' in the " + hit.source().label() : origin.reason().isBlank() ? "none given" : origin.reason()
         );
 
         announce(report, addressSeeded);
@@ -310,9 +361,13 @@ public final class Bans {
             return;
         }
 
+        // Discord's /unban names itself; any other unban was typed into the console.
+        Origin origin = pendingOrigin != null ? pendingOrigin : Origin.now(Origin.CONSOLE, Origin.HUB);
+
         PluginLog.info(
-                "Unban on @ freed @ account(s) and @ address(es).",
+                "Unban on @ by @ freed @ account(s) and @ address(es).",
                 label,
+                origin.actor(),
                 uuids.size(),
                 ips.size()
         );
@@ -324,7 +379,9 @@ public final class Bans {
                 label,
                 BanCascade.namesOf(uuids),
                 List.copyOf(uuids),
-                List.copyOf(ips)
+                List.copyOf(ips),
+                origin,
+                null
         ));
     }
 

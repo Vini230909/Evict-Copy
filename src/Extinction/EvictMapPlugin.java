@@ -211,7 +211,7 @@ public class EvictMapPlugin extends Plugin {
      * Turns a Discord {@code /ban} or {@code /unban} into an ordinary ban, so
      * it is widened, kicked, synced, announced and logged like any other.
      */
-    private final RemoteBan remoteBan = new RemoteBan(this::seedBan);
+    private final RemoteBan remoteBan = new RemoteBan(bans);
 
     /**
      * Hub-only Discord slash commands. The hub is the single writer of bans,
@@ -265,9 +265,9 @@ public class EvictMapPlugin extends Plugin {
     public void init() {
         bootstrap();
 
-        // Both roles: a banned player who comes back is refused with the
-        // appeal link, not vanilla's bare "banned" screen.
+        // Both roles: a banned player who comes back reads the appeal link; the ban button asks /ban's reason.
         banScreen.install();
+        banMenu.install();
 
         // Both roles: a locked account can watch and nothing else - the hub
         // decides who, every server enforces it off the hub's list. The
@@ -560,7 +560,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.19. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.20. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 

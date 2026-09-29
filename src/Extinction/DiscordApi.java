@@ -38,6 +38,9 @@ final class DiscordApi {
     private static final String ARGUMENT_DESCRIPTION =
             "The player's UUID, or an IP address.";
 
+    // Longest ban reason Discord lets through: one line in the ban log.
+    private static final int MAX_REASON_LENGTH = 200;
+
     // A Discord server or role the bot can see: the id, and a readable name.
     record Named(String id, String name) {
     }
@@ -268,23 +271,26 @@ final class DiscordApi {
         );
     }
 
-    // The three commands, exactly as Discord should show them.
+    // The three commands, exactly as Discord should show them; /ban cannot be sent without a reason.
     private static String definitions() {
         return new DiscordJson.Arr()
                 .add(definition(
                         "ban",
                         "Ban a player UUID or an IP address from the server.",
-                        ARGUMENT_DESCRIPTION
+                        ARGUMENT_DESCRIPTION,
+                        true
                 ))
                 .add(definition(
                         "unban",
                         "Lift a ban on a player UUID or an IP address.",
-                        ARGUMENT_DESCRIPTION
+                        ARGUMENT_DESCRIPTION,
+                        false
                 ))
                 .add(definition(
                         "free",
                         "Free a locked account (new account that joined through a VPN).",
-                        "The account's UUID, from the lock line in the ban log."
+                        "The account's UUID, from the lock line in the ban log.",
+                        false
                 ))
                 .toString();
     }
@@ -292,21 +298,32 @@ final class DiscordApi {
     private static DiscordJson.Obj definition(
             String name,
             String description,
-            String argumentDescription
+            String argumentDescription,
+            boolean withReason
     ) {
+        DiscordJson.Arr options = new DiscordJson.Arr()
+                .add(new DiscordJson.Obj()
+                        .str("name", "target")
+                        .str("description", argumentDescription)
+                        .num("type", STRING_OPTION)
+                        .raw("required", "true"));
+
+        if (withReason) {
+            options.add(new DiscordJson.Obj()
+                    .str("name", "reason")
+                    .str("description", "Why - it goes into the ban log.")
+                    .num("type", STRING_OPTION)
+                    .num("max_length", MAX_REASON_LENGTH)
+                    .raw("required", "true"));
+        }
+
         return new DiscordJson.Obj()
                 .str("name", name)
                 .str("description", description)
                 .num("type", CHAT_INPUT)
                 .raw("dm_permission", "false")
                 .str("default_member_permissions", Long.toString(BAN_MEMBERS))
-                .raw("options", new DiscordJson.Arr()
-                        .add(new DiscordJson.Obj()
-                                .str("name", "target")
-                                .str("description", argumentDescription)
-                                .num("type", STRING_OPTION)
-                                .raw("required", "true"))
-                        .toString());
+                .raw("options", options.toString());
     }
 
     private static String explain(int status, String body) {

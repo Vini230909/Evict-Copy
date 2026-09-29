@@ -291,7 +291,7 @@ public final class Console {
                             return;
                         }
 
-                        bans.ban(Bans.Request.admin(target.uuid(), Bans.Origin.now("the console", Bans.Origin.HUB)));
+                        bans.ban(Bans.Request.admin(target.uuid(), Bans.Origin.now(Bans.Origin.CONSOLE, Bans.Origin.HUB)));
                         PluginLog.info("Banned @ (@). The line above shows everything the ban covered.", target.lastName(), target.uuid());
                     });
                 });
@@ -342,7 +342,7 @@ public final class Console {
                         return;
                     }
 
-                    PlayerLock.FreeResult result = lock.free(found.get(0).uuid(), "the console");
+                    PlayerLock.FreeResult result = lock.free(found.get(0).uuid(), Bans.Origin.CONSOLE);
 
                     if (result.freed()) {
                         PluginLog.info("@", result.line());

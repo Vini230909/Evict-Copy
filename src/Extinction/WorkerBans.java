@@ -126,7 +126,7 @@ public final class WorkerBans {
         kick(request.uuid());
     }
 
-    // A ban made on this worker by any other path - the in-game hammer above all, straight to the admin store.
+    // Any ban made on this worker; one not seeded through ban() was typed into its console (the hammer asks /ban's reason).
     private void forward(String uuid) {
         if (applying || uuid == null || uuid.isBlank()) {
             return;
@@ -135,7 +135,7 @@ public final class WorkerBans {
         Bans.Request request = pending != null && uuid.equals(pending.uuid())
                 ? pending
                 : Bans.Request.admin(uuid, Bans.Origin.now(
-                        Bans.Origin.UNKNOWN_ADMIN,
+                        Bans.Origin.CONSOLE,
                         "this match server"
                 ));
 

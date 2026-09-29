@@ -8,10 +8,8 @@ import mindustry.Vars;
 import mindustry.net.Administration;
 import mindustry.net.Administration.PlayerInfo;
 
-import java.util.function.Consumer;
-
 // Nothing is decided here: a UUID takes /ban's route, an address console 'ban ip''s, so Bans widens and logs both.
-// Main thread only - it touches the admin store and fires Mindustry events.
+// Hub and main thread only - it touches the admin store and fires Mindustry events.
 public final class RemoteBan {
 
     // Mindustry's placeholder for an account it has never seen a name for.
@@ -20,18 +18,23 @@ public final class RemoteBan {
     // A name is player-chosen; keep it short enough to stay one line.
     private static final int MAX_NAME_LENGTH = 40;
 
-    private final Consumer<Bans.Request> seedBan;
+    private final Bans bans;
 
-    public RemoteBan(Consumer<Bans.Request> seedBan) {
-        this.seedBan = seedBan;
+    public RemoteBan(Bans bans) {
+        this.bans = bans;
     }
 
-    // Bans one account or one address; the actor is who asked, as it should read in the ban log.
-    public String ban(String target, String actor) {
+    // Bans one account or one address; the actor is who asked and the reason why, as the ban log shows them.
+    public String ban(String target, String actor, String reason) {
         String cleaned = target == null ? "" : target.trim();
 
         if (cleaned.isEmpty()) {
             return "Give a player UUID or an IP address.";
+        }
+
+        // Discord makes the field required; an old registration of /ban may still lack it.
+        if (reason == null || reason.isBlank()) {
+            return "A ban needs a reason - fill in the reason field.";
         }
 
         if (Vars.netServer == null) {
@@ -39,8 +42,9 @@ public final class RemoteBan {
         }
 
         Administration admins = Vars.netServer.admins;
+        Bans.Origin origin = Bans.Origin.now(actor, Bans.Origin.HUB, reason);
 
-        PluginLog.info("Ban asked for by @: @", actor, cleaned);
+        PluginLog.info("Ban asked for by @: @. Reason: @", actor, cleaned, origin.reason());
 
         if (isAddress(cleaned)) {
             if (admins.isIPBanned(cleaned)) {
@@ -48,7 +52,7 @@ public final class RemoteBan {
             }
 
             // Vanilla's own semantics, exactly as an admin typing 'ban ip' gets them: the address and its accounts.
-            admins.banPlayerIP(cleaned);
+            bans.banAddress(cleaned, origin);
 
             return cleaned + " was banned from the server.";
         }
@@ -60,7 +64,7 @@ public final class RemoteBan {
             return label + " is already banned.";
         }
 
-        seedBan.accept(Bans.Request.admin(cleaned, Bans.Origin.now(actor, Bans.Origin.HUB)));
+        bans.ban(Bans.Request.admin(cleaned, origin));
 
         if (!admins.isIDBanned(cleaned)) {
             return "Could not ban " + label + "; check the server console.";
@@ -82,18 +86,19 @@ public final class RemoteBan {
         }
 
         Administration admins = Vars.netServer.admins;
+        Bans.Origin origin = Bans.Origin.now(actor, Bans.Origin.HUB);
 
         PluginLog.info("Unban asked for by @: @", actor, cleaned);
 
         if (isAddress(cleaned)) {
-            return admins.unbanPlayerIP(cleaned)
+            return bans.unban(cleaned, true, origin)
                     ? cleaned + " was unbanned from the server."
                     : cleaned + " is not banned.";
         }
 
         String label = label(admins, cleaned);
 
-        return admins.unbanPlayerID(cleaned)
+        return bans.unban(cleaned, false, origin)
                 ? label + " was unbanned from the server."
                 : label + " is not banned.";
     }
