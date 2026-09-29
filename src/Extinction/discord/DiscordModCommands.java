@@ -22,7 +22,7 @@ import java.util.function.Supplier;
  * for staff who are not at the console.
  *
  * <p>Hub only, like every other moderation path: the hub is the single writer
- * of bans, and the commands go through exactly the same {@code BanRequest} and
+ * of bans, and the commands go through exactly the same {@code Bans.Request} and
  * {@code banPlayerIP} an admin's own ban does. Nothing is decided here - the
  * ban is widened, kicked, synced to the match servers, announced in chat and
  * written up in the ban log because it took the ordinary route, not because

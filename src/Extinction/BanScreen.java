@@ -1,4 +1,7 @@
-package Extinction.moderation.ban;
+// What a banned player reads: the ban plus the Discord invite to appeal it, at the ban and at every later join attempt.
+package Extinction;
+
+import Extinction.core.util.PluginLog;
 
 import arc.Events;
 import mindustry.Vars;
@@ -6,34 +9,9 @@ import mindustry.game.EventType.ConnectPacketEvent;
 import mindustry.game.EventType.ConnectionEvent;
 import mindustry.net.Administration;
 import mindustry.net.NetConnection;
-import Extinction.core.util.PluginLog;
 
-import java.util.function.Supplier;
-
-/**
- * What a banned player reads on their screen, and how to appeal it.
- *
- * <p>Mindustry kicks a banned connection with {@code KickReason.banned}, a fixed
- * enum the client translates itself into "You are banned on this server." -
- * there is no room in it for a Discord invite. Kicking with a <em>string</em>
- * instead shows that string verbatim, so every ban kick the plugin makes goes
- * through here and carries the appeal line when one is configured.
- *
- * <p>Two screens, and the second is the one that matters: the kick at the
- * moment of the ban (which the plugin already makes itself, on every path), and
- * the refusal on every later join attempt, which vanilla makes inside its
- * connect handlers before any plugin code runs. Except that it does not quite:
- * {@link ConnectionEvent} fires before the address check and
- * {@link ConnectPacketEvent} before the account check, and
- * {@link NetConnection#kick} is a no-op once the connection is kicked. So this
- * looks the ban up itself on those two events, kicks with the appeal text
- * first, and vanilla's own {@code kick(KickReason.banned)} a few lines later
- * does nothing. Installed on the hub and on every match server - a banned
- * player can aim their client straight at a worker's port.
- *
- * <p>The kick dialog is a plain label, nothing in it can be clicked or copied,
- * so the invite is shown in its short form for typing by hand.
- */
+// Vanilla kicks with a fixed enum that has no room for an invite; a kick with a string shows it verbatim.
+// Both roles: a banned player can aim their client straight at a worker's port.
 public final class BanScreen {
 
     private static final String BANNED = "You are banned from this server.";
@@ -41,36 +19,27 @@ public final class BanScreen {
     private static final String WORD_FILTER =
             "You were banned for using a word that is not allowed on this server.";
 
-    private final Supplier<String> appealUrl;
-
     private boolean installed;
 
-    /** @param appealUrl the configured invite; blank means no appeal line. */
-    public BanScreen(Supplier<String> appealUrl) {
-        this.appealUrl = appealUrl;
-    }
-
-    /** The plain ban screen. */
+    // The plain ban screen.
     public String message() {
         return withAppeal(BANNED);
     }
 
-    /** The word filter's screen: same appeal, its own reason. */
+    // The word filter's screen: same appeal, its own reason.
     public String wordFilterMessage() {
         return withAppeal(WORD_FILTER);
     }
 
-    /** Kicks the connection with the ban screen, unless it is already gone. */
+    // Kicks the connection with the ban screen, unless it is already gone.
     public void kick(NetConnection con) {
         if (con != null && !con.kicked) {
             con.kick(message());
         }
     }
 
-    /**
-     * Refuses banned join attempts with the appeal text before vanilla refuses
-     * them with its own. Safe to call once.
-     */
+    // ConnectionEvent fires before vanilla's address check and ConnectPacketEvent before its account check,
+    // and a kicked connection ignores the next kick - so this kicks first, with the appeal text. Safe to call once.
     public void install() {
         if (installed) {
             return;
@@ -78,8 +47,7 @@ public final class BanScreen {
 
         installed = true;
 
-        // TCP connect: the address is all that is known yet. Vanilla's own
-        // check follows in the same handler.
+        // TCP connect: the address is all that is known yet. Vanilla's own check follows in the same handler.
         Events.on(ConnectionEvent.class, event -> {
             NetConnection con = event.connection;
 
@@ -96,8 +64,7 @@ public final class BanScreen {
             }
         });
 
-        // Connect packet: now the account is known too. The steam prefix is
-        // already folded into the uuid by the time the event fires.
+        // Connect packet: now the account is known too; the steam prefix is already folded into the uuid.
         Events.on(ConnectPacketEvent.class, event -> {
             NetConnection con = event.connection;
 
@@ -115,13 +82,13 @@ public final class BanScreen {
 
         PluginLog.info(
                 "Ban screen armed: @",
-                hasAppeal() ? "appeals go to " + appealUrl.get().trim() : "no appeal link set"
+                hasAppeal() ? "appeals go to " + Config.banAppealUrl.trim() : "no appeal link set"
         );
     }
 
-    /** True while an appeal link is configured. */
+    // True while an appeal link is configured.
     public boolean hasAppeal() {
-        String url = appealUrl.get();
+        String url = Config.banAppealUrl;
         return url != null && !url.isBlank();
     }
 
@@ -132,13 +99,10 @@ public final class BanScreen {
 
         return reason
                 + "\n\nTo appeal, join our Discord:\n"
-                + displayUrl(appealUrl.get().trim());
+                + displayUrl(Config.banAppealUrl.trim());
     }
 
-    /**
-     * The short form of a Discord invite, for a screen where it has to be
-     * typed off by hand. Anything that is not a Discord invite is shown as is.
-     */
+    // The short form of a Discord invite, for a screen where it is typed off by hand; anything else as is.
     public static String displayUrl(String url) {
         String rest = url;
 

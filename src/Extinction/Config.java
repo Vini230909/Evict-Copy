@@ -21,6 +21,12 @@ public final class Config {
     // Whether an account's first join through a VPN is locked until an admin frees it. Decided on the hub alone.
     public static boolean vpnLock = true;
 
+    // Where a banned or locked player is sent to appeal - a Discord invite (blank = no appeal line). Copied into workers.
+    public static String banAppealUrl = "";
+
+    // Set once the bans that predate the cascade have been run through it; without it every restart re-imports them.
+    public static boolean banBackfillDone = false;
+
     // Discord webhook the live status message is kept on (blank = off), and the message it edits.
     // The id is cleared whenever the URL changes: an id only means anything in its own channel.
     public static String discordWebhookUrl = "";
@@ -55,6 +61,8 @@ public final class Config {
 
         wordFilter = PropertiesFile.getBool(file, "moderation.wordFilter", wordFilter);
         vpnLock = PropertiesFile.getBool(file, "moderation.vpnLock", vpnLock);
+        banAppealUrl = PropertiesFile.getString(file, "moderation.banAppealUrl", banAppealUrl).trim();
+        banBackfillDone = PropertiesFile.getBool(file, "moderation.banBackfillDone", banBackfillDone);
         discordWebhookUrl = PropertiesFile.getString(file, "discord.webhook.url", discordWebhookUrl).trim();
         discordMessageId = PropertiesFile.getString(file, "discord.message.id", discordMessageId).trim();
         discordBanLogWebhookUrl = PropertiesFile.getString(file, "discord.banlog.webhook.url", discordBanLogWebhookUrl).trim();
@@ -95,6 +103,8 @@ public final class Config {
 
         file.setProperty("moderation.wordFilter", Boolean.toString(wordFilter));
         file.setProperty("moderation.vpnLock", Boolean.toString(vpnLock));
+        file.setProperty("moderation.banAppealUrl", banAppealUrl);
+        file.setProperty("moderation.banBackfillDone", Boolean.toString(banBackfillDone));
         file.setProperty("discord.webhook.url", discordWebhookUrl);
         file.setProperty("discord.message.id", discordMessageId);
         file.setProperty("discord.banlog.webhook.url", discordBanLogWebhookUrl);

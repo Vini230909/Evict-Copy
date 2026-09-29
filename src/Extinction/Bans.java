@@ -1,4 +1,8 @@
-package Extinction.moderation.ban;
+// The hub's ban system: every ban widened to the account's own addresses, kicked, announced, logged and shared with the workers.
+package Extinction;
+
+import Extinction.core.text.Text;
+import Extinction.core.util.PluginLog;
 
 import arc.Events;
 import arc.util.Strings;
@@ -10,102 +14,158 @@ import mindustry.game.EventType.PlayerUnbanEvent;
 import mindustry.gen.Groups;
 import mindustry.net.Administration;
 import mindustry.net.Administration.PlayerInfo;
-import Extinction.core.text.Text;
-import Extinction.core.util.PluginLog;
-import Extinction.gen.EvictSettings;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 
-/**
- * Makes a ban stick.
- *
- * <p>Vanilla bans are narrower than they look. {@code ban id} bans the account
- * and leaves the address free; {@code ban name} short-circuits and never gets
- * to the address at all; {@code ban ip} bans the accounts seen there but not
- * the other addresses those accounts use. Only the in-game hammer bans both,
- * and only the address the player is connected from right now. Every one of
- * them is a five-minute inconvenience to somebody with a second install.
- *
- * <p>This manager hooks the events Mindustry fires for all of those paths, so
- * admins keep using the commands and the button they already know, and widens
- * each ban through {@link BanCascade} - one step: the banned account's own
- * addresses, never onward to other accounts. Everything the cascade turns up
- * is banned, kicked and written to the file the duel workers read.
- *
- * <p>The widening adds addresses to the banned-IP list directly instead of
- * calling {@code banPlayerIP}: vanilla's method also flips every account that
- * ever used the address, and on a shared address (CGNAT, VPN, a university)
- * that permanently bans strangers. A plugin-added address blocks connections
- * from it, nothing more; only an admin's own explicit {@code ban ip} keeps
- * vanilla's account-flipping semantics.
- *
- * <p>Every ban that lands here is also announced in the hub's chat - by name
- * only, never an address - so the server can see that moderation happened.
- *
- * <p>Hub only. A worker applies what the hub decided (see {@link BanSync}) and
- * must never run a cascade of its own: its admin store is a throwaway copy, and
- * two processes deciding who is banned is one too many. A ban made on a worker
- * anyway is forwarded here by {@link BanForwarder} and goes through this class
- * like any other.
- */
-public final class BanManager {
+// Hooks the vanilla ban events, so the commands and the hammer admins know keep working. Why one step only: GAMEPLAY.md, Bans.
+// Hub only: a worker applies what the hub decided (WorkerBans) and forwards its own bans here.
+public final class Bans {
 
-    private final EvictSettings settings;
+    // One account to ban, with why and where it was decided; the word filter's hit only when the filter decided it.
+    public record Request(String uuid, Origin origin, WordFilter.Hit wordFilterHit) {
 
-    /** Where a finished action goes to be written up. */
-    private final Consumer<BanReport> reportSink;
+        // A person's ban: an admin's /ban, hammer or console command.
+        public static Request admin(String uuid, Origin origin) {
+            return new Request(uuid, origin, null);
+        }
 
-    /** The one-off import of pre-existing bans, handed over in one piece. */
-    private final Consumer<List<BanReport>> importSink;
+        // The word filter's ban, with what it saw.
+        public static Request wordFilter(String uuid, Origin origin, WordFilter.Hit hit) {
+            return new Request(uuid, origin, hit);
+        }
 
-    /**
-     * Mirrors the chat announcement ("&lt;name&gt; was banned.") into the
-     * Discord chat log, plain text - the line was visible in the hub's chat,
-     * so the mirror shows it too. Details stay in the ban log.
-     */
+        public boolean isEmpty() {
+            return uuid == null || uuid.isBlank();
+        }
+    }
+
+    // Who decided a ban, on which server, and when - in the console's own format, so the log line can be found again.
+    public record Origin(String actor, String server, String consoleTime) {
+
+        // The word filter is not a person, but it is an actor like any other.
+        public static final String WORD_FILTER_ACTOR = "the word filter";
+
+        // Shown when a match server forwards a ban nobody signed.
+        public static final String UNKNOWN_ADMIN = "an admin";
+
+        public static final String HUB = "the hub";
+
+        private static final DateTimeFormatter CONSOLE_TIME =
+                DateTimeFormatter.ofPattern("MM-dd-yyyy HH:mm:ss");
+
+        // Stamped the moment the ban is decided, on the server deciding it.
+        public static Origin now(String actor, String server) {
+            return new Origin(
+                    actor == null || actor.isBlank() ? UNKNOWN_ADMIN : actor,
+                    server,
+                    CONSOLE_TIME.format(LocalDateTime.now())
+            );
+        }
+
+        // Rebuilds what a match server published, tagged with its own log.
+        public static Origin fromWorker(String actor, int port, String consoleTime) {
+            return new Origin(
+                    actor == null || actor.isBlank() ? UNKNOWN_ADMIN : actor,
+                    matchServer(port),
+                    consoleTime == null || consoleTime.isBlank()
+                            ? CONSOLE_TIME.format(LocalDateTime.now())
+                            : consoleTime
+            );
+        }
+
+        // The label for one match server's console log.
+        public static String matchServer(int port) {
+            return "match server on port " + port;
+        }
+
+        // True when this ban was decided somewhere other than the hub.
+        public boolean fromMatchServer() {
+            return !HUB.equals(server);
+        }
+    }
+
+    // What one moderation action came to. Plain data: the ban log ships it to Discord from another thread.
+    public record Report(
+            Kind kind,
+            String seedLabel,
+            List<String> names,
+            List<String> uuids,
+            List<String> ips,
+            Origin origin,
+            WordFilter.Hit wordFilterHit
+    ) {
+
+        // An action with no story to tell: an admin's ban, straight on the hub.
+        public Report(
+                Kind kind,
+                String seedLabel,
+                List<String> names,
+                List<String> uuids,
+                List<String> ips
+        ) {
+            this(kind, seedLabel, names, uuids, ips, null, null);
+        }
+
+        public enum Kind {
+
+            // An admin banned somebody; the cascade ran.
+            BAN,
+
+            // The word filter banned somebody on its own.
+            WORD_FILTER,
+
+            // An admin lifted a ban. Left exactly as Mindustry applies it.
+            UNBAN,
+
+            // A ban that predates the cascade, pulled through it once.
+            IMPORT
+        }
+
+        public boolean isEmpty() {
+            return uuids.isEmpty() && ips.isEmpty();
+        }
+    }
+
+    // Where a finished action goes to be written up.
+    private final Consumer<Report> reportSink;
+
+    // The one-off import of pre-existing bans, handed over in one piece.
+    private final Consumer<List<Report>> importSink;
+
+    // Mirrors the chat announcement into the Discord chat log: it was visible in the hub's chat.
     private final Consumer<String> announcementEcho;
 
-    /** What the kicked player reads - the ban plus how to appeal it. */
+    // What the kicked player reads - the ban plus how to appeal it.
     private final BanScreen screen;
 
-    /**
-     * True while the cascade is applying its own bans. Every
-     * {@code banPlayerID} fires the event this class listens to, so without
-     * this the first ban would start a cascade inside a cascade inside a
-     * cascade.
-     */
+    // True while the cascade applies its own bans; each fires the event this listens to.
     private boolean applying;
 
-    /**
-     * The request being seeded right now, if any. {@code banPlayerID} fires its
-     * event on this thread before it returns, so the handler picks the story up
-     * from here instead of the four vanilla ban paths all having to carry one
-     * they do not have.
-     */
-    private BanRequest pending;
+    // The request being seeded right now. banPlayerID fires its event before it returns, so the handler finds it here.
+    private Request pending;
 
     private boolean installed;
     private boolean startupDone;
 
-    public BanManager(
-            EvictSettings settings,
-            Consumer<BanReport> reportSink,
-            Consumer<List<BanReport>> importSink,
+    public Bans(
+            Consumer<Report> reportSink,
+            Consumer<List<Report>> importSink,
             Consumer<String> announcementEcho,
             BanScreen screen
     ) {
-        this.settings = settings;
         this.reportSink = reportSink;
         this.importSink = importSink;
         this.announcementEcho = announcementEcho;
         this.screen = screen;
     }
 
-    /** Hub-only: start widening bans. Safe to call once. */
+    // Hub-only: start widening bans. Safe to call once.
     public void install() {
         if (installed) {
             return;
@@ -123,19 +183,12 @@ public final class BanManager {
                 true
         ));
 
-        // Unbans are left exactly as Mindustry applies them - no cascade. An
-        // admin lifting one ban means that one ban, and unwinding a whole
-        // cluster from a single command is the kind of surprise that is only
-        // noticed weeks later. They are logged, nothing more.
+        // Unbans are left exactly as Mindustry applies them - no cascade, logged only.
         Events.on(PlayerUnbanEvent.class, event -> handleUnban(event.uuid, null));
         Events.on(PlayerIpUnbanEvent.class, event -> handleUnban(null, event.ip));
     }
 
-    /**
-     * Runs the startup work the first time the server is far enough along to
-     * have an admin store. Called from the hub's update trigger rather than
-     * from {@code init()}, where {@code netServer} may not exist yet.
-     */
+    // Startup work, once the admin store exists; called from the hub's update trigger, not init().
     public void update() {
         if (startupDone || !installed || Vars.netServer == null) {
             return;
@@ -147,16 +200,8 @@ public final class BanManager {
         publishList();
     }
 
-    /**
-     * Bans an account and remembers why, so the entry can say more than "an
-     * account was banned".
-     *
-     * <p>Goes through {@code banPlayerID} like every other ban, so the account
-     * is widened, kicked, written to the workers' list, announced and logged -
-     * the story only decides how the log entry reads. This is the way in for
-     * the word filter, for {@code /ban}, and for a ban a match server forwarded.
-     */
-    public void ban(BanRequest request) {
+    // Bans an account and remembers why; the way in for the word filter, /ban and a match server's forwarded ban.
+    public void ban(Request request) {
         if (request == null || request.isEmpty() || Vars.netServer == null) {
             return;
         }
@@ -175,16 +220,16 @@ public final class BanManager {
             return;
         }
 
-        BanRequest request = pending != null
+        Request request = pending != null
                 && result.uuids().contains(pending.uuid())
                 ? pending
                 : null;
 
-        WordFilterHit hit = request == null ? null : request.wordFilterHit();
+        WordFilter.Hit hit = request == null ? null : request.wordFilterHit();
 
-        BanReport report = apply(
+        Report report = apply(
                 result,
-                hit == null ? BanReport.Kind.BAN : BanReport.Kind.WORD_FILTER,
+                hit == null ? Report.Kind.BAN : Report.Kind.WORD_FILTER,
                 request == null ? null : request.origin(),
                 hit
         );
@@ -201,18 +246,9 @@ public final class BanManager {
         reportSink.accept(report);
     }
 
-    /**
-     * Tells the hub's players that somebody was banned.
-     *
-     * <p>Names only, and never the seed of an address ban: a public message is
-     * a moderation signal, not a case file, so the addresses, the accounts and
-     * the offending text stay in the log where only staff can read them.
-     * Imports and unbans say nothing at all - a first start would otherwise
-     * announce the whole back catalogue.
-     */
-    private void announce(BanReport report, boolean addressSeeded) {
-        // An address ban is labelled with the address. Name the account it hit
-        // instead, and say nothing if it hit no account anybody has seen.
+    // Tells the hub's players somebody was banned: names only, never an address. Imports and unbans say nothing.
+    private void announce(Report report, boolean addressSeeded) {
+        // An address ban is labelled with the address; name the account it hit instead, or say nothing.
         String name = addressSeeded
                 ? (report.names().isEmpty() ? null : report.names().get(0))
                 : report.seedLabel();
@@ -224,7 +260,7 @@ public final class BanManager {
         String cleanName = Strings.stripColors(name);
         String suffix;
 
-        if (report.kind() == BanReport.Kind.WORD_FILTER) {
+        if (report.kind() == Report.Kind.WORD_FILTER) {
             suffix = " was banned automatically for using a forbidden word.";
         } else if (report.origin() != null && report.origin().fromMatchServer()) {
             suffix = " was banned on a match server.";
@@ -239,16 +275,7 @@ public final class BanManager {
         }
     }
 
-    /**
-     * Reports what an unban actually freed.
-     *
-     * <p>Mindustry's unban is wider than the identifier it is given, in both
-     * directions: lifting an account also drops every address that account has
-     * used, and lifting an address also lifts every account seen there. The
-     * event fires after all of that has happened, so the report is read back
-     * off the live state rather than assumed - an admin has to be able to see
-     * what a single command let back in.
-     */
+    // Reports what an unban freed, read back off the live state: vanilla's unban is wider than its argument.
     private void handleUnban(String uuid, String ip) {
         if (applying) {
             return;
@@ -263,8 +290,7 @@ public final class BanManager {
             uuids.add(uuid);
             label = nameOf(uuid);
 
-            // The addresses vanilla just removed from the ban list along with
-            // the account.
+            // The addresses vanilla just removed from the ban list along with the account.
             for (String freed : BanCascade.ipsOf(uuid)) {
                 if (!admins.bannedIPs.contains(freed, false)) {
                     ips.add(freed);
@@ -274,8 +300,7 @@ public final class BanManager {
             ips.add(ip);
             label = ip;
 
-            // Every account that was banned through this address and is not
-            // banned any more.
+            // Every account that was banned through this address and is not banned any more.
             for (String freed : BanCascade.accountsUsing(ips)) {
                 if (!admins.isIDBanned(freed)) {
                     uuids.add(freed);
@@ -294,8 +319,8 @@ public final class BanManager {
 
         publishList();
 
-        reportSink.accept(new BanReport(
-                BanReport.Kind.UNBAN,
+        reportSink.accept(new Report(
+                Report.Kind.UNBAN,
                 label,
                 BanCascade.namesOf(uuids),
                 List.copyOf(uuids),
@@ -303,21 +328,12 @@ public final class BanManager {
         ));
     }
 
-    /**
-     * Applies a cascade and reports what it hit.
-     *
-     * <p>Accounts are banned through {@code banPlayerID} as usual. Addresses
-     * are added to the banned-IP list directly, without {@code banPlayerIP}:
-     * that method would flip every account that ever used the address, and on
-     * a shared one that bans strangers for good. A quietly added address still
-     * blocks connections and is still lifted by a normal unban (vanilla's
-     * {@code unbanPlayerID} drops the account's addresses from the same list).
-     */
-    private BanReport apply(
+    // Applies a cascade: accounts through banPlayerID, addresses onto the list directly so no stranger is flipped.
+    private Report apply(
             BanCascade.Result result,
-            BanReport.Kind kind,
-            BanOrigin origin,
-            WordFilterHit hit
+            Report.Kind kind,
+            Origin origin,
+            WordFilter.Hit hit
     ) {
         Administration admins = Vars.netServer.admins;
 
@@ -349,7 +365,7 @@ public final class BanManager {
         kickBanned(uuids, result.ips());
         publishList();
 
-        return new BanReport(
+        return new Report(
                 kind,
                 result.seedLabel(),
                 BanCascade.namesOf(uuids),
@@ -360,13 +376,7 @@ public final class BanManager {
         );
     }
 
-    /**
-     * Throws out everyone the ban just caught. Mindustry only kicks the account
-     * the admin typed; the alts it pulled in would otherwise keep playing until
-     * they next reconnected. Kicked with the plugin's own screen, and first:
-     * vanilla's {@code kick(KickReason.banned)} that follows on its own paths
-     * is a no-op on a connection already kicked.
-     */
+    // Throws out everyone the ban caught - vanilla only kicks the account typed - with the plugin's own screen, first.
     private void kickBanned(Set<String> uuids, Set<String> ips) {
         List<mindustry.gen.Player> hit = new ArrayList<>();
 
@@ -385,12 +395,7 @@ public final class BanManager {
         }
     }
 
-    /**
-     * Rewrites the shared ban file from the live admin store, so the duel
-     * workers see the same bans the hub does. Rebuilt in full rather than
-     * appended to, which also picks up bans made before this feature existed
-     * and unbans made by hand.
-     */
+    // Rewrites the workers' ban file from the live admin store, in full, so hand-made bans and unbans are in it too.
     private void publishList() {
         if (Vars.netServer == null) {
             return;
@@ -415,17 +420,9 @@ public final class BanManager {
         BanList.write(BanList.HUB_FILE, uuids, ips);
     }
 
-    /**
-     * Pulls the bans that predate this feature through the cascade, once ever.
-     * Without it every account banned in the old days keeps its untouched
-     * addresses, and the people already evading those bans stay invisible.
-     *
-     * <p>Seeds already covered by an earlier cascade in the same run are
-     * skipped, so one cluster of six aliases produces one entry rather than
-     * six.
-     */
+    // Pulls the bans that predate the cascade through it, once ever; seeds an earlier one covered are skipped.
     private void importExistingBans() {
-        if (settings.banBackfillDone()) {
+        if (Config.banBackfillDone) {
             return;
         }
 
@@ -451,13 +448,14 @@ public final class BanManager {
             }
         }
 
-        settings.markBanBackfillDone();
+        Config.banBackfillDone = true;
+        Config.save();
 
         if (seedUuids.isEmpty() && seedIps.isEmpty()) {
             return 0;
         }
 
-        List<BanReport> reports = new ArrayList<>();
+        List<Report> reports = new ArrayList<>();
         Set<String> covered = new LinkedHashSet<>();
 
         for (String uuid : seedUuids) {
@@ -489,14 +487,14 @@ public final class BanManager {
 
     private void collectImport(
             BanCascade.Result result,
-            List<BanReport> reports,
+            List<Report> reports,
             Set<String> covered
     ) {
         if (result.isEmpty()) {
             return;
         }
 
-        BanReport report = apply(result, BanReport.Kind.IMPORT, null, null);
+        Report report = apply(result, Report.Kind.IMPORT, null, null);
 
         covered.addAll(report.uuids());
         covered.addAll(report.ips());

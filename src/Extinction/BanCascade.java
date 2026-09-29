@@ -1,4 +1,5 @@
-package Extinction.moderation.ban;
+// Works out what one ban covers: the account plus its own recorded addresses, or an address plus the accounts seen there.
+package Extinction;
 
 import arc.struct.Seq;
 import mindustry.Vars;
@@ -9,49 +10,17 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-/**
- * Works out everything that belongs to one ban.
- *
- * <p>A banned player comes back under a new name, and often enough under a new
- * account entirely - Mindustry UUIDs are handed out by the client, so a fresh
- * install is a fresh identity. What does not change nearly as often is the
- * connection. So a UUID ban is not applied to the one identifier an admin
- * happened to type: it also covers every address Mindustry's admin store has
- * recorded for that account.
- *
- * <p>That is the whole expansion - one step, never through an address to other
- * accounts:
- *
- * <ul>
- *   <li>seeded with a UUID: that account plus its own recorded IPs;</li>
- *   <li>seeded with an IP: that address plus the accounts seen there (which is
- *       exactly what vanilla's {@code banPlayerIP} flips anyway), and nothing
- *       beyond them.</li>
- * </ul>
- *
- * <p>Anything deeper was tried and reverted: a single shared address - CGNAT,
- * a VPN endpoint, a university network - links dozens of strangers, and one
- * more hop through their dynamic IPs turns one ban into hundreds of banned
- * addresses that mostly belong to innocent players. The one step catches the
- * offender's own connections - which is the point - without the chain ever
- * escaping into the rest of the player base.
- *
- * <p>Pure computation over an in-memory snapshot: it changes nothing and is
- * safe to run for a preview. {@link BanManager} applies the result.
- */
+// One step and never further: a deeper cascade through shared addresses banned strangers (see GAMEPLAY.md, Bans).
+// Pure computation over the admin store: it changes nothing; Bans applies the result.
 final class BanCascade {
 
-    /**
-     * Placeholder Mindustry stores for an account it has never seen connect,
-     * and which must never be treated as an address: it is shared by every such
-     * account, so banning it would ban all of them.
-     */
+    // Mindustry's placeholder address for an account never seen connecting - shared by all of them, never banned.
     private static final String UNKNOWN_IP = "<unknown>";
 
     private BanCascade() {
     }
 
-    /** Everything one ban covers: the accounts, their addresses, their names. */
+    // Everything one ban covers: the accounts, their addresses, their names.
     record Result(
             String seedLabel,
             Set<String> uuids,
@@ -64,10 +33,7 @@ final class BanCascade {
         }
     }
 
-    /**
-     * Expands a UUID ban: the account plus its own recorded addresses. Never
-     * follows those addresses to other accounts.
-     */
+    // A UUID ban: the account plus its own recorded addresses; never on through them to other accounts.
     static Result fromUuid(String uuid) {
         Set<String> uuids = new LinkedHashSet<>();
         Set<String> ips = new LinkedHashSet<>();
@@ -82,12 +48,7 @@ final class BanCascade {
         return build(labelFor(uuid), uuids, ips);
     }
 
-    /**
-     * Expands an IP ban: the address plus every account seen there - the same
-     * set vanilla's {@code banPlayerIP} flips on its own, so this mostly makes
-     * the report honest. Those accounts' other addresses are deliberately left
-     * alone.
-     */
+    // An IP ban: the address plus every account seen there - the set vanilla's banPlayerIP flips anyway.
     static Result fromIp(String ip) {
         Set<String> uuids = new LinkedHashSet<>();
         Set<String> ips = new LinkedHashSet<>();
@@ -102,29 +63,26 @@ final class BanCascade {
         return build(ip, uuids, ips);
     }
 
-    /**
-     * Every account that has ever connected from one of these addresses. Used
-     * by the unban report to see who a lifted address ban let back in.
-     */
+    // Every account that has ever connected from one of these addresses; the unban report uses it.
     static Set<String> accountsUsing(Set<String> ips) {
         Set<String> uuids = new LinkedHashSet<>();
         addAccountsUsing(ips, uuids);
         return uuids;
     }
 
-    /** Every name ever used by these accounts. */
+    // Every name ever used by these accounts.
     static List<String> namesOf(Set<String> uuids) {
         return collectNames(uuids);
     }
 
-    /** Every address this account has ever connected from. */
+    // Every address this account has ever connected from.
     static Set<String> ipsOf(String uuid) {
         Set<String> ips = new LinkedHashSet<>();
         collectIps(info(uuid), ips);
         return ips;
     }
 
-    /** Adds every account that has ever connected from one of {@code ips}. */
+    // Adds every account that has ever connected from one of these addresses.
     private static void addAccountsUsing(Set<String> ips, Set<String> uuids) {
         if (ips.isEmpty() || Vars.netServer == null) {
             return;
@@ -181,7 +139,7 @@ final class BanCascade {
         }
     }
 
-    /** Every name every account in the cascade has ever used, newest last. */
+    // Every name every account in the cascade has ever used, newest last.
     private static List<String> collectNames(Set<String> uuids) {
         Set<String> names = new LinkedHashSet<>();
 
@@ -216,11 +174,7 @@ final class BanCascade {
         return new Result("", Set.of(), Set.of(), List.of());
     }
 
-    /**
-     * The account's last known name, for the log headline. Falls back to the
-     * UUID for an account the server has never actually seen - a ban typed from
-     * a UUID somebody was handed elsewhere.
-     */
+    // The account's last known name for the headline; the UUID for an account the server has never seen.
     private static String labelFor(String uuid) {
         PlayerInfo info = info(uuid);
 
@@ -229,10 +183,7 @@ final class BanCascade {
                 : info.lastName;
     }
 
-    /**
-     * Reads an account without creating one. {@code getInfo} would happily
-     * invent an empty record for a typo'd UUID and store it forever.
-     */
+    // Reads an account without creating one: getInfo would store an empty record for a typo'd UUID forever.
     private static PlayerInfo info(String uuid) {
         if (Vars.netServer == null || uuid == null || uuid.isBlank()) {
             return null;
@@ -241,7 +192,7 @@ final class BanCascade {
         return Vars.netServer.admins.playerInfo.get(uuid);
     }
 
-    /** True for an address worth banning; filters blanks and the placeholder. */
+    // True for an address worth banning; filters blanks and the placeholder.
     static boolean usableIp(String ip) {
         return ip != null && !ip.isBlank() && !UNKNOWN_IP.equals(ip);
     }

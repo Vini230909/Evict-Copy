@@ -6,9 +6,6 @@ import Extinction.core.util.PluginLog;
 import Extinction.discord.DiscordFormat;
 import Extinction.discord.DiscordJson;
 import Extinction.discord.DiscordWebhook;
-import Extinction.moderation.ban.BanOrigin;
-import Extinction.moderation.ban.BanReport;
-import Extinction.moderation.ban.WordFilterHit;
 import Extinction.moderation.vpn.VpnScanHit;
 import Extinction.moderation.vpn.VpnVerdict;
 
@@ -41,7 +38,7 @@ public final class BanLog {
     private static final int MAX_MESSAGE = 2000;
 
     // Actors that are not a person's name read as the start of a sentence: "The console banned ...".
-    private static final Set<String> PHRASE_ACTORS = Set.of("the console", BanOrigin.WORD_FILTER_ACTOR, BanOrigin.UNKNOWN_ADMIN);
+    private static final Set<String> PHRASE_ACTORS = Set.of("the console", Bans.Origin.WORD_FILTER_ACTOR, Bans.Origin.UNKNOWN_ADMIN);
 
     // Players choose their names, so nothing in an entry may ping (a player called @everyone).
     private static final String NO_MENTIONS = "{\"parse\":[]}";
@@ -92,7 +89,7 @@ public final class BanLog {
     }
 
     // Queues one action. Cheap and safe to call when no webhook is set.
-    public void log(BanReport report) {
+    public void log(Bans.Report report) {
         if (report == null || report.isEmpty() || !webhook.isConfigured()) {
             return;
         }
@@ -133,20 +130,20 @@ public final class BanLog {
     }
 
     // The one-off import of old bans: one entry each while few, summaries when many.
-    public void logImport(List<BanReport> reports) {
+    public void logImport(List<Bans.Report> reports) {
         if (reports == null || reports.isEmpty() || !webhook.isConfigured()) {
             return;
         }
 
         if (reports.size() <= MAX_INDIVIDUAL_IMPORTS) {
-            for (BanReport report : reports) {
+            for (Bans.Report report : reports) {
                 log(report);
             }
 
             return;
         }
 
-        List<List<BanReport>> chunks = chunk(reports);
+        List<List<Bans.Report>> chunks = chunk(reports);
 
         for (int index = 0; index < chunks.size(); index++) {
             enqueue(importSummary(chunks.get(index), index + 1, chunks.size()));
@@ -208,13 +205,13 @@ public final class BanLog {
             return false;
         }
 
-        enqueue(banMessage(new BanReport(
-                BanReport.Kind.BAN,
+        enqueue(banMessage(new Bans.Report(
+                Bans.Report.Kind.BAN,
                 "nobody (ban log test, nothing was banned)",
                 List.of(),
                 List.of(),
                 List.of(),
-                BanOrigin.now("the console", BanOrigin.HUB),
+                Bans.Origin.now("the console", Bans.Origin.HUB),
                 null
         )));
 
@@ -234,9 +231,9 @@ public final class BanLog {
     }
 
     // "<Admin> banned <name> with the **reason:** <reason>", then the server, the accounts and the addresses.
-    private static String banMessage(BanReport report) {
-        BanOrigin origin = report.origin();
-        String actor = actor(origin == null ? BanOrigin.UNKNOWN_ADMIN : origin.actor());
+    private static String banMessage(Bans.Report report) {
+        Bans.Origin origin = report.origin();
+        String actor = actor(origin == null ? Bans.Origin.UNKNOWN_ADMIN : origin.actor());
         String subject = coloredName(subject(report));
 
         String headline = switch (report.kind()) {
@@ -279,8 +276,8 @@ public final class BanLog {
     }
 
     // No reason is asked for yet except by the word filter, whose reason is the word and where it stood.
-    private static String reason(BanReport report) {
-        WordFilterHit hit = report.wordFilterHit();
+    private static String reason(Bans.Report report) {
+        WordFilter.Hit hit = report.wordFilterHit();
 
         if (hit == null) {
             return "none given";
@@ -288,13 +285,13 @@ public final class BanLog {
 
         String word = "banned word \"" + DiscordFormat.escapeMarkdown(hit.word()) + "\"";
 
-        return hit.source() == WordFilterHit.Source.CHAT
+        return hit.source() == WordFilter.Hit.Source.CHAT
                 ? word + " in the chat message: " + DiscordFormat.playerText(hit.text())
                 : word + " in the player name";
     }
 
     // What was acted on; an address ban is named after the first account it hit, when there is one.
-    private static String subject(BanReport report) {
+    private static String subject(Bans.Report report) {
         String seed = report.seedLabel();
 
         if (report.ips().contains(seed) && !report.names().isEmpty()) {
@@ -306,7 +303,7 @@ public final class BanLog {
 
     // An admin's name as it is; "the console" or "an admin" start the sentence with a capital.
     private static String actor(String actor) {
-        String name = actor == null || actor.isBlank() ? BanOrigin.UNKNOWN_ADMIN : actor;
+        String name = actor == null || actor.isBlank() ? Bans.Origin.UNKNOWN_ADMIN : actor;
 
         if (PHRASE_ACTORS.contains(name)) {
             name = Character.toUpperCase(name.charAt(0)) + name.substring(1);
@@ -316,11 +313,11 @@ public final class BanLog {
     }
 
     // "hub" or "port-6568"; a ban with no origin is a vanilla one, and those happen on the hub.
-    private static String server(BanOrigin origin) {
-        // BanOrigin.matchServer writes "match server on port <n>".
+    private static String server(Bans.Origin origin) {
+        // Bans.Origin.matchServer writes "match server on port <n>".
         String matchServer = "match server on port ";
 
-        if (origin == null || origin.server() == null || BanOrigin.HUB.equals(origin.server())) {
+        if (origin == null || origin.server() == null || Bans.Origin.HUB.equals(origin.server())) {
             return "hub";
         }
 
@@ -364,12 +361,12 @@ public final class BanLog {
     }
 
     // A batch of imported old bans in one message, so a long history does not flood the channel.
-    private static String importSummary(List<BanReport> reports, int part, int parts) {
+    private static String importSummary(List<Bans.Report> reports, int part, int parts) {
         StringBuilder text = new StringBuilder("Old bans imported")
                 .append(parts > 1 ? " (" + part + "/" + parts + ")" : "")
                 .append(": ").append(reports.size());
 
-        for (BanReport report : reports) {
+        for (Bans.Report report : reports) {
             text.append("\n").append(coloredName(subject(report)))
                     .append(" — ").append(report.uuids().size())
                     .append(report.uuids().size() == 1 ? " account, " : " accounts, ")
@@ -380,8 +377,8 @@ public final class BanLog {
         return text.toString();
     }
 
-    private static List<List<BanReport>> chunk(List<BanReport> reports) {
-        List<List<BanReport>> chunks = new ArrayList<>();
+    private static List<List<Bans.Report>> chunk(List<Bans.Report> reports) {
+        List<List<Bans.Report>> chunks = new ArrayList<>();
 
         for (int start = 0; start < reports.size(); start += IMPORT_SUMMARY_CHUNK) {
             chunks.add(reports.subList(start, Math.min(start + IMPORT_SUMMARY_CHUNK, reports.size())));

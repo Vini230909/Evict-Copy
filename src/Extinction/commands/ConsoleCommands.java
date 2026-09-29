@@ -8,7 +8,6 @@ import Extinction.core.cmd.Commands;
 import Extinction.core.io.Secrets;
 import Extinction.discord.ChatLogReporter;
 import Extinction.discord.DiscordModCommands;
-import Extinction.moderation.ban.BanManager;
 import Extinction.moderation.vpn.VpnScan;
 
 import arc.util.CommandHandler;
@@ -37,9 +36,6 @@ public final class ConsoleCommands {
     private final TeamManager teamManager;
     private final PlayerDataManager playerDataManager;
 
-    /** Null on a duel worker: only the hub decides who is banned. */
-    private final BanManager banManager;
-
     /** Null on a duel worker: the hub looks every join up, log only. */
     private final VpnScan vpnScan;
 
@@ -64,7 +60,6 @@ public final class ConsoleCommands {
             EvictTerrainGenerator terrain,
             TeamManager teamManager,
             PlayerDataManager playerDataManager,
-            BanManager banManager,
             VpnScan vpnScan,
             PlayerLock playerLock,
             ChatLogReporter chatLogReporter,
@@ -76,7 +71,6 @@ public final class ConsoleCommands {
         this.terrain = terrain;
         this.teamManager = teamManager;
         this.playerDataManager = playerDataManager;
-        this.banManager = banManager;
         this.vpnScan = vpnScan;
         this.playerLock = playerLock;
         this.chatLogReporter = chatLogReporter;
@@ -94,11 +88,6 @@ public final class ConsoleCommands {
                         ctx.str("action", "").trim().toLowerCase(),
                         ctx.str("value", "").trim()
                 ));
-
-        commands.command("banplayer").console()
-                .args("name/uuid:text")
-                .description("Ban a stored player by name or UUID, online or not.")
-                .run(ctx -> handleBanCommand(ctx.str("name/uuid", "").trim()));
 
         commands.command("corecap").console()
                 .args("additional-per-core:int")
@@ -479,57 +468,6 @@ public final class ConsoleCommands {
                 : "off - new accounts are not looked up")
                 + "; " + playerLock.lockedCount() + " locked, "
                 + playerLock.verifiedCount() + " verified ('free' lists and frees)";
-    }
-
-    /**
-     * banplayer: ban a stored player whether or not they are online - the path
-     * for harassment found in the chat log after the offender left. Resolves
-     * the name against the plugin's player DB (vanilla 'ban name' only works
-     * on connected players), then seeds a normal ban through banPlayerID, so
-     * BanManager widens, kicks, syncs and logs it like any other.
-     */
-    private void handleBanCommand(String query) {
-        if (banManager == null) {
-            Log.err("[EvictMapGenerator] Bans are managed on the hub, not on a match server.");
-            return;
-        }
-
-        if (query.isEmpty()) {
-            Log.err("[EvictMapGenerator] Use: banplayer <name/uuid>");
-            return;
-        }
-
-        playerDataManager.searchPlayerInfo(query, matches -> {
-            if (matches.isEmpty()) {
-                Log.err("[EvictMapGenerator] No stored players match '@'.", query);
-                return;
-            }
-
-            if (matches.size() > 1) {
-                Log.err("[EvictMapGenerator] '@' matches @ players; be more specific or use a UUID:", query, matches.size());
-                for (PlayerDataManager.PlayerInfo info : matches) {
-                    Log.info("[EvictMapGenerator] @", PlayerStats.compactLine(info));
-                }
-                return;
-            }
-
-            PlayerDataManager.PlayerInfo target = matches.get(0);
-
-            if (Vars.netServer.admins.isIDBanned(target.uuid())) {
-                Log.info("[EvictMapGenerator] @ (@) is already banned.", target.lastName(), target.uuid());
-                return;
-            }
-
-            banManager.ban(Extinction.moderation.ban.BanRequest.admin(
-                    target.uuid(),
-                    Extinction.moderation.ban.BanOrigin.now(
-                            "the console",
-                            Extinction.moderation.ban.BanOrigin.HUB
-                    )
-            ));
-
-            Log.info("[EvictMapGenerator] Banned @ (@). The line above shows everything the ban covered.", target.lastName(), target.uuid());
-        });
     }
 
     private void generateTerrain(String[] args) {

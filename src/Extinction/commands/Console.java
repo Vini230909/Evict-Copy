@@ -2,6 +2,7 @@
 package Extinction.commands;
 
 import Extinction.BanLog;
+import Extinction.Bans;
 import Extinction.Config;
 import Extinction.DiscordStatus;
 import Extinction.LockList;
@@ -13,9 +14,11 @@ import Extinction.RoundTime;
 import Extinction.WordFilter;
 import Extinction.core.cmd.Commands;
 import Extinction.core.util.PluginLog;
+import Extinction.data.PlayerDataManager;
 
 import arc.util.CommandHandler;
 import arc.util.Strings;
+import mindustry.Vars;
 
 import java.util.List;
 
@@ -24,7 +27,7 @@ public final class Console {
     private Console() {
     }
 
-    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime, PlayerStats playerStats, Restart restart, BanLog banLog, DiscordStatus discordStatus, PlayerLock lock) {
+    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime, PlayerStats playerStats, Restart restart, BanLog banLog, DiscordStatus discordStatus, PlayerLock lock, Bans bans, PlayerDataManager playerDataManager) {
         Commands commands = new Commands();
 
         commands.command("matchstatus").console()
@@ -178,6 +181,52 @@ public final class Console {
                             }
                         }
                     }
+                });
+
+        // For a stored player, online or not - harassment found in the chat log after the offender left.
+        // bans is null on a duel worker: only the hub decides who is banned.
+        commands.command("banplayer").console()
+                .args("name/uuid:text")
+                .description("Ban a stored player by name or UUID, online or not.")
+                .run(ctx -> {
+                    String query = ctx.str("name/uuid", "").trim();
+
+                    if (bans == null) {
+                        PluginLog.err("Bans are managed on the hub, not on a match server.");
+                        return;
+                    }
+
+                    if (query.isEmpty()) {
+                        PluginLog.err("Use: banplayer <name/uuid>");
+                        return;
+                    }
+
+                    playerDataManager.searchPlayerInfo(query, found -> {
+                        if (found.isEmpty()) {
+                            PluginLog.err("No stored players match '@'.", query);
+                            return;
+                        }
+
+                        if (found.size() > 1) {
+                            PluginLog.err("'@' matches @ players; be more specific or use a UUID:", query, found.size());
+
+                            for (PlayerDataManager.PlayerInfo info : found) {
+                                PluginLog.info("@", PlayerStats.compactLine(info));
+                            }
+
+                            return;
+                        }
+
+                        PlayerDataManager.PlayerInfo target = found.get(0);
+
+                        if (Vars.netServer.admins.isIDBanned(target.uuid())) {
+                            PluginLog.info("@ (@) is already banned.", target.lastName(), target.uuid());
+                            return;
+                        }
+
+                        bans.ban(Bans.Request.admin(target.uuid(), Bans.Origin.now("the console", Bans.Origin.HUB)));
+                        PluginLog.info("Banned @ (@). The line above shows everything the ban covered.", target.lastName(), target.uuid());
+                    });
                 });
 
         // lock is null on a duel worker: the hub owns the lock list.

@@ -3,7 +3,6 @@ package Extinction;
 
 import Extinction.data.PlayerDataManager;
 import Extinction.discord.ChatLogReporter;
-import Extinction.moderation.ban.BanRequest;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -54,7 +53,7 @@ public final class Matches {
 
     public Matches(
             PlayerDataManager playerDataManager,
-            Consumer<BanRequest> banRequestSink,
+            Consumer<Bans.Request> banRequestSink,
             ChatLogReporter chatLog
     ) {
         this.reports = new WorkerReports(

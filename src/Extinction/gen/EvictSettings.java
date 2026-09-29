@@ -127,21 +127,6 @@ public final class EvictSettings {
     private static final String CHAT_LOG_PORT_SUFFIX = ".channel";
 
     /**
-     * Set once the bans that existed before this feature have been run through
-     * the cascade. Without it every restart would re-import and re-post the
-     * whole back catalogue.
-     */
-    private boolean banBackfillDone = false;
-
-    /**
-     * Where a banned player is told to go to appeal - a Discord invite, shown
-     * on every ban kick screen. Blank means no appeal line. Copied into every
-     * duel worker with the rest of this file, so a match server shows the
-     * same screen.
-     */
-    private String banAppealUrl = "";
-
-    /**
      * Whether the hub looks up every join's address for a VPN and writes the
      * hits to the ban log. Log only - it decides nothing. Lands in worker
      * folders with the rest of this file but is read by the hub alone.
@@ -290,16 +275,6 @@ public final class EvictSettings {
                             discordCommandRole
                     ).trim();
             readChatLogSettings(properties);
-            banBackfillDone = readBoolean(
-                    properties,
-                    "moderation.banBackfillDone",
-                    banBackfillDone
-            );
-            banAppealUrl = readString(
-                    properties,
-                    "moderation.banAppealUrl",
-                    banAppealUrl
-            ).trim();
             vpnScanEnabled = readBoolean(
                     properties,
                     "moderation.vpnScan",
@@ -463,31 +438,6 @@ public final class EvictSettings {
         }
     }
 
-    /**
-     * True once the bans that predate the cascade have been imported. Checked
-     * on hub startup so the import runs exactly once, ever.
-     */
-    public boolean banBackfillDone() {
-        return banBackfillDone;
-    }
-
-
-    /** The Discord invite shown on ban screens; blank when none is set. */
-    public String banAppealUrl() {
-        return banAppealUrl;
-    }
-
-    public void setBanAppealUrl(String url) {
-        String trimmed = url == null ? "" : url.trim();
-
-        if (trimmed.equals(banAppealUrl)) {
-            return;
-        }
-
-        banAppealUrl = trimmed;
-        save();
-    }
-
     /** True while the hub writes VPN joins to the ban log. */
     public boolean vpnScanEnabled() {
         return vpnScanEnabled;
@@ -499,15 +449,6 @@ public final class EvictSettings {
         }
 
         vpnScanEnabled = enabled;
-        save();
-    }
-
-    public void markBanBackfillDone() {
-        if (banBackfillDone) {
-            return;
-        }
-
-        banBackfillDone = true;
         save();
     }
 
@@ -951,11 +892,6 @@ public final class EvictSettings {
             );
         }
 
-        properties.setProperty(
-                "moderation.banBackfillDone",
-                Boolean.toString(banBackfillDone)
-        );
-        properties.setProperty("moderation.banAppealUrl", banAppealUrl);
         properties.setProperty(
                 "moderation.vpnScan",
                 Boolean.toString(vpnScanEnabled)

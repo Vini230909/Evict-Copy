@@ -1,9 +1,7 @@
-package Extinction.commands;
+// /ban: an admin picks a player (online, or a stored one by name) and confirms; nothing happens without the confirmation.
+package Extinction;
 
-import Extinction.PlayerNames;
 import Extinction.data.PlayerDataManager;
-import Extinction.moderation.ban.BanOrigin;
-import Extinction.moderation.ban.BanRequest;
 
 import mindustry.Vars;
 import mindustry.gen.Call;
@@ -18,63 +16,46 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-/**
- * /ban: admin-only ban with the same UX as /info. No argument opens a picker
- * of the online players; a name searches the stored players (so it also works
- * on somebody who already left). Either way a confirmation menu names the
- * target before anything happens - a mistap in a picker must not ban anyone.
- *
- * <p>The command only hands the account over: on the hub {@code BanManager}
- * widens it to the account's known addresses, kicks it everywhere, syncs it to
- * the match servers, announces it and logs it to Discord, exactly like
- * {@code ban id} or the hammer.
- *
- * <p>It works on a match server too. There the ban takes effect locally at once
- * and is forwarded to the hub, which owns bans and applies it properly - a ban
- * that stayed on the worker would be lifted again by the next ban-list sync,
- * and the player would simply walk back onto the hub.
- */
-public final class BanCommands {
+// Only hands the account over: the hub's Bans widens, kicks, syncs, announces and logs it; a match server bans
+// locally and forwards it (WorkerBans), because a ban that stayed on the worker is lifted by the next sync.
+public final class BanMenu {
 
     private static final int PICKER_MENU_COLUMNS = 2;
 
-    /** Same cap as the /info picker; a tighter name reaches anyone past it. */
+    // Same cap as the /info picker; a tighter name reaches anyone past it.
     private static final int MAX_PICKER_MATCHES = 20;
 
-    /** One picker or confirm target: the account and the name shown for it. */
+    // One picker or confirm target: the account and the name shown for it.
     private record Target(String uuid, String name) {
     }
 
     private final PlayerDataManager playerDataManager;
 
-    /**
-     * Where a confirmed ban goes: the hub's ban manager, or - on a match
-     * server - the local ban plus the forward to the hub.
-     */
-    private final Consumer<BanRequest> banSeeder;
+    // Where a confirmed ban goes: the hub's Bans, or on a match server the local ban plus the forward.
+    private final Consumer<Bans.Request> banSeeder;
 
-    /** Which console log the ban's line is written to. */
+    // Which console log the ban's line is written to.
     private final String server;
 
     private final int pickerMenuId;
     private final int confirmMenuId;
 
-    /** Admin UUID -> ordered targets shown in their picker. */
+    // Admin UUID -> ordered targets shown in their picker.
     private final Map<String, List<Target>> pickerTargetsByAdminUuid =
             new HashMap<>();
 
-    /** Admin UUID -> the target their confirmation menu is about. */
+    // Admin UUID -> the target their confirmation menu is about.
     private final Map<String, Target> confirmTargetByAdminUuid =
             new HashMap<>();
 
-    public BanCommands(
+    public BanMenu(
             PlayerDataManager playerDataManager,
             boolean hub,
-            Consumer<BanRequest> banSeeder
+            Consumer<Bans.Request> banSeeder
     ) {
         this.playerDataManager = playerDataManager;
         this.banSeeder = banSeeder;
-        this.server = hub ? BanOrigin.HUB : "this match server";
+        this.server = hub ? Bans.Origin.HUB : "this match server";
         this.pickerMenuId = Menus.registerMenu(this::handlePicker);
         this.confirmMenuId = Menus.registerMenu(this::handleConfirm);
     }
@@ -86,6 +67,7 @@ public final class BanCommands {
         }
     }
 
+    // No argument opens a picker of the online players; a name searches the stored ones, so it reaches leavers too.
     public void handleBan(String[] args, Player player) {
         if (player == null) {
             return;
@@ -250,8 +232,7 @@ public final class BanCommands {
             return;
         }
 
-        // Re-checked at confirm time: the flag may have been revoked while the
-        // menu sat open.
+        // Re-checked at confirm time: the flag may have been revoked while the menu sat open.
         if (!admin.admin || Vars.netServer == null) {
             return;
         }
@@ -263,12 +244,9 @@ public final class BanCommands {
             return;
         }
 
-        // The hub widens, kicks, syncs, announces and logs; a match server bans
-        // locally and forwards the same request to the hub, which does all of
-        // that there.
-        banSeeder.accept(BanRequest.admin(
+        banSeeder.accept(Bans.Request.admin(
                 target.uuid(),
-                BanOrigin.now(admin.plainName(), server)
+                Bans.Origin.now(admin.plainName(), server)
         ));
 
         admin.sendMessage(

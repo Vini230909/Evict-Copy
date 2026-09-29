@@ -1,8 +1,6 @@
 // The match referee on a worker: the handshake roster, joins and leaves, victory, surrender, result.
 package Extinction;
 
-import Extinction.moderation.ban.BanRequest;
-
 import java.io.File;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -120,7 +118,7 @@ public final class Referee {
         status.setPlaytimeSource(source);
     }
 
-    public void requestBan(BanRequest request) {
+    public void requestBan(Bans.Request request) {
         status.requestBan(request);
     }
 

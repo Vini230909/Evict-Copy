@@ -5,9 +5,6 @@ import Extinction.data.PlayerDataManager;
 import Extinction.discord.ChatLogReporter;
 import Extinction.discord.ChatLogTail;
 import Extinction.discord.DiscordFormat;
-import Extinction.moderation.ban.BanOrigin;
-import Extinction.moderation.ban.BanRequest;
-import Extinction.moderation.ban.WordFilterHit;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -32,7 +29,7 @@ public final class WorkerReports {
     private final PlayerDataManager playerDataManager;
 
     // Hands a ban made on a match server to the hub's normal ban path, with its story.
-    private final Consumer<BanRequest> banRequestSink;
+    private final Consumer<Bans.Request> banRequestSink;
 
     // The Discord chat mirror: worker chat lines go into the match's port channel.
     private final ChatLogReporter chatLog;
@@ -59,7 +56,7 @@ public final class WorkerReports {
 
     public WorkerReports(
             PlayerDataManager playerDataManager,
-            Consumer<BanRequest> banRequestSink,
+            Consumer<Bans.Request> banRequestSink,
             ChatLogReporter chatLog,
             ExecutorService executor,
             IntFunction<MatchSlot> slotByPort
@@ -190,21 +187,21 @@ public final class WorkerReports {
     }
 
     // What the worker published about a ban: who banned, its console time, what the filter saw.
-    private static BanRequest workerBanRequest(
+    private static Bans.Request workerBanRequest(
             Properties status,
             String uuid,
             int port
     ) {
         String prefix = "banrequest." + uuid + ".";
 
-        return new BanRequest(
+        return new Bans.Request(
                 uuid,
-                BanOrigin.fromWorker(
+                Bans.Origin.fromWorker(
                         status.getProperty(prefix + "actor", ""),
                         port,
                         status.getProperty(prefix + "time", "")
                 ),
-                WordFilterHit.fromWorker(
+                WordFilter.Hit.fromWorker(
                         status.getProperty(prefix + "source", ""),
                         status.getProperty(prefix + "word", ""),
                         status.getProperty(prefix + "text", "")

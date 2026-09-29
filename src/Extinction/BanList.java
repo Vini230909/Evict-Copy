@@ -1,4 +1,5 @@
-package Extinction.moderation.ban;
+// The hub's ban list as a file the match servers read back: "uuid <id>" and "ip <address>" lines.
+package Extinction;
 
 import Extinction.core.util.PluginLog;
 
@@ -13,34 +14,13 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-/**
- * The hub's ban list as a file the duel workers can read.
- *
- * <p>A worker is its own Mindustry process with its own {@code config/}, so it
- * knows nothing about the hub's bans - a banned player who has the worker's
- * port can walk straight into a match. The hub therefore writes every ban to
- * {@code config/evict-bans.txt} and the workers, which live two directories
- * below it, read it back and apply it locally. Same route the workers already
- * use for the player database.
- *
- * <p>Plain lines rather than a properties file on purpose: Mindustry UUIDs are
- * base64 and end in {@code ==}, which is exactly the character a properties key
- * would have to escape.
- *
- * <pre>
- * uuid AAAAAAAAAAAAAAAAAAAAAA==
- * ip 203.0.113.7
- * </pre>
- */
+// Plain lines, not properties: a UUID is base64 and ends in "==", which a properties key would have to escape.
 public final class BanList {
 
-    /** Where the hub keeps it. */
+    // Where the hub keeps it.
     public static final File HUB_FILE = new File("config/evict-bans.txt");
 
-    /**
-     * Where a worker finds the hub's copy. Workers run in
-     * {@code duel-workers/duel-<port>/}, so the hub config is two levels up.
-     */
+    // Where a worker, in duel-workers/duel-<port>/, finds the hub's copy two levels up.
     public static final File WORKER_VIEW_FILE =
             new File("../../config/evict-bans.txt");
 
@@ -50,7 +30,7 @@ public final class BanList {
     private BanList() {
     }
 
-    /** A ban list read off disk. */
+    // A ban list read off disk.
     public record Snapshot(Set<String> uuids, Set<String> ips) {
 
         public static Snapshot empty() {
@@ -62,11 +42,7 @@ public final class BanList {
         }
     }
 
-    /**
-     * Rewrites the file from the given sets. Written to a temporary file and
-     * moved into place, so a worker polling the file mid-write can never read a
-     * half-finished list and unban half the server.
-     */
+    // Rewrites the file through a temporary one, so a worker never reads half a list and unbans half the server.
     public static void write(File file, Set<String> uuids, Set<String> ips) {
         File parent = file.getParentFile();
 
@@ -110,7 +86,7 @@ public final class BanList {
         }
     }
 
-    /** Reads the list; a missing or unreadable file simply reads as empty. */
+    // Reads the list; a missing or unreadable file simply reads as empty.
     public static Snapshot read(File file) {
         if (!file.exists()) {
             return Snapshot.empty();
