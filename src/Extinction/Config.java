@@ -18,6 +18,31 @@ public final class Config {
     // Whether the banned-word filter bans automatically. Copied into every worker.
     public static boolean wordFilter = true;
 
+    // Whether the hub's VPN scan looks addresses up at all ('vpn on/off'). Read by the hub alone.
+    public static boolean vpnScan = true;
+
+    // Whether an account's first join through a VPN is locked until an admin frees it. Decided on the hub alone.
+    public static boolean vpnLock = true;
+
+    // Where a banned or locked player is sent to appeal - a Discord invite (blank = no appeal line). Copied into workers.
+    public static String banAppealUrl = "";
+
+    // Set once the bans that predate the cascade have been run through it; without it every restart re-imports them.
+    public static boolean banBackfillDone = false;
+
+    // Discord webhook the live status message is kept on (blank = off), and the message it edits.
+    // The id is cleared whenever the URL changes: an id only means anything in its own channel.
+    public static String discordWebhookUrl = "";
+    public static String discordMessageId = "";
+
+    // Discord webhook the ban log posts to (blank = off). Staff-only channel: entries carry IPs.
+    public static String discordBanLogWebhookUrl = "";
+
+    // Discord server the /ban, /unban and /free commands answer in (blank = off), and the role allowed to use them
+    // (blank = Discord's Administrator permission only). The bot token lives in the secrets file, never here.
+    public static String discordCommandGuild = "";
+    public static String discordCommandRole = "";
+
     // Match servers: the ip players are sent to (blank = /play off), first port, pool size,
     // the map a worker hosts and the server jar it runs. Workers get the ip blanked.
     public static String duelServerIp = "";
@@ -43,6 +68,15 @@ public final class Config {
         Properties file = PropertiesFile.load(FILE);
 
         wordFilter = PropertiesFile.getBool(file, "moderation.wordFilter", wordFilter);
+        vpnScan = PropertiesFile.getBool(file, "moderation.vpnScan", vpnScan);
+        vpnLock = PropertiesFile.getBool(file, "moderation.vpnLock", vpnLock);
+        banAppealUrl = PropertiesFile.getString(file, "moderation.banAppealUrl", banAppealUrl).trim();
+        banBackfillDone = PropertiesFile.getBool(file, "moderation.banBackfillDone", banBackfillDone);
+        discordWebhookUrl = PropertiesFile.getString(file, "discord.webhook.url", discordWebhookUrl).trim();
+        discordMessageId = PropertiesFile.getString(file, "discord.message.id", discordMessageId).trim();
+        discordBanLogWebhookUrl = PropertiesFile.getString(file, "discord.banlog.webhook.url", discordBanLogWebhookUrl).trim();
+        discordCommandGuild = PropertiesFile.getString(file, "discord.commands.guild", discordCommandGuild).trim();
+        discordCommandRole = PropertiesFile.getString(file, "discord.commands.role", discordCommandRole).trim();
 
         duelServerIp = PropertiesFile.getString(file, "duel.server.ip", duelServerIp).trim();
         duelServerPort = range("Duel base port", PropertiesFile.getInt(file, "duel.server.port", duelServerPort), 1, 65535, duelServerPort);
@@ -79,6 +113,15 @@ public final class Config {
         Properties file = PropertiesFile.load(FILE);
 
         file.setProperty("moderation.wordFilter", Boolean.toString(wordFilter));
+        file.setProperty("moderation.vpnScan", Boolean.toString(vpnScan));
+        file.setProperty("moderation.vpnLock", Boolean.toString(vpnLock));
+        file.setProperty("moderation.banAppealUrl", banAppealUrl);
+        file.setProperty("moderation.banBackfillDone", Boolean.toString(banBackfillDone));
+        file.setProperty("discord.webhook.url", discordWebhookUrl);
+        file.setProperty("discord.message.id", discordMessageId);
+        file.setProperty("discord.banlog.webhook.url", discordBanLogWebhookUrl);
+        file.setProperty("discord.commands.guild", discordCommandGuild);
+        file.setProperty("discord.commands.role", discordCommandRole);
 
         file.setProperty("duel.server.ip", duelServerIp);
         file.setProperty("duel.server.port", Integer.toString(duelServerPort));

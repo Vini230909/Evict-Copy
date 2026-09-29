@@ -5,9 +5,6 @@ import Extinction.data.PlayerDataManager;
 import Extinction.discord.ChatLogReporter;
 import Extinction.discord.ChatLogTail;
 import Extinction.discord.DiscordFormat;
-import Extinction.moderation.ban.BanOrigin;
-import Extinction.moderation.ban.BanRequest;
-import Extinction.moderation.ban.WordFilterHit;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -32,7 +29,7 @@ public final class WorkerReports {
     private final PlayerDataManager playerDataManager;
 
     // Hands a ban made on a match server to the hub's normal ban path, with its story.
-    private final Consumer<BanRequest> banRequestSink;
+    private final Consumer<Bans.Request> banRequestSink;
 
     // The Discord chat mirror: worker chat lines go into the match's port channel.
     private final ChatLogReporter chatLog;
@@ -59,7 +56,7 @@ public final class WorkerReports {
 
     public WorkerReports(
             PlayerDataManager playerDataManager,
-            Consumer<BanRequest> banRequestSink,
+            Consumer<Bans.Request> banRequestSink,
             ChatLogReporter chatLog,
             ExecutorService executor,
             IntFunction<MatchSlot> slotByPort
@@ -189,22 +186,23 @@ public final class WorkerReports {
         }
     }
 
-    // What the worker published about a ban: who banned, its console time, what the filter saw.
-    private static BanRequest workerBanRequest(
+    // What the worker published about a ban: who banned and why, its console time, what the filter saw.
+    private static Bans.Request workerBanRequest(
             Properties status,
             String uuid,
             int port
     ) {
         String prefix = "banrequest." + uuid + ".";
 
-        return new BanRequest(
+        return new Bans.Request(
                 uuid,
-                BanOrigin.fromWorker(
+                Bans.Origin.fromWorker(
                         status.getProperty(prefix + "actor", ""),
                         port,
-                        status.getProperty(prefix + "time", "")
+                        status.getProperty(prefix + "time", ""),
+                        status.getProperty(prefix + "reason", "")
                 ),
-                WordFilterHit.fromWorker(
+                WordFilter.Hit.fromWorker(
                         status.getProperty(prefix + "source", ""),
                         status.getProperty(prefix + "word", ""),
                         status.getProperty(prefix + "text", "")
@@ -324,14 +322,18 @@ public final class WorkerReports {
                     port,
                     winnerUuid.isEmpty() ? "?" : winnerUuid,
                     loserUuid.isEmpty() ? "?" : loserUuid,
-                    result.reason()
+                    result.noContest() ? "No contest - a player was banned" : result.reason()
             );
 
             reportMatchEnd(slot, mode, result);
 
             // Only Ranked feeds ELO; 1v1, Teams and FFA are unranked history; Training and
             // Sandbox leave no history. The hub is the only process that writes the database.
-            if (mode.ranked()) {
+            if (result.noContest()) {
+                playerDataManager.history.recordNoContest(mode,
+                        slot.participants.stream().map(MatchSlot.Participant::uuid).toList(),
+                        slot.participants.stream().map(MatchSlot.Participant::display).toList());
+            } else if (mode.ranked()) {
                 String winnerChatName = chatName(slot, winnerUuid);
                 String loserChatName = chatName(slot, loserUuid);
 
@@ -430,10 +432,11 @@ public final class WorkerReports {
     ) {
         slot.endReported = true;
 
-        boolean solo = mode.solo();
+        boolean solo = mode.solo() || result.noContest();
         boolean decided = !solo && !result.winnerUuids().isEmpty();
 
-        String howItEnded = switch (result.reason()) {
+        String howItEnded = result.noContest()
+                ? "No contest - " + chatName(slot, result.bannedUuid()) + " was banned." : switch (result.reason()) {
             case "victory" -> "Victory.";
             case "surrender" -> "Ended with /die.";
             case "sandbox-ended" -> "Closed by the sandbox owner.";

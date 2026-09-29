@@ -13,7 +13,7 @@ import java.util.List;
  * through it, so a quote or backslash in a player name can never break out of
  * its string and change the shape of the request.
  */
-final class DiscordJson {
+public final class DiscordJson {
 
     private DiscordJson() {
     }
@@ -52,21 +52,21 @@ final class DiscordJson {
     }
 
     /** A JSON object built field by field, in insertion order. */
-    static final class Obj {
+    public static final class Obj {
 
         private final List<String> fields = new ArrayList<>();
 
         /** Adds a field whose value is already JSON (object, array, number). */
-        Obj raw(String key, String jsonValue) {
+        public Obj raw(String key, String jsonValue) {
             fields.add(string(key) + ":" + jsonValue);
             return this;
         }
 
-        Obj str(String key, String value) {
+        public Obj str(String key, String value) {
             return raw(key, string(value));
         }
 
-        Obj num(String key, long value) {
+        public Obj num(String key, long value) {
             return raw(key, Long.toString(value));
         }
 
@@ -77,11 +77,11 @@ final class DiscordJson {
     }
 
     /** A JSON array of already-serialised values. */
-    static final class Arr {
+    public static final class Arr {
 
         private final List<String> values = new ArrayList<>();
 
-        Arr add(Object jsonValue) {
+        public Arr add(Object jsonValue) {
             values.add(jsonValue.toString());
             return this;
         }

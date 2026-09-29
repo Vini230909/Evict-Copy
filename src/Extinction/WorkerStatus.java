@@ -1,9 +1,6 @@
 // What this worker publishes for the hub (status.properties) and what it reads of its siblings.
 package Extinction;
 
-import Extinction.moderation.ban.BanRequest;
-import Extinction.moderation.ban.WordFilterHit;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -36,8 +33,8 @@ public final class WorkerStatus {
     // Accounts banned here, cumulative and republished every write: banning is idempotent on the hub.
     private final Set<String> banRequestUuids = new LinkedHashSet<>();
 
-    // Who banned each account and, for the word filter, what it saw - for the hub's ban log.
-    private final Map<String, BanRequest> banRequestDetails = new LinkedHashMap<>();
+    // Who banned each account and why and, for the word filter, what it saw - for the hub's ban log.
+    private final Map<String, Bans.Request> banRequestDetails = new LinkedHashMap<>();
 
     // Per-UUID playtime on this worker; the hub credits it, the worker never writes the database.
     private Supplier<Map<String, Long>> playtimeSource = Map::of;
@@ -52,7 +49,7 @@ public final class WorkerStatus {
 
     // Published at once, not on the next scheduled write: the hub should have the ban before
     // the account reconnects there.
-    public void requestBan(BanRequest request) {
+    public void requestBan(Bans.Request request) {
         if (request == null
                 || request.isEmpty()
                 || !banRequestUuids.add(request.uuid())) {
@@ -93,14 +90,15 @@ public final class WorkerStatus {
         // The hub owns bans: it applies these properly and needs the story with them.
         properties.setProperty("banrequests", String.join(",", banRequestUuids));
 
-        for (Map.Entry<String, BanRequest> entry : banRequestDetails.entrySet()) {
+        for (Map.Entry<String, Bans.Request> entry : banRequestDetails.entrySet()) {
             String prefix = "banrequest." + entry.getKey() + ".";
-            BanRequest request = entry.getValue();
+            Bans.Request request = entry.getValue();
 
             properties.setProperty(prefix + "actor", request.origin().actor());
             properties.setProperty(prefix + "time", request.origin().consoleTime());
+            properties.setProperty(prefix + "reason", request.origin().reason());
 
-            WordFilterHit hit = request.wordFilterHit();
+            WordFilter.Hit hit = request.wordFilterHit();
 
             if (hit != null) {
                 properties.setProperty(prefix + "source", hit.source().key());

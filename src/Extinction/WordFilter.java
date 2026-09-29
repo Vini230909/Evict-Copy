@@ -2,10 +2,6 @@
 package Extinction;
 
 import Extinction.core.util.PluginLog;
-import Extinction.moderation.ban.BanOrigin;
-import Extinction.moderation.ban.BanRequest;
-import Extinction.moderation.ban.BanScreen;
-import Extinction.moderation.ban.WordFilterHit;
 
 import arc.util.Strings;
 import mindustry.Vars;
@@ -33,6 +29,58 @@ public final class WordFilter {
     private record Term(String word, Pattern pattern) {
     }
 
+    // What the filter saw: the entry that tripped, where it stood, the text itself. Plain data: it crosses to the hub.
+    public record Hit(Source source, String word, String text) {
+
+        // Chat is capped well below this; the cap only stops a pathological name or a hand-edited status file.
+        private static final int MAX_TEXT = 400;
+
+        // Where the banned word stood; the text is then the whole chat message, or the name.
+        public enum Source {
+
+            CHAT,
+
+            NAME;
+
+            public String label() {
+                return this == CHAT ? "chat message" : "player name";
+            }
+
+            public String key() {
+                return this == CHAT ? "chat" : "name";
+            }
+
+            static Source parse(String value) {
+                return "name".equalsIgnoreCase(value) ? NAME : CHAT;
+            }
+        }
+
+        public static Hit of(Source source, String word, String text) {
+            return new Hit(source, word == null ? "" : word, trim(text));
+        }
+
+        // Rebuilds a hit a match server published. Null when it published none.
+        public static Hit fromWorker(String source, String word, String text) {
+            if (word == null || word.isBlank()) {
+                return null;
+            }
+
+            return new Hit(Source.parse(source), word, trim(text));
+        }
+
+        private static String trim(String text) {
+            if (text == null) {
+                return "";
+            }
+
+            String cleaned = text.strip();
+
+            return cleaned.length() <= MAX_TEXT
+                    ? cleaned
+                    : cleaned.substring(0, MAX_TEXT) + "…";
+        }
+    }
+
     private static final List<Term> BANNED = terms(BannedWords.WORDS, BannedWords.WHOLE_WORDS);
     private static final List<Term> NAMES = terms(BannedWords.NAMES, List.of());
     private static final List<Pattern> ALLOWED = allowed();
@@ -41,7 +89,7 @@ public final class WordFilter {
     private final boolean hub;
 
     // Where the ban goes; the hit travels with it so the ban log can say what tripped.
-    private final Consumer<BanRequest> banSeeder;
+    private final Consumer<Bans.Request> banSeeder;
 
     // Which console log the hit was written to; the hub swaps a worker's label for its port.
     private final String server;
@@ -51,11 +99,11 @@ public final class WordFilter {
 
     private boolean installed;
 
-    public WordFilter(boolean hub, Consumer<BanRequest> banSeeder, BanScreen screen) {
+    public WordFilter(boolean hub, Consumer<Bans.Request> banSeeder, BanScreen screen) {
         this.hub = hub;
         this.banSeeder = banSeeder;
         this.screen = screen;
-        this.server = hub ? BanOrigin.HUB : "this match server";
+        this.server = hub ? Bans.Origin.HUB : "this match server";
     }
 
     // Starts filtering chat. Must run before any other chat filter, or the
@@ -92,7 +140,7 @@ public final class WordFilter {
             return false;
         }
 
-        punish(player, word, WordFilterHit.Source.NAME, player.name);
+        punish(player, word, Hit.Source.NAME, player.name);
         return true;
     }
 
@@ -107,11 +155,11 @@ public final class WordFilter {
             return message;
         }
 
-        punish(player, word, WordFilterHit.Source.CHAT, message);
+        punish(player, word, Hit.Source.CHAT, message);
         return null;
     }
 
-    private void punish(Player player, String word, WordFilterHit.Source source, String text) {
+    private void punish(Player player, String word, Hit.Source source, String text) {
         // Logged before the ban, so the console line and the ban log's timestamp are one moment.
         PluginLog.info(
                 "Word filter: @ (@) used '@' in their @ - @. Text: @",
@@ -128,10 +176,10 @@ public final class WordFilter {
             player.con.kick(screen.wordFilterMessage());
         }
 
-        banSeeder.accept(BanRequest.wordFilter(
+        banSeeder.accept(Bans.Request.wordFilter(
                 player.uuid(),
-                BanOrigin.now(BanOrigin.WORD_FILTER_ACTOR, server),
-                WordFilterHit.of(source, word, text)
+                Bans.Origin.now(Bans.Origin.WORD_FILTER_ACTOR, server),
+                Hit.of(source, word, text)
         ));
     }
 

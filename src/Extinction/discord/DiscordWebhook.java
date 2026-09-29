@@ -28,7 +28,7 @@ import java.util.function.Consumer;
  * does {@code HttpURLConnection} underneath it. Hence the JDK's own
  * {@link HttpClient}, which is no extra dependency and gives real async sends.
  */
-final class DiscordWebhook {
+public final class DiscordWebhook {
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(15);
@@ -55,7 +55,7 @@ final class DiscordWebhook {
     private volatile long backoffUntilMillis = 0L;
     private volatile int consecutiveFailures = 0;
 
-    DiscordWebhook(Consumer<String> messageIdSink) {
+    public DiscordWebhook(Consumer<String> messageIdSink) {
         this(messageIdSink, newClient());
     }
 
@@ -69,7 +69,7 @@ final class DiscordWebhook {
         this.client = sharedClient;
     }
 
-    static HttpClient newClient() {
+    public static HttpClient newClient() {
         ThreadFactory threads = runnable -> {
             Thread thread = new Thread(runnable, "evict-discord");
             thread.setDaemon(true);
@@ -82,7 +82,7 @@ final class DiscordWebhook {
                 .build();
     }
 
-    void configure(String webhookUrl, String storedMessageId) {
+    public void configure(String webhookUrl, String storedMessageId) {
         this.url = webhookUrl == null ? "" : webhookUrl.trim();
         this.messageId = storedMessageId == null ? "" : storedMessageId.trim();
         this.broken = false;
@@ -91,23 +91,23 @@ final class DiscordWebhook {
         this.backoffUntilMillis = 0L;
     }
 
-    boolean isConfigured() {
+    public boolean isConfigured() {
         return !url.isEmpty();
     }
 
-    boolean isBroken() {
+    public boolean isBroken() {
         return broken;
     }
 
-    String lastError() {
+    public String lastError() {
         return lastError;
     }
 
-    long lastSuccessMillis() {
+    public long lastSuccessMillis() {
         return lastSuccessMillis;
     }
 
-    String messageId() {
+    public String messageId() {
         return messageId;
     }
 
@@ -116,7 +116,7 @@ final class DiscordWebhook {
      * their messages (the ban log) check this before handing one over, so a
      * message is held rather than dropped while Discord is busy or backing off.
      */
-    boolean canSend() {
+    public boolean canSend() {
         return isConfigured()
                 && !broken
                 && System.currentTimeMillis() >= backoffUntilMillis
@@ -128,7 +128,7 @@ final class DiscordWebhook {
      * message. Returns quietly when a send is already running, when the webhook
      * has been rejected, or while a rate-limit backoff is in effect.
      */
-    void publish(String body) {
+    public void publish(String body) {
         send(body, true);
     }
 
@@ -137,7 +137,7 @@ final class DiscordWebhook {
      * This is what a log wants: a record per event, in order, never overwriting
      * the one before it.
      */
-    void post(String body) {
+    public void post(String body) {
         send(body, false);
     }
 
@@ -177,7 +177,7 @@ final class DiscordWebhook {
      * Failure here is not worth reporting loudly - the server is stopping
      * either way.
      */
-    void publishBlocking(String body, Duration timeout) {
+    public void publishBlocking(String body, Duration timeout) {
         if (!isConfigured() || broken) {
             return;
         }

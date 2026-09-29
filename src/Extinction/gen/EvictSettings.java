@@ -94,39 +94,6 @@ public final class EvictSettings {
     private double unitBuildSpeedMultiplier = DEFAULT_UNIT_BUILD_SPEED_MULTIPLIER;
 
     /**
-     * Discord webhook the hub keeps a live status message on. A blank URL means
-     * the feature is off. The message id is stored alongside it so a restart
-     * keeps editing the same message instead of posting a new one every time
-     * the server comes up; it is cleared whenever the URL changes, because an
-     * id only means anything in the channel it was created in.
-     */
-    private String discordWebhookUrl = "";
-    private String discordMessageId = "";
-
-    /**
-     * Discord webhook the ban log is posted to. A separate channel from the
-     * status message: every ban posts a new message there, and it carries the
-     * account's addresses, so it belongs somewhere only staff can read.
-     */
-    private String discordBanLogWebhookUrl = "";
-
-    /**
-     * Discord server and role the {@code /ban} and {@code /unban} slash
-     * commands answer in. A blank server id means the commands are off; a blank
-     * role means only a member holding Discord's own Administrator permission
-     * may use them, so they are never open to everyone by accident. The bot
-     * token is not here - it is a credential and lives in the secrets file
-     * (see {@code core.io.Secrets}), and this file is rewritten by the plugin.
-     */
-    private String discordCommandGuild = "";
-    private String discordCommandRole = "";
-
-    private static final String DISCORD_COMMAND_GUILD_KEY =
-            "discord.commands.guild";
-    private static final String DISCORD_COMMAND_ROLE_KEY =
-            "discord.commands.role";
-
-    /**
      * Discord chat mirror: one channel id for the hub's chat and one per
      * worker port, keyed by that port. A missing entry simply means that
      * server's chat is not mirrored. Staff-only channels - they carry
@@ -142,35 +109,6 @@ public final class EvictSettings {
     private static final String CHAT_LOG_HUB_KEY = "discord.chatlog.hub.channel";
     private static final String CHAT_LOG_PORT_PREFIX = "discord.chatlog.port.";
     private static final String CHAT_LOG_PORT_SUFFIX = ".channel";
-
-    /**
-     * Set once the bans that existed before this feature have been run through
-     * the cascade. Without it every restart would re-import and re-post the
-     * whole back catalogue.
-     */
-    private boolean banBackfillDone = false;
-
-    /**
-     * Where a banned player is told to go to appeal - a Discord invite, shown
-     * on every ban kick screen. Blank means no appeal line. Copied into every
-     * duel worker with the rest of this file, so a match server shows the
-     * same screen.
-     */
-    private String banAppealUrl = "";
-
-    /**
-     * Whether the hub looks up every join's address for a VPN and writes the
-     * hits to the ban log. Log only - it decides nothing. Lands in worker
-     * folders with the rest of this file but is read by the hub alone.
-     */
-    private boolean vpnScanEnabled = true;
-
-    /**
-     * Whether a first join through a VPN is locked until an admin frees it,
-     * or only written down. Decided on the hub alone; the enforcement on a
-     * match server follows the hub's list either way.
-     */
-    private boolean vpnLockEnabled = true;
 
     /**
      * Internal block ids players may not build (e.g. {@code router}). Stored as
@@ -301,49 +239,7 @@ public final class EvictSettings {
                 );
             }
 
-            discordWebhookUrl =
-                    readString(properties, "discord.webhook.url", discordWebhookUrl).trim();
-            discordMessageId =
-                    readString(properties, "discord.message.id", discordMessageId).trim();
-            discordBanLogWebhookUrl =
-                    readString(
-                            properties,
-                            "discord.banlog.webhook.url",
-                            discordBanLogWebhookUrl
-                    ).trim();
-            discordCommandGuild =
-                    readString(
-                            properties,
-                            DISCORD_COMMAND_GUILD_KEY,
-                            discordCommandGuild
-                    ).trim();
-            discordCommandRole =
-                    readString(
-                            properties,
-                            DISCORD_COMMAND_ROLE_KEY,
-                            discordCommandRole
-                    ).trim();
             readChatLogSettings(properties);
-            banBackfillDone = readBoolean(
-                    properties,
-                    "moderation.banBackfillDone",
-                    banBackfillDone
-            );
-            banAppealUrl = readString(
-                    properties,
-                    "moderation.banAppealUrl",
-                    banAppealUrl
-            ).trim();
-            vpnScanEnabled = readBoolean(
-                    properties,
-                    "moderation.vpnScan",
-                    vpnScanEnabled
-            );
-            vpnLockEnabled = readBoolean(
-                    properties,
-                    "moderation.vpnLock",
-                    vpnLockEnabled
-            );
 
             setBannedBlockNamesWithoutSaving(
                     splitBannedBlockNames(
@@ -407,68 +303,6 @@ public final class EvictSettings {
         return bannedBlockNames.isEmpty()
                 ? "none"
                 : String.join(", ", bannedBlockNames);
-    }
-
-    public String discordWebhookUrl() {
-        return discordWebhookUrl;
-    }
-
-    public String discordMessageId() {
-        return discordMessageId;
-    }
-
-    public boolean discordConfigured() {
-        return !discordWebhookUrl.isBlank();
-    }
-
-    /**
-     * Points the status reporter at a webhook. Pass a blank URL to turn the
-     * feature off; pass a blank message id to make the next update post a new
-     * message rather than edit an old one.
-     */
-    public void setDiscordWebhook(String url, String messageId) {
-        discordWebhookUrl = url == null ? "" : url.trim();
-        discordMessageId = messageId == null ? "" : messageId.trim();
-        save();
-    }
-
-    /** Remembers the message the reporter is editing, across restarts. */
-    public void setDiscordMessageId(String messageId) {
-        String cleaned = messageId == null ? "" : messageId.trim();
-
-        if (cleaned.equals(discordMessageId)) {
-            return;
-        }
-
-        discordMessageId = cleaned;
-        save();
-    }
-
-    public String discordBanLogWebhookUrl() {
-        return discordBanLogWebhookUrl;
-    }
-
-    /** Points the ban log at a webhook; a blank URL turns it off. */
-    public void setDiscordBanLogWebhook(String url) {
-        discordBanLogWebhookUrl = url == null ? "" : url.trim();
-        save();
-    }
-
-    /** Discord server the /ban and /unban commands run in; blank means off. */
-    public String discordCommandGuild() {
-        return discordCommandGuild;
-    }
-
-    /** Role allowed to use them; blank falls back to Discord's Administrator. */
-    public String discordCommandRole() {
-        return discordCommandRole;
-    }
-
-    /** Wires the moderation commands to a Discord server and role. */
-    public void setDiscordCommands(String guildId, String roleId) {
-        discordCommandGuild = guildId == null ? "" : guildId.trim();
-        discordCommandRole = roleId == null ? "" : roleId.trim();
-        save();
     }
 
     /** The chat mirror's hub channel id; blank when the hub is not mirrored. */
@@ -545,68 +379,6 @@ public final class EvictSettings {
                 // A hand-edited key that is not a port; leave it alone.
             }
         }
-    }
-
-    /**
-     * True once the bans that predate the cascade have been imported. Checked
-     * on hub startup so the import runs exactly once, ever.
-     */
-    public boolean banBackfillDone() {
-        return banBackfillDone;
-    }
-
-
-    /** The Discord invite shown on ban screens; blank when none is set. */
-    public String banAppealUrl() {
-        return banAppealUrl;
-    }
-
-    public void setBanAppealUrl(String url) {
-        String trimmed = url == null ? "" : url.trim();
-
-        if (trimmed.equals(banAppealUrl)) {
-            return;
-        }
-
-        banAppealUrl = trimmed;
-        save();
-    }
-
-    /** True while the hub writes VPN joins to the ban log. */
-    public boolean vpnScanEnabled() {
-        return vpnScanEnabled;
-    }
-
-    public void setVpnScanEnabled(boolean enabled) {
-        if (vpnScanEnabled == enabled) {
-            return;
-        }
-
-        vpnScanEnabled = enabled;
-        save();
-    }
-
-    /** True while a first join through a VPN is locked rather than only logged. */
-    public boolean vpnLockEnabled() {
-        return vpnLockEnabled;
-    }
-
-    public void setVpnLockEnabled(boolean enabled) {
-        if (vpnLockEnabled == enabled) {
-            return;
-        }
-
-        vpnLockEnabled = enabled;
-        save();
-    }
-
-    public void markBanBackfillDone() {
-        if (banBackfillDone) {
-            return;
-        }
-
-        banBackfillDone = true;
-        save();
     }
 
     public void setWaterSettings(
@@ -1038,14 +810,6 @@ public final class EvictSettings {
                 "rules.unitBuildSpeedMultiplier",
                 Double.toString(unitBuildSpeedMultiplier)
         );
-        properties.setProperty("discord.webhook.url", discordWebhookUrl);
-        properties.setProperty("discord.message.id", discordMessageId);
-        properties.setProperty(
-                "discord.banlog.webhook.url",
-                discordBanLogWebhookUrl
-        );
-        properties.setProperty(DISCORD_COMMAND_GUILD_KEY, discordCommandGuild);
-        properties.setProperty(DISCORD_COMMAND_ROLE_KEY, discordCommandRole);
         properties.setProperty(CHAT_LOG_HUB_KEY, chatLogHubChannel);
 
         for (Map.Entry<Integer, String> entry : chatLogPortChannels.entrySet()) {
@@ -1055,19 +819,6 @@ public final class EvictSettings {
             );
         }
 
-        properties.setProperty(
-                "moderation.banBackfillDone",
-                Boolean.toString(banBackfillDone)
-        );
-        properties.setProperty("moderation.banAppealUrl", banAppealUrl);
-        properties.setProperty(
-                "moderation.vpnScan",
-                Boolean.toString(vpnScanEnabled)
-        );
-        properties.setProperty(
-                "moderation.vpnLock",
-                Boolean.toString(vpnLockEnabled)
-        );
         properties.setProperty(
                 "rules.bannedBlocks",
                 String.join(",", bannedBlockNames)

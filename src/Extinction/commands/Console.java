@@ -1,23 +1,36 @@
 // Console commands: one entry each, nothing else. Registered by EvictMapPlugin.
 package Extinction.commands;
 
+import Extinction.BanLog;
+import Extinction.Bans;
 import Extinction.Config;
+import Extinction.DiscordModeration;
+import Extinction.DiscordStatus;
+import Extinction.LockList;
 import Extinction.Matches;
+import Extinction.PlayerLock;
 import Extinction.PlayerStats;
 import Extinction.Restart;
 import Extinction.RoundTime;
+import Extinction.VpnScan;
 import Extinction.WordFilter;
 import Extinction.core.cmd.Commands;
+import Extinction.core.io.Secrets;
 import Extinction.core.util.PluginLog;
+import Extinction.data.PlayerDataManager;
 
 import arc.util.CommandHandler;
+import arc.util.Strings;
+import mindustry.Vars;
+
+import java.util.List;
 
 public final class Console {
 
     private Console() {
     }
 
-    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime, PlayerStats playerStats, Restart restart) {
+    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime, PlayerStats playerStats, Restart restart, BanLog banLog, DiscordStatus discordStatus, PlayerLock lock, Bans bans, PlayerDataManager playerDataManager, DiscordModeration discord, VpnScan scan) {
         Commands commands = new Commands();
 
         commands.command("matchstatus").console()
@@ -106,6 +119,310 @@ public final class Console {
                     }
                 });
 
+        // discordStatus is null on a duel worker, which never reports to Discord.
+        commands.command("discordstatus").console()
+                .args("url/off/test:string?")
+                .description("Discord webhook for the live status message.")
+                .run(ctx -> {
+                    String argument = ctx.str("url/off/test", "").trim();
+
+                    if (discordStatus == null) {
+                        PluginLog.err("Discord status reporting only runs on the hub.");
+                        return;
+                    }
+
+                    switch (argument.toLowerCase()) {
+                        case "" -> PluginLog.info("Discord status: @", discordStatus.statusLine());
+                        case "off" -> {
+                            discordStatus.disable();
+                            PluginLog.info("Discord status reporting is off; the message now reads Offline.");
+                        }
+                        case "test" -> {
+                            discordStatus.publishNow();
+                            PluginLog.info("Discord status update requested.");
+                        }
+                        default -> {
+                            if (discordStatus.configure(argument)) {
+                                PluginLog.info("Discord webhook set. A fresh status message is being posted.");
+                            } else {
+                                PluginLog.err("That is not a Discord webhook URL. Copy it from Channel Settings > Integrations > Webhooks.");
+                            }
+                        }
+                    }
+                });
+
+        // banLog is null on a duel worker: the hub owns the ban log.
+        commands.command("banlog").console()
+                .args("action:string?")
+                .description("Discord ban log: status, <webhook-url>, off, test. Staff-only: it posts IPs.")
+                .run(ctx -> {
+                    String argument = ctx.str("action", "").trim();
+
+                    if (banLog == null) {
+                        PluginLog.err("The ban log only runs on the hub.");
+                        return;
+                    }
+
+                    switch (argument.toLowerCase()) {
+                        case "" -> PluginLog.info("Discord ban log: @", banLog.statusLine());
+                        case "off" -> {
+                            banLog.disable();
+                            PluginLog.info("Discord ban logging is off.");
+                        }
+                        case "test" -> {
+                            if (banLog.publishTest()) {
+                                PluginLog.info("Test entry queued.");
+                            } else {
+                                PluginLog.err("No ban-log webhook is set.");
+                            }
+                        }
+                        default -> {
+                            if (banLog.configure(argument)) {
+                                PluginLog.info("Ban-log webhook set. Bans will be posted there from now on.");
+                            } else {
+                                PluginLog.err("That is not a Discord webhook URL. Copy it from Channel Settings > Integrations > Webhooks.");
+                            }
+                        }
+                    }
+                });
+
+        // Never takes the bot token: typed here it would sit in the server log for good. discord is null on a worker.
+        commands.command("discordcommands").console()
+                .args("action:string?", "value:text?")
+                .description("Discord /ban and /unban: setup, role <name>, reload, off.")
+                .run(ctx -> {
+                    String action = ctx.str("action", "").trim();
+                    String value = ctx.str("value", "").trim();
+
+                    if (discord == null) {
+                        PluginLog.err("The Discord commands only run on the hub.");
+                        return;
+                    }
+
+                    switch (action.toLowerCase()) {
+                        case "" -> {
+                            PluginLog.info("Discord /ban and /unban:");
+
+                            for (String line : discord.statusLines()) {
+                                PluginLog.info("  @", line);
+                            }
+
+                            if (!discord.isConfigured()) {
+                                PluginLog.info("Run 'discordcommands setup' - it finds the Discord server itself, no ids to copy. ('chatlog setup <server-id>' already does this too.)");
+                            }
+                        }
+                        case "setup" -> {
+                            PluginLog.info("Setting the Discord commands up; this takes a few seconds...");
+                            discord.setup(Console::logLines);
+                        }
+                        case "role" -> {
+                            if (value.isEmpty()) {
+                                PluginLog.err("Use: discordcommands role <role name or id> ('discordcommands setup' lists the names).");
+                            } else {
+                                discord.setRole(value, Console::logLines);
+                            }
+                        }
+                        case "off" -> {
+                            discord.disable();
+                            PluginLog.info("Discord /ban and /unban are off. The commands stay visible in Discord until Discord drops them; this server simply refuses them.");
+                        }
+                        case "reload" -> {
+                            if (discord.reload()) {
+                                PluginLog.info("Bot token re-read; reconnecting to Discord.");
+                            } else {
+                                PluginLog.err("@ is not set in @. Add it there, then run this again.", Secrets.DISCORD_CHAT_BOT_TOKEN, Secrets.path());
+                            }
+                        }
+                        case "token" -> PluginLog.err(
+                                "The token is never typed here - it would be written to the server log. Set @ in @ and run 'discordcommands reload'.",
+                                Secrets.DISCORD_CHAT_BOT_TOKEN,
+                                Secrets.path()
+                        );
+                        default -> {
+                            // A bare server id still works, for when setup cannot settle it: several servers, one bot.
+                            if (!action.chars().allMatch(Character::isDigit)) {
+                                PluginLog.err("Usage: discordcommands [setup | role <name> | reload | off]");
+                                return;
+                            }
+
+                            discord.configure(action, value);
+                            PluginLog.info("Discord commands wired to server @. Run 'discordcommands' to check the connection.", action);
+                        }
+                    }
+                });
+
+        // For a stored player, online or not - harassment found in the chat log after the offender left.
+        // bans is null on a duel worker: only the hub decides who is banned.
+        commands.command("banplayer").console()
+                .args("name/uuid:text")
+                .description("Ban a stored player by name or UUID, online or not.")
+                .run(ctx -> {
+                    String query = ctx.str("name/uuid", "").trim();
+
+                    if (bans == null) {
+                        PluginLog.err("Bans are managed on the hub, not on a match server.");
+                        return;
+                    }
+
+                    if (query.isEmpty()) {
+                        PluginLog.err("Use: banplayer <name/uuid>");
+                        return;
+                    }
+
+                    playerDataManager.searchPlayerInfo(query, found -> {
+                        if (found.isEmpty()) {
+                            PluginLog.err("No stored players match '@'.", query);
+                            return;
+                        }
+
+                        if (found.size() > 1) {
+                            PluginLog.err("'@' matches @ players; be more specific or use a UUID:", query, found.size());
+
+                            for (PlayerDataManager.PlayerInfo info : found) {
+                                PluginLog.info("@", PlayerStats.compactLine(info));
+                            }
+
+                            return;
+                        }
+
+                        PlayerDataManager.PlayerInfo target = found.get(0);
+
+                        if (Vars.netServer.admins.isIDBanned(target.uuid())) {
+                            PluginLog.info("@ (@) is already banned.", target.lastName(), target.uuid());
+                            return;
+                        }
+
+                        bans.ban(Bans.Request.admin(target.uuid(), Bans.Origin.now(Bans.Origin.CONSOLE, Bans.Origin.HUB)));
+                        PluginLog.info("Banned @ (@). The line above shows everything the ban covered.", target.lastName(), target.uuid());
+                    });
+                });
+
+        // The whole checklist, because "is it working" has four answers; 'test' spends one lookup to prove the key.
+        // scan is null on a duel worker: the hub looks the addresses up.
+        commands.command("vpn").console()
+                .args("action:string?", "value:string?")
+                .description("VPN scan: status, on/off, lock on/off, reload the key, test <ip>.")
+                .run(ctx -> {
+                    String action = ctx.str("action", "").trim();
+                    String ip = ctx.str("value", "").trim();
+
+                    if (scan == null) {
+                        PluginLog.err("The VPN scan runs on the hub only.");
+                        return;
+                    }
+
+                    switch (action.toLowerCase()) {
+                        case "" -> {
+                            for (String line : scan.statusLines()) {
+                                PluginLog.info("@", line);
+                            }
+
+                            PluginLog.info("@", lockStatusLine(lock));
+                        }
+                        case "lock" -> {
+                            switch (ip.toLowerCase()) {
+                                case "on" -> {
+                                    Config.vpnLock = true;
+                                    Config.save();
+                                    PluginLog.info("Lock on: an account's first join through a VPN, proxy or hosting range is held on the Fallen team until an admin frees it ('free', /free, Discord /free).");
+                                }
+                                case "off" -> {
+                                    Config.vpnLock = false;
+                                    Config.save();
+                                    PluginLog.info("Lock off: new accounts are not looked up or locked. Accounts already locked stay locked until freed.");
+                                }
+                                default -> PluginLog.info("@ Usage: vpn lock on/off", lockStatusLine(lock));
+                            }
+                        }
+                        case "on" -> {
+                            Config.vpnScan = true;
+                            Config.save();
+
+                            if (scan.hasKey()) {
+                                PluginLog.info("VPN scan on, log only (vpnapi + ip-api): a join through a VPN, proxy or hosting range is written to the console and the ban log. Nothing is blocked.");
+                            } else {
+                                PluginLog.info("VPN scan on, log only, with ip-api only - add @=... to @ and run 'vpn reload' for vpnapi.io as the second opinion. Nothing is blocked.", Secrets.VPNAPI_KEY, Secrets.path());
+                            }
+                        }
+                        case "off" -> {
+                            Config.vpnScan = false;
+                            Config.save();
+                            PluginLog.info("VPN scan off. Joins are not looked up until it is switched back on.");
+                        }
+                        case "reload" -> {
+                            if (scan.reloadKey()) {
+                                PluginLog.info("VPN scan: API key loaded from @. 'vpn test <ip>' proves it.", Secrets.path());
+                            } else {
+                                PluginLog.warn("VPN scan: @ is still not set in @ - scanning with ip-api only.", Secrets.VPNAPI_KEY, Secrets.path());
+                            }
+                        }
+                        case "test" -> {
+                            if (ip.isBlank()) {
+                                PluginLog.err("Give an address to try: vpn test <ip>");
+                                return;
+                            }
+
+                            scan.test(ip, line -> PluginLog.info("VPN scan test - @", line));
+                        }
+                        default -> PluginLog.err("Usage: vpn [on/off/lock on/off/reload/test <ip>]");
+                    }
+                });
+
+        // lock is null on a duel worker: the hub owns the lock list.
+        commands.command("free").console()
+                .args("target:text?")
+                .description("Free a locked account by name or UUID; no argument lists the locked ones.")
+                .run(ctx -> {
+                    String target = ctx.str("target", "").trim();
+
+                    if (lock == null) {
+                        PluginLog.err("Locks are freed on the hub.");
+                        return;
+                    }
+
+                    if (target.isEmpty()) {
+                        List<LockList.Entry> entries = lock.lockedEntries();
+
+                        if (entries.isEmpty()) {
+                            PluginLog.info("No account is locked.");
+                            return;
+                        }
+
+                        PluginLog.info("@ locked account(s):", entries.size());
+
+                        for (LockList.Entry entry : entries) {
+                            PluginLog.info("  @ (@) from @ - @", Strings.stripColors(entry.name()), entry.uuid(), entry.ip(), entry.reason());
+                        }
+
+                        return;
+                    }
+
+                    List<LockList.Entry> found = lock.matching(target);
+
+                    if (found.isEmpty()) {
+                        PluginLog.err("No locked account matches '@'. 'free' lists them.", target);
+                        return;
+                    }
+
+                    if (found.size() > 1) {
+                        PluginLog.err("'@' matches @ locked accounts - give the UUID:", target, found.size());
+
+                        for (LockList.Entry entry : found) {
+                            PluginLog.info("  @ (@)", Strings.stripColors(entry.name()), entry.uuid());
+                        }
+
+                        return;
+                    }
+
+                    PlayerLock.FreeResult result = lock.free(found.get(0).uuid(), Bans.Origin.CONSOLE);
+
+                    if (result.freed()) {
+                        PluginLog.info("@", result.line());
+                    } else {
+                        PluginLog.err("@", result.line());
+                    }
+                });
+
         commands.command("restart").console()
                 .args("action:string?")
                 .description("Queue a graceful restart; 'cancel' drops it, 'now' exits.")
@@ -119,6 +436,26 @@ public final class Console {
                 });
 
         commands.installConsole(handler);
+    }
+
+    // The lock's line under the VPN checklist: on or off, and how many accounts are locked and verified.
+    private static String lockStatusLine(PlayerLock lock) {
+        if (lock == null) {
+            return "  Lock: decided on the hub.";
+        }
+
+        return "  Lock: " + (Config.vpnLock
+                ? "on - a first join through a VPN is held for an admin"
+                : "off - new accounts are not looked up")
+                + "; " + lock.lockedCount() + " locked, "
+                + lock.verifiedCount() + " verified ('free' lists and frees)";
+    }
+
+    // Setup and role changes answer asynchronously; print what they found.
+    private static void logLines(List<String> lines) {
+        for (String line : lines) {
+            PluginLog.info("@", line);
+        }
     }
 
     // "<ip> ports a-b (n workers, map=m)", or "not set" while /play is off.

@@ -34,10 +34,10 @@ public final class History {
     private static final class View {
         final String subjectUuid;
         final String subjectName;
-        final List<PlayerDataManager.DuelMatch> matches;
+        final List<MatchHistory.DuelMatch> matches;
         int page;
 
-        View(String subjectUuid, String subjectName, List<PlayerDataManager.DuelMatch> matches) {
+        View(String subjectUuid, String subjectName, List<MatchHistory.DuelMatch> matches) {
             this.subjectUuid = subjectUuid;
             this.subjectName = subjectName;
             this.matches = matches;
@@ -125,7 +125,7 @@ public final class History {
         Player subject = Groups.player.find(online -> online != null && online.uuid().equals(subjectUuid));
         String subjectName = subject != null ? PlayerNames.displayName(subject) : subjectUuid;
 
-        playerData.findDuelHistory(subjectUuid, matches -> {
+        playerData.history.findDuelHistory(subjectUuid, matches -> {
             View view = new View(subjectUuid, subjectName, matches);
             viewsByViewerUuid.put(player.uuid(), view);
             showPage(player, view);
@@ -166,7 +166,7 @@ public final class History {
     }
 
     private void showPage(Player player, View view) {
-        List<PlayerDataManager.DuelMatch> matches = view.matches;
+        List<MatchHistory.DuelMatch> matches = view.matches;
         int pages = pageCount(matches.size());
         view.page = Math.max(0, Math.min(view.page, pages - 1));
 
@@ -208,7 +208,15 @@ public final class History {
     }
 
     // Ranked shows the ELO swing; casual 1v1, Teams and FFA are unranked, so just win/lose.
-    private String formatMatch(String subjectUuid, PlayerDataManager.DuelMatch match) {
+    private String formatMatch(String subjectUuid, MatchHistory.DuelMatch match) {
+        if ("no-contest".equals(match.outcome())) {
+            MatchMode mode = MatchMode.fromId(match.mode());
+            String names = PlayerNames.joinShortened(List.of(match.participantNamesPacked().split("\n")),
+                    " [white]vs[] ", MAX_PARTICIPANT_NAMES);
+            return "[lightgray]" + mode.label() + "[]\n" + names
+                    + "\n[lightgray]no contest (a player was banned)[]"
+                    + (mode.ranked() ? "\n[gray]elo: []" + formatEloDelta(0) : "");
+        }
         if (MatchMode.FFA.id().equals(match.mode())) {
             String participants = PlayerNames.joinShortened(
                     List.of(match.participantNamesPacked().split("\n")),

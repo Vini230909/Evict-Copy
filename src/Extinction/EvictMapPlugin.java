@@ -23,7 +23,6 @@ import mindustry.game.Team;
 import mindustry.gen.Player;
 import mindustry.mod.Plugin;
 import mindustry.world.blocks.storage.CoreBlock;
-import Extinction.discord.DiscordStatusReporter;
 import Extinction.commands.*;
 import Extinction.core.util.MessageIdFilter;
 import Extinction.core.util.PluginLog;
@@ -104,8 +103,8 @@ public class EvictMapPlugin extends Plugin {
      * is the only difference between the roles: the hub queues lines for
      * Discord directly, a worker appends them to its chat.log.
      */
-    private final Extinction.discord.ChatLogCapture chatLogCapture =
-            new Extinction.discord.ChatLogCapture(
+    private final ChatLogCapture chatLogCapture =
+            new ChatLogCapture(
                     duelWorker ? chatLogFile::append : chatLogReporter::hubLine
             );
 
@@ -126,49 +125,31 @@ public class EvictMapPlugin extends Plugin {
      * /ban works on the hub and on a match server; a worker's ban is applied
      * locally and forwarded to the hub, which owns bans.
      */
-    private final BanCommands banCommands =
-            new BanCommands(playerDataManager, !duelWorker, this::seedBan);
+    private final BanMenu banMenu =
+            new BanMenu(playerDataManager, !duelWorker, this::seedBan);
 
     private final EvictTerrainGenerator terrainGenerator =
             new EvictTerrainGenerator(settings);
 
     private final Restart restart = new Restart(matches, teamManager);
 
-    /**
-     * Hub-only live status message in Discord. Constructed on a worker too (it
-     * is a plain object with no side effects until started), but only the hub
-     * ever calls start()/update() - four workers editing the same message would
-     * fight over it.
-     */
-    private final DiscordStatusReporter discordStatusReporter =
-            new DiscordStatusReporter(
-                    settings,
-                    playerDataManager,
-                    teamManager,
-                    extinctionWave,
-                    matches,
-                    restart
-            );
+    // Hub-only live status message in Discord; constructed on a worker too, but only the hub starts it.
+    private final DiscordStatus discordStatus =
+            new DiscordStatus(playerDataManager, teamManager, extinctionWave, matches, restart);
+
+    // Hub-only ban log; constructed on a worker too, but only the hub starts it.
+    private final BanLog banLog = new BanLog();
 
     /**
-     * Hub-only ban log. Constructed on a worker too (inert until started), but
-     * only the hub ever starts it - each worker would report the same ban.
+     * Hub-only VPN lookup, asked by the lock gate about new and locked
+     * accounts only. It writes no line of its own: the lock's lines (locked,
+     * locked account joined, freed) are the only ones.
      */
-    private final Extinction.discord.BanLogReporter banLogReporter =
-            new Extinction.discord.BanLogReporter(settings);
-
-    /**
-     * Hub-only VPN scan, log only: the address of every join is looked up and
-     * a VPN or proxy is written to the console and the ban log, with the
-     * account's age next to it. Decides nothing - it is the week of evidence
-     * the rule against ban evasion is to be drawn from.
-     */
-    private final Extinction.moderation.vpn.VpnScan vpnScan =
-            new Extinction.moderation.vpn.VpnScan(
-                    settings,
-                    banLogReporter::logVpnHit,
-                    banLogReporter::logVpnTest,
-                    banLogReporter::isConfigured,
+    private final VpnScan vpnScan =
+            new VpnScan(
+                    banLog::logVpnHit,
+                    banLog::logVpnTest,
+                    banLog::isConfigured,
                     playerDataManager::findPlayerInfoByUuid
             );
 
@@ -176,51 +157,47 @@ public class EvictMapPlugin extends Plugin {
      * The lock itself, both roles: what a locked account cannot do, and who
      * is locked. The hub owns the list and writes it; a worker follows it.
      */
-    private final Extinction.moderation.lock.PlayerLock playerLock =
-            new Extinction.moderation.lock.PlayerLock(
+    private final PlayerLock playerLock =
+            new PlayerLock(
                     !duelWorker,
-                    settings::banAppealUrl,
+                    () -> Config.banAppealUrl,
                     // A freed player who is online gets their team and hex
                     // the way a fresh join would.
                     teamManager::releaseLocked,
-                    duelWorker ? null : banLogReporter::logLock
+                    duelWorker ? null : banLog::logLock
             );
 
     /**
      * Hub only: the decision at the door - a first join through a VPN is
      * parked until its verdict is in and locked when the verdict says so.
      */
-    private final Extinction.moderation.lock.LockGate lockGate =
-            new Extinction.moderation.lock.LockGate(
-                    settings::vpnLockEnabled,
+    private final LockGate lockGate =
+            new LockGate(
                     playerLock,
                     vpnScan,
                     teamManager::assignLocked,
                     teamManager::releaseLocked
             );
 
-    /** /free: the in-game way to free a locked account, with /ban's picker UX. */
-    private final Extinction.commands.FreeCommands freeCommands =
-            new Extinction.commands.FreeCommands(playerLock);
+    // /free: the in-game way to free a locked account, with /ban's picker UX.
+    private final FreeMenu freeMenu = new FreeMenu(playerLock);
 
     /**
      * What a banned player reads: the ban plus the Discord invite to appeal it.
      * Every ban kick goes through it, on the hub and on a match server, and it
-     * refuses a banned player's later join attempts with the same text.
+     * refuses a banned player's later join attempts - on the hub also telling Evasion.
      */
-    private final Extinction.moderation.ban.BanScreen banScreen =
-            new Extinction.moderation.ban.BanScreen(settings::banAppealUrl);
+    private final BanScreen banScreen = new BanScreen(duelWorker ? null : refusal -> this.evasion.refused(refusal));
 
     /**
      * Widens every ban to the accounts and addresses linked to it, and writes
      * the result where the duel workers can see it. Hub only: the hub decides
      * who is banned, the workers apply it.
      */
-    private final Extinction.moderation.ban.BanManager banManager =
-            new Extinction.moderation.ban.BanManager(
-                    settings,
-                    banLogReporter::log,
-                    banLogReporter::logImport,
+    private final Bans bans =
+            new Bans(
+                    banLog::log,
+                    banLog::logImport,
                     // The ban announcement was visible in the hub's chat, so
                     // the chat mirror shows the same line.
                     line -> chatLogReporter.hubLine(
@@ -229,41 +206,31 @@ public class EvictMapPlugin extends Plugin {
                     banScreen
             );
 
-    /**
-     * Turns a Discord {@code /ban} or {@code /unban} into an ordinary ban, so
-     * it is widened, kicked, synced, announced and logged like any other.
-     */
-    private final Extinction.moderation.ban.RemoteBan remoteBan =
-            new Extinction.moderation.ban.RemoteBan(this::seedBan);
+    // Hub only: a banned address or account that tries again is written up; a banned account's new address is banned.
+    private final Evasion evasion = new Evasion(bans, vpnScan, banScreen, banLog::logEvasion);
+
+    // Turns a Discord /ban or /unban into an ordinary ban, widened, kicked, synced, announced and logged like any other.
+    private final RemoteBan remoteBan = new RemoteBan(bans);
 
     /**
      * Hub-only Discord slash commands. The hub is the single writer of bans,
      * and one bot answering per match server would be four answers to one
      * command.
      */
-    private final Extinction.discord.DiscordModCommands discordModCommands =
-            new Extinction.discord.DiscordModCommands(
-                    settings,
+    private final DiscordModeration discordModCommands =
+            new DiscordModeration(
                     remoteBan::ban,
                     remoteBan::unban,
                     (target, actor) -> playerLock.free(target.trim(), actor).line()
             );
 
-    /** Worker only: applies the hub's ban list to this match server. */
-    private final Extinction.moderation.ban.BanSync banSync =
-            new Extinction.moderation.ban.BanSync(banScreen);
-
     /**
-     * Worker only: hands a ban made here to the hub. Without it the ban lives
-     * only in this worker's throwaway admin store, is lifted again by the next
-     * sync, and never reaches the hub, the other match servers or the log.
+     * Worker only: applies the hub's ban list here and hands a ban made here
+     * to the hub. Without the forward the ban lives only in this worker's
+     * throwaway admin store and is lifted again by the next sync.
      */
-    private final Extinction.moderation.ban.BanForwarder banForwarder =
-            new Extinction.moderation.ban.BanForwarder(
-                    duelWorkerReferee::requestBan,
-                    banSync::isApplying,
-                    banScreen
-            );
+    private final WorkerBans workerBans =
+            new WorkerBans(duelWorkerReferee, banScreen);
 
     /** Bans anyone using a filtered word in chat or in their name. */
     private final WordFilter wordFilter = new WordFilter(!duelWorker, this::seedBan, banScreen);
@@ -275,11 +242,6 @@ public class EvictMapPlugin extends Plugin {
                     terrainGenerator,
                     teamManager,
                     playerDataManager,
-                    duelWorker ? null : discordStatusReporter,
-                    duelWorker ? null : banLogReporter,
-                    duelWorker ? null : banManager,
-                    duelWorker ? null : vpnScan,
-                    duelWorker ? null : playerLock,
                     duelWorker ? null : chatLogReporter,
                     duelWorker ? null : discordModCommands,
                     // oregen gen regenerates the live map in place with no fresh snapshot,
@@ -300,9 +262,9 @@ public class EvictMapPlugin extends Plugin {
     public void init() {
         bootstrap();
 
-        // Both roles: a banned player who comes back is refused with the
-        // appeal link, not vanilla's bare "banned" screen.
+        // Both roles: a banned player who comes back reads the appeal link; the ban button asks /ban's reason.
         banScreen.install();
+        banMenu.install();
 
         // Both roles: a locked account can watch and nothing else - the hub
         // decides who, every server enforces it off the hub's list. The
@@ -315,7 +277,7 @@ public class EvictMapPlugin extends Plugin {
 
             // A ban made on a match server - /ban, the hammer, the console -
             // only sticks if the hub hears about it.
-            banForwarder.install();
+            workerBans.install();
         } else {
             // Hub only: a server update means a new jar + a restart, so on
             // startup bring every existing duel-worker folder onto the current
@@ -328,20 +290,19 @@ public class EvictMapPlugin extends Plugin {
 
             // Hub only: one live status message in Discord. Workers must stay
             // out of it - they would all edit the same message.
-            discordStatusReporter.start();
+            discordStatus.start();
 
             // Hub only: the hub is the single source of truth for bans. It
             // widens them, writes the list the workers read, and logs them.
-            banLogReporter.start();
-            banManager.install();
+            banLog.start();
+            bans.install();
 
-            // Hub only: who arrives through a VPN. The lookup starts the
-            // moment a connection opens, so the verdict is in before the
-            // join and the lock gate never has to make a newcomer wait.
+            // Hub only: whether a new account arrives through a VPN. The lookup starts at the
+            // connect packet (account known, join not counted yet), so the verdict is in before the join.
             vpnScan.start();
-            Events.on(mindustry.game.EventType.ConnectionEvent.class, event -> {
-                if (event.connection != null) {
-                    guarded("vpn prefetch", () -> vpnScan.prefetch(event.connection.address));
+            Events.on(mindustry.game.EventType.ConnectPacketEvent.class, event -> {
+                if (event.connection != null && event.packet != null) {
+                    guarded("vpn prefetch", () -> lockGate.prefetch(event.packet.uuid, event.connection.address));
                 }
             });
 
@@ -453,8 +414,6 @@ public class EvictMapPlugin extends Plugin {
                     !duelWorker
                             && matches.tryReturnToActiveDuel(event.player)
             ) {
-                // Still written down if they came through a VPN.
-                guarded("vpn scan", () -> vpnScan.handlePlayerJoin(event.player, null));
                 return;
             }
 
@@ -507,7 +466,7 @@ public class EvictMapPlugin extends Plugin {
             // Hub: the lock gate looks at the join first. A locked account
             // stays on the Fallen team; a first join through a VPN is parked
             // until its verdict is in; everyone else is onboarded right away.
-            // The gate also hands the join to the VPN scan for its line.
+            // Only new and locked accounts are looked up at all.
             boolean[] onboardNow = {true};
 
             if (!duelWorker) {
@@ -528,8 +487,8 @@ public class EvictMapPlugin extends Plugin {
             guarded("spectate leave", () -> spectateMenu.handlePlayerLeave(event.player));
             guarded("history leave", () -> history.handlePlayerLeave(event.player));
             guarded("info leave", () -> playerStats.handlePlayerLeave(event.player));
-            guarded("ban leave", () -> banCommands.handlePlayerLeave(event.player));
-            guarded("free leave", () -> freeCommands.handlePlayerLeave(event.player));
+            guarded("ban leave", () -> banMenu.handlePlayerLeave(event.player));
+            guarded("free leave", () -> freeMenu.handlePlayerLeave(event.player));
             guarded("duelWorker leave", () -> duelWorkerReferee.handlePlayerLeave(event.player));
         });
 
@@ -559,11 +518,13 @@ public class EvictMapPlugin extends Plugin {
 
             // Scrubs blueprints queued during a disconnect pause; must run in
             // this trigger because it fires even while the game is paused.
+            if (duelWorker) workerBans.update();
             duelWorkerReferee.update();
 
             // Both roles: a worker follows the hub's lock list, and locked
             // players are kept slow.
             playerLock.update();
+            banMenu.freeze.update();
 
             attrition.update();
             fullAssault.update();
@@ -571,10 +532,7 @@ public class EvictMapPlugin extends Plugin {
 
             // Only the hub is listed in the multiplayer browser; keep its
             // advertised count folded with the players inside the duel workers.
-            if (duelWorker) {
-                // Picks up bans made on the hub, including mid-match ones.
-                banSync.update();
-            } else {
+            if (!duelWorker) {
                 refreshAdvertisedPlayerCount();
 
                 // Lets a queued restart fire once the hub runs empty, instead
@@ -582,44 +540,44 @@ public class EvictMapPlugin extends Plugin {
                 restart.update();
 
                 metrics.update();
-                discordStatusReporter.update();
+                discordStatus.update();
 
                 // Runs the one-off import of pre-existing bans once the admin
                 // store exists, then paces the ban log's queue.
-                banManager.update();
-                banLogReporter.update();
+                bans.update();
+                banLog.update();
                 chatLogReporter.update();
             }
         });
 
-        // After the join/leave handlers above: by the time the mirror's join
-        // listener runs, a name the word filter banned is already kicked and
-        // stays out of the mirror.
-        chatLogCapture.installEvents();
+        // After plugin joins: a name already banned stays out of the mirror.
+        Events.on(mindustry.game.EventType.PlayerChatEvent.class, e -> chatLogCapture.handleRawMessage(e.player, e.message));
+        Events.on(PlayerJoin.class, e -> chatLogCapture.handleJoin(e.player));
+        Events.on(PlayerLeave.class, e -> chatLogCapture.handleLeave(e.player));
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.12. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.26. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
     /**
      * Puts one account into the ban system, wherever this process happens to
-     * be. On the hub {@code BanManager} widens, kicks, syncs, announces and
+     * be. On the hub {@code Bans} widens, kicks, syncs, announces and
      * logs it; on a match server it takes effect at once and is forwarded to
      * the hub, which does all of that there.
      *
      * <p>The request carries who decided the ban and, for the word filter, what
      * it saw, so the log entry says more than "an account was banned".
      */
-    private void seedBan(Extinction.moderation.ban.BanRequest request) {
+    private void seedBan(Bans.Request request) {
         if (request == null || request.isEmpty()) {
             return;
         }
 
         if (duelWorker) {
-            banForwarder.ban(request);
+            workerBans.ban(request);
         } else {
-            banManager.ban(request);
+            bans.ban(request);
         }
     }
 
@@ -648,10 +606,9 @@ public class EvictMapPlugin extends Plugin {
 
         playerDataManager.start();
 
-        // First of all filters: the mirror is a staff channel and shows even
-        // what the word filter then drops - the announcement of the resulting
-        // ban follows right after it. Logging only, so the word filter's drop
-        // and the ranked spectator routing behave exactly as before.
+        // Freeze first; the mirror still sees ordinary word-filter hits.
+        banMenu.freeze.install();
+        chatLogCapture.suppress(banMenu.freeze::frozen);
         chatLogCapture.installChatFilter();
 
         // Before every remaining chat filter, so a hit is dropped rather than
@@ -672,7 +629,7 @@ public class EvictMapPlugin extends Plugin {
             // A finished ranked match must show up on the Discord ladder now,
             // not whenever its slow refresh comes round.
             playerDataManager.setEloChangeListener(
-                    discordStatusReporter::markLadderStale
+                    discordStatus::markLadderStale
             );
         }
 
@@ -765,11 +722,10 @@ public class EvictMapPlugin extends Plugin {
 
     @Override
     public void registerClientCommands(CommandHandler handler) {
-        Extinction.commands.Admin.register(handler, banCommands);
+        Extinction.commands.Admin.register(handler, banMenu, freeMenu);
 
-        // /free, and no locked account in any /play picker (an invite is a
+        // No locked account in any /play picker (an invite is a
         // menu, which the lock's command gate cannot refuse).
-        freeCommands.registerClientCommands(handler);
         matchmaking.excludeFromPickers(player -> playerLock.isLocked(player.uuid()));
         Extinction.commands.Player.register(handler, matchmaking, spectateMenu, duelWorkerReferee, roundEnd, roundTime, history, playerStats, leaderboard, fullAssault, inviteManager);
 
@@ -784,7 +740,7 @@ public class EvictMapPlugin extends Plugin {
     @Override
     public void registerServerCommands(CommandHandler handler) {
         consoleCommands.register(handler);
-        Console.register(handler, matches, roundTime, playerStats, restart);
+        Console.register(handler, matches, roundTime, playerStats, restart, duelWorker ? null : banLog, duelWorker ? null : discordStatus, duelWorker ? null : playerLock, duelWorker ? null : bans, playerDataManager, duelWorker ? null : discordModCommands, duelWorker ? null : vpnScan);
     }
 
     /**
