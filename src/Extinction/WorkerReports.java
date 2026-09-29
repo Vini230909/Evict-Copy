@@ -322,14 +322,18 @@ public final class WorkerReports {
                     port,
                     winnerUuid.isEmpty() ? "?" : winnerUuid,
                     loserUuid.isEmpty() ? "?" : loserUuid,
-                    result.reason()
+                    result.noContest() ? "No contest - a player was banned" : result.reason()
             );
 
             reportMatchEnd(slot, mode, result);
 
             // Only Ranked feeds ELO; 1v1, Teams and FFA are unranked history; Training and
             // Sandbox leave no history. The hub is the only process that writes the database.
-            if (mode.ranked()) {
+            if (result.noContest()) {
+                playerDataManager.history.recordNoContest(mode,
+                        slot.participants.stream().map(MatchSlot.Participant::uuid).toList(),
+                        slot.participants.stream().map(MatchSlot.Participant::display).toList());
+            } else if (mode.ranked()) {
                 String winnerChatName = chatName(slot, winnerUuid);
                 String loserChatName = chatName(slot, loserUuid);
 
@@ -428,10 +432,11 @@ public final class WorkerReports {
     ) {
         slot.endReported = true;
 
-        boolean solo = mode.solo();
+        boolean solo = mode.solo() || result.noContest();
         boolean decided = !solo && !result.winnerUuids().isEmpty();
 
-        String howItEnded = switch (result.reason()) {
+        String howItEnded = result.noContest()
+                ? "No contest - " + chatName(slot, result.bannedUuid()) + " was banned." : switch (result.reason()) {
             case "victory" -> "Victory.";
             case "surrender" -> "Ended with /die.";
             case "sandbox-ended" -> "Closed by the sandbox owner.";

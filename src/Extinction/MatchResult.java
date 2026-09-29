@@ -14,6 +14,8 @@ public final class MatchResult {
     private final List<String> winnerUuids;
     private final List<String> loserUuids;
     private final String reason;
+    private final String outcome;
+    private final String bannedUuid;
 
     public MatchResult(
             String modeId,
@@ -21,11 +23,25 @@ public final class MatchResult {
             List<String> loserUuids,
             String reason
     ) {
+        this(modeId, winnerUuids, loserUuids, reason, "decided", "");
+    }
+
+    private MatchResult(String modeId, List<String> winners, List<String> losers,
+                        String reason, String outcome, String bannedUuid) {
+        this.outcome = outcome;
+        this.bannedUuid = bannedUuid;
         this.modeId = modeId == null ? "" : modeId;
-        this.winnerUuids = List.copyOf(winnerUuids);
-        this.loserUuids = List.copyOf(loserUuids);
+        this.winnerUuids = List.copyOf(winners);
+        this.loserUuids = List.copyOf(losers);
         this.reason = reason == null ? "" : reason;
     }
+
+    public static MatchResult noContest(String modeId, String bannedUuid) {
+        return new MatchResult(modeId, List.of(), List.of(), "a player was banned", "no-contest", bannedUuid);
+    }
+
+    public boolean noContest() { return "no-contest".equals(outcome); }
+    public String bannedUuid() { return bannedUuid; }
 
     // The raw mode id, or the fallback when it was absent/blank.
     public String modeId(String fallback) {
@@ -62,6 +78,8 @@ public final class MatchResult {
         properties.setProperty("winner.uuids", String.join(",", winnerUuids));
         properties.setProperty("loser.uuids", String.join(",", loserUuids));
         properties.setProperty("reason", reason);
+        properties.setProperty("outcome", outcome);
+        properties.setProperty("banned.uuid", bannedUuid);
         PropertiesFile.save(file, properties, "Evict duel result");
     }
 
@@ -71,7 +89,9 @@ public final class MatchResult {
                 PropertiesFile.getString(properties, "mode", "").trim(),
                 readList(properties, "winner.uuids", "winner.uuid"),
                 readList(properties, "loser.uuids", "loser.uuid"),
-                PropertiesFile.getString(properties, "reason", "").trim()
+                PropertiesFile.getString(properties, "reason", "").trim(),
+                PropertiesFile.getString(properties, "outcome", "decided").trim(),
+                PropertiesFile.getString(properties, "banned.uuid", "").trim()
         );
     }
 

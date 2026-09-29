@@ -34,6 +34,8 @@ public final class WorkerBans {
 
     // What the kicked player reads - the ban plus how to appeal it.
     private final BanScreen screen;
+    private final Referee referee;
+    private BanList.Snapshot snapshot = BanList.Snapshot.empty();
 
     private long lastPollMillis;
     private long lastModifiedMillis = Long.MIN_VALUE;
@@ -47,8 +49,9 @@ public final class WorkerBans {
 
     private boolean installed;
 
-    public WorkerBans(Consumer<Bans.Request> requestSink, BanScreen screen) {
-        this.requestSink = requestSink;
+    public WorkerBans(Referee referee, BanScreen screen) {
+        this.referee = referee;
+        this.requestSink = referee::requestBan;
         this.screen = screen;
     }
 
@@ -65,6 +68,7 @@ public final class WorkerBans {
         // Only 'ban ip' typed into a worker console makes one of these - a mistake worth naming: the next sync lifts it.
         Events.on(PlayerIpBanEvent.class, event -> {
             if (!applying) {
+                referee.bans.check(new BanList.Snapshot(Set.of(), Set.of(event.ip)));
                 PluginLog.warn(
                         "Address @ was banned on this match server. Address bans "
                                 + "belong on the hub - this one will be lifted by "
@@ -80,6 +84,8 @@ public final class WorkerBans {
         if (Vars.netServer == null) {
             return;
         }
+
+        referee.bans.check(snapshot);
 
         if (everApplied
                 && Time.timeSinceMillis(lastPollMillis) < POLL_INTERVAL_MILLIS) {
@@ -100,7 +106,8 @@ public final class WorkerBans {
         applying = true;
 
         try {
-            apply(BanList.read(file));
+            snapshot = BanList.read(file);
+            apply(snapshot);
         } finally {
             applying = false;
         }
@@ -112,6 +119,7 @@ public final class WorkerBans {
             return;
         }
 
+        referee.handleBan(request.uuid());
         pending = request;
 
         try {
@@ -132,6 +140,7 @@ public final class WorkerBans {
             return;
         }
 
+        referee.handleBan(uuid);
         Bans.Request request = pending != null && uuid.equals(pending.uuid())
                 ? pending
                 : Bans.Request.admin(uuid, Bans.Origin.now(
@@ -165,6 +174,7 @@ public final class WorkerBans {
 
     // Brings this server's bans in line with the hub's: adds the new, drops the lifted, removes whoever is now banned.
     private void apply(BanList.Snapshot snapshot) {
+        referee.bans.check(snapshot);
         Administration admins = Vars.netServer.admins;
 
         // Lifted bans go first: dropping a stale address also clears accounts an older build flipped through it.

@@ -230,7 +230,7 @@ public class EvictMapPlugin extends Plugin {
      * throwaway admin store and is lifted again by the next sync.
      */
     private final WorkerBans workerBans =
-            new WorkerBans(duelWorkerReferee::requestBan, banScreen);
+            new WorkerBans(duelWorkerReferee, banScreen);
 
     /** Bans anyone using a filtered word in chat or in their name. */
     private final WordFilter wordFilter = new WordFilter(!duelWorker, this::seedBan, banScreen);
@@ -518,6 +518,7 @@ public class EvictMapPlugin extends Plugin {
 
             // Scrubs blueprints queued during a disconnect pause; must run in
             // this trigger because it fires even while the game is paused.
+            if (duelWorker) workerBans.update();
             duelWorkerReferee.update();
 
             // Both roles: a worker follows the hub's lock list, and locked
@@ -531,10 +532,7 @@ public class EvictMapPlugin extends Plugin {
 
             // Only the hub is listed in the multiplayer browser; keep its
             // advertised count folded with the players inside the duel workers.
-            if (duelWorker) {
-                // Picks up bans made on the hub, including mid-match ones.
-                workerBans.update();
-            } else {
+            if (!duelWorker) {
                 refreshAdvertisedPlayerCount();
 
                 // Lets a queued restart fire once the hub runs empty, instead
@@ -558,7 +556,7 @@ public class EvictMapPlugin extends Plugin {
         Events.on(PlayerLeave.class, e -> chatLogCapture.handleLeave(e.player));
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.25. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.26. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 

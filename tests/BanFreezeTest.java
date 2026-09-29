@@ -21,6 +21,9 @@ public final class BanFreezeTest {
         };
         Groups.init();
         Vars.netServer = new NetServer();
+        Vars.content = new mindustry.core.ContentLoader();
+        Vars.state = new mindustry.core.GameState();
+        mindustry.content.StatusEffects.load();
         TestPlayer admin = new TestPlayer("Admin"), other = new TestPlayer("Other"), target = new TestPlayer("Target");
         admin.admin = other.admin = true;
         List<Bans.Request> bans = new ArrayList<>();
@@ -32,7 +35,16 @@ public final class BanFreezeTest {
         mirror.installChatFilter();
         int[] ran = {0};
         Vars.netServer.clientCommands.<Player>register("probe", "test", (a,p) -> ran[0]++);
+        UnitEntity unit = UnitEntity.create();
+        unit.type = new mindustry.type.UnitType("freeze-test-unit");
+        unit.health = 100;
+        target.testUnit = unit;
+        unit.vel.set(5, 6);
+        unit.isShooting = target.shooting = true;
         open(menu, admin, target);
+        require(unit.hasEffect(mindustry.content.StatusEffects.unmoving) && unit.hasEffect(mindustry.content.StatusEffects.disarmed),
+                "real vanilla statuses applied");
+        require(unit.vel.isZero() && !unit.isShooting && !target.shooting, "movement inertia and shooting stopped");
         require(menu.freeze.frozen(target), "opening prompt freezes target");
         menu.freeze.update();
         require(target.messages.size() == 1, "notice appears only once");
@@ -56,6 +68,7 @@ public final class BanFreezeTest {
         require(menu.freeze.frozen(rejoined) && rejoined.messages.size() == 1, "rejoin held with notice");
         menu.handlePlayerLeave(other);
         require(!menu.freeze.frozen(rejoined), "admin departure releases last hold");
+        require(unit.getDuration(mindustry.content.StatusEffects.unmoving) == 0f, "old unit released on disconnect");
         long[] now = {0};
         BanFreeze timed = new BanFreeze(() -> now[0]);
         timed.begin("a", "Target");
@@ -88,6 +101,9 @@ public final class BanFreezeTest {
         throw new AssertionError("target missing");
     }
     static final class TestPlayer extends Player {
+        Unit testUnit;
+        @Override public Unit unit() { return testUnit == null ? super.unit() : testUnit; }
+        @Override public boolean dead() { return testUnit == null || testUnit.dead; }
         List<String> messages = new ArrayList<>();
         MenuCallPacket menu;
         TextInputCallPacket2 input;
@@ -106,5 +122,3 @@ public final class BanFreezeTest {
         @Override public void sendMessage(String message) { messages.add(message); }
     }
 }
-
-

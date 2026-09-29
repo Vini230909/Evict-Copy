@@ -209,6 +209,14 @@ public final class History {
 
     // Ranked shows the ELO swing; casual 1v1, Teams and FFA are unranked, so just win/lose.
     private String formatMatch(String subjectUuid, MatchHistory.DuelMatch match) {
+        if ("no-contest".equals(match.outcome())) {
+            MatchMode mode = MatchMode.fromId(match.mode());
+            String names = PlayerNames.joinShortened(List.of(match.participantNamesPacked().split("\n")),
+                    " [white]vs[] ", MAX_PARTICIPANT_NAMES);
+            return "[lightgray]" + mode.label() + "[]\n" + names
+                    + "\n[lightgray]no contest (a player was banned)[]"
+                    + (mode.ranked() ? "\n[gray]elo: []" + formatEloDelta(0) : "");
+        }
         if (MatchMode.FFA.id().equals(match.mode())) {
             String participants = PlayerNames.joinShortened(
                     List.of(match.participantNamesPacked().split("\n")),

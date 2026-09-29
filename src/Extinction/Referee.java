@@ -52,6 +52,7 @@ public final class Referee {
     public final Sandbox sandbox = new Sandbox(this);
     public final WorkerExit exit = new WorkerExit(this, scheduler);
     public final WorkerStatus status = new WorkerStatus(this);
+    public final MatchBans bans = new MatchBans(this);
     public final PureMatch pure = new PureMatch(this);
 
     // The mode: its rules (gated, solo, ...) are asked of it, never compared by constant.
@@ -296,7 +297,7 @@ public final class Referee {
     // Wired in place of the hub's round-victory handler: records the result, returns everyone.
     // Pure core counts (or an explicit game over) call this with the winning map team.
     public void handleVictory(Team winner) {
-        if (!active || resolved) {
+        if (!active || resolved || bans.checkHub()) {
             return;
         }
 
@@ -349,6 +350,16 @@ public final class Referee {
                 winnerUuids.isEmpty() ? "unknown" : String.join(",", winnerUuids),
                 loserUuids.isEmpty() ? "unknown" : String.join(",", loserUuids)
         );
+    }
+
+    public void handleBan(String uuid) {
+        if (!bans.applies(uuid)) return;
+        resolved = true;
+        gate.release();
+        MatchResult.noContest(mode.id(), uuid).write(RESULT_FILE);
+        Call.sendMessage("[accent]" + bans.name(uuid)
+                + " was banned. No contest - nobody wins or loses points. Returning to the lobby in 5 seconds...[]");
+        exit.scheduleReturnToHub();
     }
 
     // The whole roster team a participant belongs to (including themselves).

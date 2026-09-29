@@ -41,6 +41,8 @@ public final class MatchHistory {
                         + ")"
         );
 
+        addColumnIfMissing(statement, "duel_matches", "outcome TEXT NOT NULL DEFAULT 'decided'");
+
         // Databases created before the FFA history feature miss the new
         // columns; ALTER fails harmlessly where they already exist.
         addColumnIfMissing(
@@ -114,7 +116,7 @@ public final class MatchHistory {
         try (
                 PreparedStatement select = connection.prepareStatement(
                         "SELECT id, mode, winner_uuid, loser_uuid, "
-                                + "participant_uuids FROM duel_matches "
+                                + "participant_uuids FROM duel_matches WHERE outcome <> 'no-contest' "
                                 + "ORDER BY played_at_ms, id"
                 );
                 ResultSet rows = select.executeQuery()
@@ -288,6 +290,28 @@ public final class MatchHistory {
         }
     }
 
+    // No contest writes history only; a worker's writer source returns null and never opens SQLite for writing.
+    public void recordNoContest(MatchMode mode, List<String> uuids, List<String> names) {
+        if (mode.solo() || mode.pure() || uuids.isEmpty()) return;
+        long playedAt = System.currentTimeMillis();
+        String packedUuids = String.join(",", uuids), packedNames = String.join("\n", names);
+        queue.accept(() -> {
+            try (Connection connection = writer.open()) {
+                if (connection == null) return;
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "INSERT INTO duel_matches (played_at_ms, mode, outcome, winner_uuid, winner_name, "
+                        + "loser_uuid, loser_name, participant_uuids, participant_names) "
+                        + "VALUES (?, ?, 'no-contest', '', '', '', '', ?, ?)")) {
+                    statement.setLong(1, playedAt);
+                    statement.setString(2, mode.id());
+                    statement.setString(3, packedUuids);
+                    statement.setString(4, packedNames);
+                    statement.executeUpdate();
+                }
+            }
+        });
+    }
+
     public void findDuelHistory(
             String uuid,
             Consumer<List<DuelMatch>> callback
@@ -303,7 +327,7 @@ public final class MatchHistory {
                 Connection connection = reader.open();
                 PreparedStatement statement = connection.prepareStatement(
                         "SELECT played_at_ms, winner_uuid, winner_name, "
-                                + "loser_uuid, loser_name, mode, "
+                                + "loser_uuid, loser_name, mode, outcome, "
                                 + "participant_names, "
                                 + "winner_elo_before, winner_elo_after, "
                                 + "loser_elo_before, loser_elo_after "
@@ -326,6 +350,7 @@ public final class MatchHistory {
                             rows.getString("loser_uuid"),
                             rows.getString("loser_name"),
                             rows.getString("mode"),
+                            rows.getString("outcome"),
                             rows.getString("participant_names"),
                             rows.getInt("winner_elo_before"),
                             rows.getInt("winner_elo_after"),
@@ -355,6 +380,7 @@ public final class MatchHistory {
             String loserUuid,
             String loserName,
             String mode,
+            String outcome,
             String participantNamesPacked,
             int winnerEloBefore,
             int winnerEloAfter,
