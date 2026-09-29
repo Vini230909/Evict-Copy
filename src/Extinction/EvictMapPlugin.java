@@ -150,12 +150,8 @@ public class EvictMapPlugin extends Plugin {
                     restart
             );
 
-    /**
-     * Hub-only ban log. Constructed on a worker too (inert until started), but
-     * only the hub ever starts it - each worker would report the same ban.
-     */
-    private final Extinction.discord.BanLogReporter banLogReporter =
-            new Extinction.discord.BanLogReporter(settings);
+    // Hub-only ban log; constructed on a worker too, but only the hub starts it.
+    private final BanLog banLog = new BanLog();
 
     /**
      * Hub-only VPN scan, log only: the address of every join is looked up and
@@ -166,9 +162,9 @@ public class EvictMapPlugin extends Plugin {
     private final Extinction.moderation.vpn.VpnScan vpnScan =
             new Extinction.moderation.vpn.VpnScan(
                     settings,
-                    banLogReporter::logVpnHit,
-                    banLogReporter::logVpnTest,
-                    banLogReporter::isConfigured,
+                    banLog::logVpnHit,
+                    banLog::logVpnTest,
+                    banLog::isConfigured,
                     playerDataManager::findPlayerInfoByUuid
             );
 
@@ -183,7 +179,7 @@ public class EvictMapPlugin extends Plugin {
                     // A freed player who is online gets their team and hex
                     // the way a fresh join would.
                     teamManager::releaseLocked,
-                    duelWorker ? null : banLogReporter::logLock
+                    duelWorker ? null : banLog::logLock
             );
 
     /**
@@ -219,8 +215,8 @@ public class EvictMapPlugin extends Plugin {
     private final Extinction.moderation.ban.BanManager banManager =
             new Extinction.moderation.ban.BanManager(
                     settings,
-                    banLogReporter::log,
-                    banLogReporter::logImport,
+                    banLog::log,
+                    banLog::logImport,
                     // The ban announcement was visible in the hub's chat, so
                     // the chat mirror shows the same line.
                     line -> chatLogReporter.hubLine(
@@ -276,8 +272,7 @@ public class EvictMapPlugin extends Plugin {
                     teamManager,
                     playerDataManager,
                     duelWorker ? null : discordStatusReporter,
-                    duelWorker ? null : banLogReporter,
-                    duelWorker ? null : banManager,
+                            duelWorker ? null : banManager,
                     duelWorker ? null : vpnScan,
                     duelWorker ? null : playerLock,
                     duelWorker ? null : chatLogReporter,
@@ -332,7 +327,7 @@ public class EvictMapPlugin extends Plugin {
 
             // Hub only: the hub is the single source of truth for bans. It
             // widens them, writes the list the workers read, and logs them.
-            banLogReporter.start();
+            banLog.start();
             banManager.install();
 
             // Hub only: who arrives through a VPN. The lookup starts the
@@ -587,7 +582,7 @@ public class EvictMapPlugin extends Plugin {
                 // Runs the one-off import of pre-existing bans once the admin
                 // store exists, then paces the ban log's queue.
                 banManager.update();
-                banLogReporter.update();
+                banLog.update();
                 chatLogReporter.update();
             }
         });
@@ -598,7 +593,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.12. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.13. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
@@ -784,7 +779,7 @@ public class EvictMapPlugin extends Plugin {
     @Override
     public void registerServerCommands(CommandHandler handler) {
         consoleCommands.register(handler);
-        Console.register(handler, matches, roundTime, playerStats, restart);
+        Console.register(handler, matches, roundTime, playerStats, restart, duelWorker ? null : banLog);
     }
 
     /**

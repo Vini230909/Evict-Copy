@@ -6,7 +6,6 @@ import Extinction.data.*;
 import Extinction.round.*;
 import Extinction.core.cmd.Commands;
 import Extinction.core.io.Secrets;
-import Extinction.discord.BanLogReporter;
 import Extinction.discord.ChatLogReporter;
 import Extinction.discord.DiscordModCommands;
 import Extinction.moderation.ban.BanManager;
@@ -43,9 +42,6 @@ public final class ConsoleCommands {
     /** Null on a duel worker, which never reports to Discord. */
     private final DiscordStatusReporter discordStatusReporter;
 
-    /** Null on a duel worker: the hub owns the ban log. */
-    private final BanLogReporter banLogReporter;
-
     /** Null on a duel worker: only the hub decides who is banned. */
     private final BanManager banManager;
 
@@ -74,7 +70,6 @@ public final class ConsoleCommands {
             TeamManager teamManager,
             PlayerDataManager playerDataManager,
             DiscordStatusReporter discordStatusReporter,
-            BanLogReporter banLogReporter,
             BanManager banManager,
             VpnScan vpnScan,
             PlayerLock playerLock,
@@ -88,7 +83,6 @@ public final class ConsoleCommands {
         this.teamManager = teamManager;
         this.playerDataManager = playerDataManager;
         this.discordStatusReporter = discordStatusReporter;
-        this.banLogReporter = banLogReporter;
         this.banManager = banManager;
         this.vpnScan = vpnScan;
         this.playerLock = playerLock;
@@ -122,11 +116,6 @@ public final class ConsoleCommands {
                 .args("url/off/test:string?")
                 .description("Discord webhook for the live status message.")
                 .run(ctx -> handleDiscordCommand(ctx.str("url/off/test", "").trim()));
-
-        commands.command("banlog").console()
-                .args("action:string?")
-                .description("Discord ban log: status, <webhook-url>, off, test. Staff-only: it posts IPs.")
-                .run(ctx -> handleBanLogCommand(ctx.str("action", "").trim()));
 
         commands.command("discordcommands").console()
                 .args("action:string?", "value:text?")
@@ -208,42 +197,6 @@ public final class ConsoleCommands {
             default -> {
                 if (discordStatusReporter.configure(argument)) {
                     Log.info("[EvictMapGenerator] Discord webhook set. A fresh status message is being posted.");
-                } else {
-                    Log.err("[EvictMapGenerator] That is not a Discord webhook URL. Copy it from Channel Settings > Integrations > Webhooks.");
-                }
-            }
-        }
-    }
-
-    /**
-     * banlog: no argument reports the current wiring, a URL adopts a new
-     * webhook, 'off' stops logging, 'test' posts a sample entry.
-     */
-    private void handleBanLogCommand(String argument) {
-        if (banLogReporter == null) {
-            Log.err("[EvictMapGenerator] The ban log only runs on the hub.");
-            return;
-        }
-
-        switch (argument.toLowerCase()) {
-            case "" -> Log.info(
-                    "[EvictMapGenerator] Discord ban log: @",
-                    banLogReporter.statusLine()
-            );
-            case "off" -> {
-                banLogReporter.disable();
-                Log.info("[EvictMapGenerator] Discord ban logging is off.");
-            }
-            case "test" -> {
-                if (banLogReporter.publishTest()) {
-                    Log.info("[EvictMapGenerator] Test entry queued.");
-                } else {
-                    Log.err("[EvictMapGenerator] No ban-log webhook is set.");
-                }
-            }
-            default -> {
-                if (banLogReporter.configure(argument)) {
-                    Log.info("[EvictMapGenerator] Ban-log webhook set. Bans will be posted there from now on.");
                 } else {
                     Log.err("[EvictMapGenerator] That is not a Discord webhook URL. Copy it from Channel Settings > Integrations > Webhooks.");
                 }

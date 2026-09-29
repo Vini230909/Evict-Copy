@@ -28,7 +28,7 @@ import java.util.function.Consumer;
  * does {@code HttpURLConnection} underneath it. Hence the JDK's own
  * {@link HttpClient}, which is no extra dependency and gives real async sends.
  */
-final class DiscordWebhook {
+public final class DiscordWebhook {
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(15);
@@ -55,7 +55,7 @@ final class DiscordWebhook {
     private volatile long backoffUntilMillis = 0L;
     private volatile int consecutiveFailures = 0;
 
-    DiscordWebhook(Consumer<String> messageIdSink) {
+    public DiscordWebhook(Consumer<String> messageIdSink) {
         this(messageIdSink, newClient());
     }
 
@@ -82,7 +82,7 @@ final class DiscordWebhook {
                 .build();
     }
 
-    void configure(String webhookUrl, String storedMessageId) {
+    public void configure(String webhookUrl, String storedMessageId) {
         this.url = webhookUrl == null ? "" : webhookUrl.trim();
         this.messageId = storedMessageId == null ? "" : storedMessageId.trim();
         this.broken = false;
@@ -91,19 +91,19 @@ final class DiscordWebhook {
         this.backoffUntilMillis = 0L;
     }
 
-    boolean isConfigured() {
+    public boolean isConfigured() {
         return !url.isEmpty();
     }
 
-    boolean isBroken() {
+    public boolean isBroken() {
         return broken;
     }
 
-    String lastError() {
+    public String lastError() {
         return lastError;
     }
 
-    long lastSuccessMillis() {
+    public long lastSuccessMillis() {
         return lastSuccessMillis;
     }
 
@@ -116,7 +116,7 @@ final class DiscordWebhook {
      * their messages (the ban log) check this before handing one over, so a
      * message is held rather than dropped while Discord is busy or backing off.
      */
-    boolean canSend() {
+    public boolean canSend() {
         return isConfigured()
                 && !broken
                 && System.currentTimeMillis() >= backoffUntilMillis
@@ -137,7 +137,7 @@ final class DiscordWebhook {
      * This is what a log wants: a record per event, in order, never overwriting
      * the one before it.
      */
-    void post(String body) {
+    public void post(String body) {
         send(body, false);
     }
 

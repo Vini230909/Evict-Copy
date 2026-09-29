@@ -18,6 +18,9 @@ public final class Config {
     // Whether the banned-word filter bans automatically. Copied into every worker.
     public static boolean wordFilter = true;
 
+    // Discord webhook the ban log posts to (blank = off). Staff-only channel: entries carry IPs.
+    public static String discordBanLogWebhookUrl = "";
+
     // Match servers: the ip players are sent to (blank = /play off), first port, pool size,
     // the map a worker hosts and the server jar it runs. Workers get the ip blanked.
     public static String duelServerIp = "";
@@ -43,6 +46,7 @@ public final class Config {
         Properties file = PropertiesFile.load(FILE);
 
         wordFilter = PropertiesFile.getBool(file, "moderation.wordFilter", wordFilter);
+        discordBanLogWebhookUrl = PropertiesFile.getString(file, "discord.banlog.webhook.url", discordBanLogWebhookUrl).trim();
 
         duelServerIp = PropertiesFile.getString(file, "duel.server.ip", duelServerIp).trim();
         duelServerPort = range("Duel base port", PropertiesFile.getInt(file, "duel.server.port", duelServerPort), 1, 65535, duelServerPort);
@@ -79,6 +83,7 @@ public final class Config {
         Properties file = PropertiesFile.load(FILE);
 
         file.setProperty("moderation.wordFilter", Boolean.toString(wordFilter));
+        file.setProperty("discord.banlog.webhook.url", discordBanLogWebhookUrl);
 
         file.setProperty("duel.server.ip", duelServerIp);
         file.setProperty("duel.server.port", Integer.toString(duelServerPort));

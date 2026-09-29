@@ -104,13 +104,6 @@ public final class EvictSettings {
     private String discordMessageId = "";
 
     /**
-     * Discord webhook the ban log is posted to. A separate channel from the
-     * status message: every ban posts a new message there, and it carries the
-     * account's addresses, so it belongs somewhere only staff can read.
-     */
-    private String discordBanLogWebhookUrl = "";
-
-    /**
      * Discord server and role the {@code /ban} and {@code /unban} slash
      * commands answer in. A blank server id means the commands are off; a blank
      * role means only a member holding Discord's own Administrator permission
@@ -305,12 +298,6 @@ public final class EvictSettings {
                     readString(properties, "discord.webhook.url", discordWebhookUrl).trim();
             discordMessageId =
                     readString(properties, "discord.message.id", discordMessageId).trim();
-            discordBanLogWebhookUrl =
-                    readString(
-                            properties,
-                            "discord.banlog.webhook.url",
-                            discordBanLogWebhookUrl
-                    ).trim();
             discordCommandGuild =
                     readString(
                             properties,
@@ -441,16 +428,6 @@ public final class EvictSettings {
         }
 
         discordMessageId = cleaned;
-        save();
-    }
-
-    public String discordBanLogWebhookUrl() {
-        return discordBanLogWebhookUrl;
-    }
-
-    /** Points the ban log at a webhook; a blank URL turns it off. */
-    public void setDiscordBanLogWebhook(String url) {
-        discordBanLogWebhookUrl = url == null ? "" : url.trim();
         save();
     }
 
@@ -1040,10 +1017,6 @@ public final class EvictSettings {
         );
         properties.setProperty("discord.webhook.url", discordWebhookUrl);
         properties.setProperty("discord.message.id", discordMessageId);
-        properties.setProperty(
-                "discord.banlog.webhook.url",
-                discordBanLogWebhookUrl
-        );
         properties.setProperty(DISCORD_COMMAND_GUILD_KEY, discordCommandGuild);
         properties.setProperty(DISCORD_COMMAND_ROLE_KEY, discordCommandRole);
         properties.setProperty(CHAT_LOG_HUB_KEY, chatLogHubChannel);

@@ -1,6 +1,7 @@
 // Console commands: one entry each, nothing else. Registered by EvictMapPlugin.
 package Extinction.commands;
 
+import Extinction.BanLog;
 import Extinction.Config;
 import Extinction.Matches;
 import Extinction.PlayerStats;
@@ -17,7 +18,7 @@ public final class Console {
     private Console() {
     }
 
-    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime, PlayerStats playerStats, Restart restart) {
+    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime, PlayerStats playerStats, Restart restart, BanLog banLog) {
         Commands commands = new Commands();
 
         commands.command("matchstatus").console()
@@ -103,6 +104,41 @@ public final class Console {
                             }
                         }
                         default -> PluginLog.err("Usage: wordfilter [on/off/test <text>]");
+                    }
+                });
+
+        // banLog is null on a duel worker: the hub owns the ban log.
+        commands.command("banlog").console()
+                .args("action:string?")
+                .description("Discord ban log: status, <webhook-url>, off, test. Staff-only: it posts IPs.")
+                .run(ctx -> {
+                    String argument = ctx.str("action", "").trim();
+
+                    if (banLog == null) {
+                        PluginLog.err("The ban log only runs on the hub.");
+                        return;
+                    }
+
+                    switch (argument.toLowerCase()) {
+                        case "" -> PluginLog.info("Discord ban log: @", banLog.statusLine());
+                        case "off" -> {
+                            banLog.disable();
+                            PluginLog.info("Discord ban logging is off.");
+                        }
+                        case "test" -> {
+                            if (banLog.publishTest()) {
+                                PluginLog.info("Test entry queued.");
+                            } else {
+                                PluginLog.err("No ban-log webhook is set.");
+                            }
+                        }
+                        default -> {
+                            if (banLog.configure(argument)) {
+                                PluginLog.info("Ban-log webhook set. Bans will be posted there from now on.");
+                            } else {
+                                PluginLog.err("That is not a Discord webhook URL. Copy it from Channel Settings > Integrations > Webhooks.");
+                            }
+                        }
                     }
                 });
 
