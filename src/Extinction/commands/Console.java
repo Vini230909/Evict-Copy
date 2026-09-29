@@ -3,7 +3,10 @@ package Extinction.commands;
 
 import Extinction.BanLog;
 import Extinction.Config;
+import Extinction.DiscordStatus;
+import Extinction.LockList;
 import Extinction.Matches;
+import Extinction.PlayerLock;
 import Extinction.PlayerStats;
 import Extinction.Restart;
 import Extinction.RoundTime;
@@ -12,13 +15,16 @@ import Extinction.core.cmd.Commands;
 import Extinction.core.util.PluginLog;
 
 import arc.util.CommandHandler;
+import arc.util.Strings;
+
+import java.util.List;
 
 public final class Console {
 
     private Console() {
     }
 
-    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime, PlayerStats playerStats, Restart restart, BanLog banLog) {
+    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime, PlayerStats playerStats, Restart restart, BanLog banLog, DiscordStatus discordStatus, PlayerLock lock) {
         Commands commands = new Commands();
 
         commands.command("matchstatus").console()
@@ -107,6 +113,38 @@ public final class Console {
                     }
                 });
 
+        // discordStatus is null on a duel worker, which never reports to Discord.
+        commands.command("discordstatus").console()
+                .args("url/off/test:string?")
+                .description("Discord webhook for the live status message.")
+                .run(ctx -> {
+                    String argument = ctx.str("url/off/test", "").trim();
+
+                    if (discordStatus == null) {
+                        PluginLog.err("Discord status reporting only runs on the hub.");
+                        return;
+                    }
+
+                    switch (argument.toLowerCase()) {
+                        case "" -> PluginLog.info("Discord status: @", discordStatus.statusLine());
+                        case "off" -> {
+                            discordStatus.disable();
+                            PluginLog.info("Discord status reporting is off; the message now reads Offline.");
+                        }
+                        case "test" -> {
+                            discordStatus.publishNow();
+                            PluginLog.info("Discord status update requested.");
+                        }
+                        default -> {
+                            if (discordStatus.configure(argument)) {
+                                PluginLog.info("Discord webhook set. A fresh status message is being posted.");
+                            } else {
+                                PluginLog.err("That is not a Discord webhook URL. Copy it from Channel Settings > Integrations > Webhooks.");
+                            }
+                        }
+                    }
+                });
+
         // banLog is null on a duel worker: the hub owns the ban log.
         commands.command("banlog").console()
                 .args("action:string?")
@@ -139,6 +177,61 @@ public final class Console {
                                 PluginLog.err("That is not a Discord webhook URL. Copy it from Channel Settings > Integrations > Webhooks.");
                             }
                         }
+                    }
+                });
+
+        // lock is null on a duel worker: the hub owns the lock list.
+        commands.command("free").console()
+                .args("target:text?")
+                .description("Free a locked account by name or UUID; no argument lists the locked ones.")
+                .run(ctx -> {
+                    String target = ctx.str("target", "").trim();
+
+                    if (lock == null) {
+                        PluginLog.err("Locks are freed on the hub.");
+                        return;
+                    }
+
+                    if (target.isEmpty()) {
+                        List<LockList.Entry> entries = lock.lockedEntries();
+
+                        if (entries.isEmpty()) {
+                            PluginLog.info("No account is locked.");
+                            return;
+                        }
+
+                        PluginLog.info("@ locked account(s):", entries.size());
+
+                        for (LockList.Entry entry : entries) {
+                            PluginLog.info("  @ (@) from @ - @", Strings.stripColors(entry.name()), entry.uuid(), entry.ip(), entry.reason());
+                        }
+
+                        return;
+                    }
+
+                    List<LockList.Entry> found = lock.matching(target);
+
+                    if (found.isEmpty()) {
+                        PluginLog.err("No locked account matches '@'. 'free' lists them.", target);
+                        return;
+                    }
+
+                    if (found.size() > 1) {
+                        PluginLog.err("'@' matches @ locked accounts - give the UUID:", target, found.size());
+
+                        for (LockList.Entry entry : found) {
+                            PluginLog.info("  @ (@)", Strings.stripColors(entry.name()), entry.uuid());
+                        }
+
+                        return;
+                    }
+
+                    PlayerLock.FreeResult result = lock.free(found.get(0).uuid(), "the console");
+
+                    if (result.freed()) {
+                        PluginLog.info("@", result.line());
+                    } else {
+                        PluginLog.err("@", result.line());
                     }
                 });
 

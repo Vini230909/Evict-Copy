@@ -15,7 +15,7 @@ import Extinction.core.util.MessageIdFilter;
  *
  * <p>Mentions are <em>not</em> handled here: a name containing
  * {@code @everyone} is defused by the payload's {@code allowed_mentions}
- * (see {@link StatusMessage}), which is a guarantee from Discord rather than a
+ * (see {@code Extinction.DiscordStatus}), which is a guarantee from Discord rather than a
  * string filter that a clever name could slip past.
  */
 public final class DiscordFormat {

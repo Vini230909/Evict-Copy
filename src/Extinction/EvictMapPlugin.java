@@ -23,7 +23,6 @@ import mindustry.game.Team;
 import mindustry.gen.Player;
 import mindustry.mod.Plugin;
 import mindustry.world.blocks.storage.CoreBlock;
-import Extinction.discord.DiscordStatusReporter;
 import Extinction.commands.*;
 import Extinction.core.util.MessageIdFilter;
 import Extinction.core.util.PluginLog;
@@ -134,30 +133,17 @@ public class EvictMapPlugin extends Plugin {
 
     private final Restart restart = new Restart(matches, teamManager);
 
-    /**
-     * Hub-only live status message in Discord. Constructed on a worker too (it
-     * is a plain object with no side effects until started), but only the hub
-     * ever calls start()/update() - four workers editing the same message would
-     * fight over it.
-     */
-    private final DiscordStatusReporter discordStatusReporter =
-            new DiscordStatusReporter(
-                    settings,
-                    playerDataManager,
-                    teamManager,
-                    extinctionWave,
-                    matches,
-                    restart
-            );
+    // Hub-only live status message in Discord; constructed on a worker too, but only the hub starts it.
+    private final DiscordStatus discordStatus =
+            new DiscordStatus(playerDataManager, teamManager, extinctionWave, matches, restart);
 
     // Hub-only ban log; constructed on a worker too, but only the hub starts it.
     private final BanLog banLog = new BanLog();
 
     /**
-     * Hub-only VPN scan, log only: the address of every join is looked up and
-     * a VPN or proxy is written to the console and the ban log, with the
-     * account's age next to it. Decides nothing - it is the week of evidence
-     * the rule against ban evasion is to be drawn from.
+     * Hub-only VPN lookup, asked by the lock gate about new and locked
+     * accounts only. It writes no line of its own: the lock's lines (locked,
+     * locked account joined, freed) are the only ones.
      */
     private final Extinction.moderation.vpn.VpnScan vpnScan =
             new Extinction.moderation.vpn.VpnScan(
@@ -172,8 +158,8 @@ public class EvictMapPlugin extends Plugin {
      * The lock itself, both roles: what a locked account cannot do, and who
      * is locked. The hub owns the list and writes it; a worker follows it.
      */
-    private final Extinction.moderation.lock.PlayerLock playerLock =
-            new Extinction.moderation.lock.PlayerLock(
+    private final PlayerLock playerLock =
+            new PlayerLock(
                     !duelWorker,
                     settings::banAppealUrl,
                     // A freed player who is online gets their team and hex
@@ -186,18 +172,16 @@ public class EvictMapPlugin extends Plugin {
      * Hub only: the decision at the door - a first join through a VPN is
      * parked until its verdict is in and locked when the verdict says so.
      */
-    private final Extinction.moderation.lock.LockGate lockGate =
-            new Extinction.moderation.lock.LockGate(
-                    settings::vpnLockEnabled,
+    private final LockGate lockGate =
+            new LockGate(
                     playerLock,
                     vpnScan,
                     teamManager::assignLocked,
                     teamManager::releaseLocked
             );
 
-    /** /free: the in-game way to free a locked account, with /ban's picker UX. */
-    private final Extinction.commands.FreeCommands freeCommands =
-            new Extinction.commands.FreeCommands(playerLock);
+    // /free: the in-game way to free a locked account, with /ban's picker UX.
+    private final FreeMenu freeMenu = new FreeMenu(playerLock);
 
     /**
      * What a banned player reads: the ban plus the Discord invite to appeal it.
@@ -271,8 +255,7 @@ public class EvictMapPlugin extends Plugin {
                     terrainGenerator,
                     teamManager,
                     playerDataManager,
-                    duelWorker ? null : discordStatusReporter,
-                            duelWorker ? null : banManager,
+                    duelWorker ? null : banManager,
                     duelWorker ? null : vpnScan,
                     duelWorker ? null : playerLock,
                     duelWorker ? null : chatLogReporter,
@@ -323,20 +306,19 @@ public class EvictMapPlugin extends Plugin {
 
             // Hub only: one live status message in Discord. Workers must stay
             // out of it - they would all edit the same message.
-            discordStatusReporter.start();
+            discordStatus.start();
 
             // Hub only: the hub is the single source of truth for bans. It
             // widens them, writes the list the workers read, and logs them.
             banLog.start();
             banManager.install();
 
-            // Hub only: who arrives through a VPN. The lookup starts the
-            // moment a connection opens, so the verdict is in before the
-            // join and the lock gate never has to make a newcomer wait.
+            // Hub only: whether a new account arrives through a VPN. The lookup starts at the
+            // connect packet (account known, join not counted yet), so the verdict is in before the join.
             vpnScan.start();
-            Events.on(mindustry.game.EventType.ConnectionEvent.class, event -> {
-                if (event.connection != null) {
-                    guarded("vpn prefetch", () -> vpnScan.prefetch(event.connection.address));
+            Events.on(mindustry.game.EventType.ConnectPacketEvent.class, event -> {
+                if (event.connection != null && event.packet != null) {
+                    guarded("vpn prefetch", () -> lockGate.prefetch(event.packet.uuid, event.connection.address));
                 }
             });
 
@@ -448,8 +430,6 @@ public class EvictMapPlugin extends Plugin {
                     !duelWorker
                             && matches.tryReturnToActiveDuel(event.player)
             ) {
-                // Still written down if they came through a VPN.
-                guarded("vpn scan", () -> vpnScan.handlePlayerJoin(event.player, null));
                 return;
             }
 
@@ -502,7 +482,7 @@ public class EvictMapPlugin extends Plugin {
             // Hub: the lock gate looks at the join first. A locked account
             // stays on the Fallen team; a first join through a VPN is parked
             // until its verdict is in; everyone else is onboarded right away.
-            // The gate also hands the join to the VPN scan for its line.
+            // Only new and locked accounts are looked up at all.
             boolean[] onboardNow = {true};
 
             if (!duelWorker) {
@@ -524,7 +504,7 @@ public class EvictMapPlugin extends Plugin {
             guarded("history leave", () -> history.handlePlayerLeave(event.player));
             guarded("info leave", () -> playerStats.handlePlayerLeave(event.player));
             guarded("ban leave", () -> banCommands.handlePlayerLeave(event.player));
-            guarded("free leave", () -> freeCommands.handlePlayerLeave(event.player));
+            guarded("free leave", () -> freeMenu.handlePlayerLeave(event.player));
             guarded("duelWorker leave", () -> duelWorkerReferee.handlePlayerLeave(event.player));
         });
 
@@ -577,7 +557,7 @@ public class EvictMapPlugin extends Plugin {
                 restart.update();
 
                 metrics.update();
-                discordStatusReporter.update();
+                discordStatus.update();
 
                 // Runs the one-off import of pre-existing bans once the admin
                 // store exists, then paces the ban log's queue.
@@ -593,7 +573,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.13. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.17. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
@@ -667,7 +647,7 @@ public class EvictMapPlugin extends Plugin {
             // A finished ranked match must show up on the Discord ladder now,
             // not whenever its slow refresh comes round.
             playerDataManager.setEloChangeListener(
-                    discordStatusReporter::markLadderStale
+                    discordStatus::markLadderStale
             );
         }
 
@@ -760,11 +740,10 @@ public class EvictMapPlugin extends Plugin {
 
     @Override
     public void registerClientCommands(CommandHandler handler) {
-        Extinction.commands.Admin.register(handler, banCommands);
+        Extinction.commands.Admin.register(handler, banCommands, freeMenu);
 
-        // /free, and no locked account in any /play picker (an invite is a
+        // No locked account in any /play picker (an invite is a
         // menu, which the lock's command gate cannot refuse).
-        freeCommands.registerClientCommands(handler);
         matchmaking.excludeFromPickers(player -> playerLock.isLocked(player.uuid()));
         Extinction.commands.Player.register(handler, matchmaking, spectateMenu, duelWorkerReferee, roundEnd, roundTime, history, playerStats, leaderboard, fullAssault, inviteManager);
 
@@ -779,7 +758,7 @@ public class EvictMapPlugin extends Plugin {
     @Override
     public void registerServerCommands(CommandHandler handler) {
         consoleCommands.register(handler);
-        Console.register(handler, matches, roundTime, playerStats, restart, duelWorker ? null : banLog);
+        Console.register(handler, matches, roundTime, playerStats, restart, duelWorker ? null : banLog, duelWorker ? null : discordStatus, duelWorker ? null : playerLock);
     }
 
     /**

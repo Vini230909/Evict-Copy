@@ -94,16 +94,6 @@ public final class EvictSettings {
     private double unitBuildSpeedMultiplier = DEFAULT_UNIT_BUILD_SPEED_MULTIPLIER;
 
     /**
-     * Discord webhook the hub keeps a live status message on. A blank URL means
-     * the feature is off. The message id is stored alongside it so a restart
-     * keeps editing the same message instead of posting a new one every time
-     * the server comes up; it is cleared whenever the URL changes, because an
-     * id only means anything in the channel it was created in.
-     */
-    private String discordWebhookUrl = "";
-    private String discordMessageId = "";
-
-    /**
      * Discord server and role the {@code /ban} and {@code /unban} slash
      * commands answer in. A blank server id means the commands are off; a blank
      * role means only a member holding Discord's own Administrator permission
@@ -157,13 +147,6 @@ public final class EvictSettings {
      * folders with the rest of this file but is read by the hub alone.
      */
     private boolean vpnScanEnabled = true;
-
-    /**
-     * Whether a first join through a VPN is locked until an admin frees it,
-     * or only written down. Decided on the hub alone; the enforcement on a
-     * match server follows the hub's list either way.
-     */
-    private boolean vpnLockEnabled = true;
 
     /**
      * Internal block ids players may not build (e.g. {@code router}). Stored as
@@ -294,10 +277,6 @@ public final class EvictSettings {
                 );
             }
 
-            discordWebhookUrl =
-                    readString(properties, "discord.webhook.url", discordWebhookUrl).trim();
-            discordMessageId =
-                    readString(properties, "discord.message.id", discordMessageId).trim();
             discordCommandGuild =
                     readString(
                             properties,
@@ -325,11 +304,6 @@ public final class EvictSettings {
                     properties,
                     "moderation.vpnScan",
                     vpnScanEnabled
-            );
-            vpnLockEnabled = readBoolean(
-                    properties,
-                    "moderation.vpnLock",
-                    vpnLockEnabled
             );
 
             setBannedBlockNamesWithoutSaving(
@@ -394,41 +368,6 @@ public final class EvictSettings {
         return bannedBlockNames.isEmpty()
                 ? "none"
                 : String.join(", ", bannedBlockNames);
-    }
-
-    public String discordWebhookUrl() {
-        return discordWebhookUrl;
-    }
-
-    public String discordMessageId() {
-        return discordMessageId;
-    }
-
-    public boolean discordConfigured() {
-        return !discordWebhookUrl.isBlank();
-    }
-
-    /**
-     * Points the status reporter at a webhook. Pass a blank URL to turn the
-     * feature off; pass a blank message id to make the next update post a new
-     * message rather than edit an old one.
-     */
-    public void setDiscordWebhook(String url, String messageId) {
-        discordWebhookUrl = url == null ? "" : url.trim();
-        discordMessageId = messageId == null ? "" : messageId.trim();
-        save();
-    }
-
-    /** Remembers the message the reporter is editing, across restarts. */
-    public void setDiscordMessageId(String messageId) {
-        String cleaned = messageId == null ? "" : messageId.trim();
-
-        if (cleaned.equals(discordMessageId)) {
-            return;
-        }
-
-        discordMessageId = cleaned;
-        save();
     }
 
     /** Discord server the /ban and /unban commands run in; blank means off. */
@@ -560,20 +499,6 @@ public final class EvictSettings {
         }
 
         vpnScanEnabled = enabled;
-        save();
-    }
-
-    /** True while a first join through a VPN is locked rather than only logged. */
-    public boolean vpnLockEnabled() {
-        return vpnLockEnabled;
-    }
-
-    public void setVpnLockEnabled(boolean enabled) {
-        if (vpnLockEnabled == enabled) {
-            return;
-        }
-
-        vpnLockEnabled = enabled;
         save();
     }
 
@@ -1015,8 +940,6 @@ public final class EvictSettings {
                 "rules.unitBuildSpeedMultiplier",
                 Double.toString(unitBuildSpeedMultiplier)
         );
-        properties.setProperty("discord.webhook.url", discordWebhookUrl);
-        properties.setProperty("discord.message.id", discordMessageId);
         properties.setProperty(DISCORD_COMMAND_GUILD_KEY, discordCommandGuild);
         properties.setProperty(DISCORD_COMMAND_ROLE_KEY, discordCommandRole);
         properties.setProperty(CHAT_LOG_HUB_KEY, chatLogHubChannel);
@@ -1036,10 +959,6 @@ public final class EvictSettings {
         properties.setProperty(
                 "moderation.vpnScan",
                 Boolean.toString(vpnScanEnabled)
-        );
-        properties.setProperty(
-                "moderation.vpnLock",
-                Boolean.toString(vpnLockEnabled)
         );
         properties.setProperty(
                 "rules.bannedBlocks",

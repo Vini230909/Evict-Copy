@@ -1,4 +1,5 @@
-package Extinction.moderation.lock;
+// Hub only: at the door, a join is onboarded, locked, or held until its VPN verdict is in.
+package Extinction;
 
 import Extinction.moderation.vpn.VpnScan;
 import Extinction.moderation.vpn.VpnVerdict;
@@ -12,71 +13,41 @@ import mindustry.net.Administration;
 
 import java.util.HashSet;
 import java.util.Set;
-import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-/**
- * Hub only: decides at the door whether a join is onboarded, locked, or
- * held until the VPN verdict is in.
- *
- * <p>The rule is narrow on purpose: an account's <em>first</em> join, through
- * a VPN, proxy or hosting range. A known account on a VPN is a regular who
- * likes their privacy and is only written down ({@link VpnScan}); the evader
- * pattern is the fresh account, and that is the one held for a person to
- * look at. A verified account - one an admin freed - is never held again.
- *
- * <p>The verdict takes a lookup, so it is started the moment the connection
- * opens ({@link VpnScan#prefetch}), while the client is still downloading
- * the world; by the time the join event fires it is normally in the cache
- * and the decision is instant. When it is not, the join is parked on the
- * Fallen team for at most half a second and then onboarded anyway - a
- * newcomer must not wait for their hex - and a verdict that arrives later
- * still locks the account if it says so. A player who leaves in between is
- * locked all the same; the lock is on the account, not the connection.
- *
- * <p>A locked account that comes back from a <em>clean</em> address is freed
- * automatically: the evader's clean address is the one the ban cascade
- * already knows, so this exit is open to the newcomer who turned their VPN
- * off and closed to the evader. Automatic frees do not verify - the account
- * is scanned like any other from then on.
- */
+// Only new and locked accounts are looked up at all: a first join through a VPN is locked, a locked one back clean is freed.
 public final class LockGate {
 
-    /** How long a first join waits for the verdict before it is let in: half a second. */
+    // How long a first join waits for the verdict before it is let in: half a second.
     private static final float HOLD_TIMEOUT_TICKS = 30f;
 
-    private final BooleanSupplier enabled;
     private final PlayerLock lock;
     private final VpnScan scan;
 
-    /** Parks a player on the Fallen team with no hex - the held and the locked. */
+    // Parks a player on the Fallen team with no hex - the held and the locked.
     private final Consumer<Player> park;
 
-    /** Gives a player their personal team and hex, as a normal join would. */
+    // Gives a player their personal team and hex, as a normal join would.
     private final Consumer<Player> onboard;
 
-    /** Accounts waiting for their verdict. */
+    // Accounts waiting for their verdict.
     private final Set<String> held = new HashSet<>();
 
-    public LockGate(
-            BooleanSupplier enabled,
-            PlayerLock lock,
-            VpnScan scan,
-            Consumer<Player> park,
-            Consumer<Player> onboard
-    ) {
-        this.enabled = enabled;
+    public LockGate(PlayerLock lock, VpnScan scan, Consumer<Player> park, Consumer<Player> onboard) {
         this.lock = lock;
         this.scan = scan;
         this.park = park;
         this.onboard = onboard;
     }
 
-    /**
-     * One hub join. Returns true when the caller should onboard the player
-     * right now, false when the gate has taken them: locked, or held until
-     * the verdict decides.
-     */
+    // The connect packet, before the join is counted: starts the lookup early, for exactly the joins that get one.
+    public void prefetch(String uuid, String ip) {
+        if (uuid != null && (lock.isLocked(uuid) || lockable(uuid, 0))) {
+            scan.prefetch(ip);
+        }
+    }
+
+    // One hub join: true when the caller should onboard the player now, false when the gate took them.
     public boolean handlePlayerJoin(Player player) {
         if (player == null) {
             return true;
@@ -88,24 +59,30 @@ public final class LockGate {
             park.accept(player);
             lock.handlePlayerJoin(player);
 
-            // Back from a clean address? Then the lock has done its job.
+            String lockedName = player.name;
+            String lockedIp = player.con == null ? "" : player.con.address;
+            int lockedJoins = timesJoined(uuid);
+
+            // Back from a clean address? Then the lock has done its job. Otherwise staff see the return.
             scan.handlePlayerJoin(player, verdict -> {
-                if (verdict != null && !verdict.flagged() && lock.isLocked(uuid)) {
-                    lock.free(uuid, "a clean address (automatic)", false);
+                if (!lock.isLocked(uuid)) {
+                    return true;
                 }
 
-                return false;
+                if (verdict != null && !verdict.flagged()) {
+                    lock.free(uuid, "a clean address (automatic)", false);
+                } else {
+                    lock.noteJoin(uuid, lockedName, lockedIp, verdict, lockedJoins);
+                }
+
+                return true;
             });
 
             return false;
         }
 
-        if (
-                !enabled.getAsBoolean()
-                        || lock.isVerified(uuid)
-                        || (!held.contains(uuid) && !firstJoin(uuid))
-        ) {
-            scan.handlePlayerJoin(player, null);
+        // Everyone else - known accounts, verified ones, or all of them while the lock is off - is not looked up at all.
+        if (!lockable(uuid, 1)) {
             return true;
         }
 
@@ -134,15 +111,12 @@ public final class LockGate {
         return false;
     }
 
-    /** True while an account is parked waiting for its verdict. */
+    // True while an account is parked waiting for its verdict.
     public boolean isHeld(String uuid) {
         return uuid != null && held.contains(uuid);
     }
 
-    /**
-     * The verdict landed. Returns true when the account was locked, so the
-     * scan leaves the line to the lock's own entry.
-     */
+    // The verdict landed. True when the account was locked, so the scan leaves the line to the lock's own entry.
     private boolean decide(String uuid, String name, String ip, VpnVerdict verdict) {
         boolean wasHeld = held.remove(uuid);
 
@@ -153,8 +127,7 @@ public final class LockGate {
 
             if (!wasHeld) {
                 // The half-second hold ran out and the player is already on
-                // their hex. They are parked again all the same - the hex
-                // stays behind as an unattended team, like a player who left.
+                // their hex; parked again, the hex stays behind unattended.
                 Player online = Groups.player.find(p -> p != null && uuid.equals(p.uuid()));
 
                 if (online != null) {
@@ -162,7 +135,7 @@ public final class LockGate {
                 }
             }
 
-            lock.lock(uuid, name, ip, verdict);
+            lock.lock(uuid, name, ip, verdict, timesJoined(uuid));
             tellAdmins(name, verdict);
             return true;
         }
@@ -194,13 +167,24 @@ public final class LockGate {
         });
     }
 
-    /** Mindustry's own join count, incremented before the join event fires. */
-    private static boolean firstJoin(String uuid) {
+    // A new account the lock would take: a first join, or one still held, while the lock is on and nobody verified it.
+    private boolean lockable(String uuid, int counted) {
+        return Config.vpnLock && !lock.isVerified(uuid) && (held.contains(uuid) || firstJoin(uuid, counted));
+    }
+
+    // Mindustry's own join count: counted is 1 at the join event (this join included), 0 at the connect packet.
+    private static boolean firstJoin(String uuid, int counted) {
         if (Vars.netServer == null) {
             return false;
         }
 
         Administration.PlayerInfo info = Vars.netServer.admins.getInfoOptional(uuid);
-        return info == null || info.timesJoined <= 1;
+        return info == null || info.timesJoined <= counted;
+    }
+
+    // Mindustry's own join count for the ban log's "joined first time / N times"; this join included.
+    private static int timesJoined(String uuid) {
+        Administration.PlayerInfo info = Vars.netServer == null ? null : Vars.netServer.admins.getInfoOptional(uuid);
+        return info == null ? 1 : info.timesJoined;
     }
 }

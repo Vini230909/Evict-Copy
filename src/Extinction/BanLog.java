@@ -1,6 +1,7 @@
-// The Discord ban log: one new message per ban, unban, VPN hit or lock, queued and posted to a staff-only webhook.
+// The Discord ban log: one plain-text message per ban, unban, VPN check or free, queued and posted to a staff-only webhook.
 package Extinction;
 
+import Extinction.core.util.MessageIdFilter;
 import Extinction.core.util.PluginLog;
 import Extinction.discord.DiscordFormat;
 import Extinction.discord.DiscordJson;
@@ -8,7 +9,6 @@ import Extinction.discord.DiscordWebhook;
 import Extinction.moderation.ban.BanOrigin;
 import Extinction.moderation.ban.BanReport;
 import Extinction.moderation.ban.WordFilterHit;
-import Extinction.moderation.lock.LockEvent;
 import Extinction.moderation.vpn.VpnScanHit;
 import Extinction.moderation.vpn.VpnVerdict;
 
@@ -16,8 +16,9 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Set;
 
-// Hub only: every worker would report the same ban. Never edits: a log is a sequence.
+// Hub only: every worker would report the same ban. Never edits: a log is a sequence. Layout as on Fish (see GAMEPLAY.md, Bans).
 public final class BanLog {
 
     // Discord rate-limits a webhook at a handful of requests a second, so the queue drips.
@@ -30,16 +31,17 @@ public final class BanLog {
     private static final int MAX_INDIVIDUAL_IMPORTS = 25;
     private static final int IMPORT_SUMMARY_CHUNK = 20;
 
-    private static final long COLOR_BAN = 0xED4245L;
-    private static final long COLOR_WORD_FILTER = 0xE67E22L;
-    private static final long COLOR_UNBAN = 0x57F287L;
-    private static final long COLOR_IMPORT = 0x99AAB5L;
+    // Accounts or addresses shown on one line before the rest become "+ N more".
+    private static final int MAX_LISTED = 10;
 
-    // Discord's hard limit on one embed field value.
-    private static final int MAX_FIELD_VALUE = 1024;
+    // A name keeps its colour tags here, so it gets more room than the chat mirror's.
+    private static final int MAX_NAME_LENGTH = 80;
 
-    // Field names may not be empty; a zero-width space renders as a bare line.
-    private static final String BLANK_FIELD_NAME = "​";
+    // Discord's hard limit on one message.
+    private static final int MAX_MESSAGE = 2000;
+
+    // Actors that are not a person's name read as the start of a sentence: "The console banned ...".
+    private static final Set<String> PHRASE_ACTORS = Set.of("the console", BanOrigin.WORD_FILTER_ACTOR, BanOrigin.UNKNOWN_ADMIN);
 
     // Players choose their names, so nothing in an entry may ping (a player called @everyone).
     private static final String NO_MENTIONS = "{\"parse\":[]}";
@@ -95,25 +97,25 @@ public final class BanLog {
             return;
         }
 
-        enqueue(payload(report, epochSeconds()));
+        enqueue(banMessage(report));
     }
 
-    // One VPN scan hit as a line; same queue as the bans, so it never crowds one out of order.
+    // One VPN scan hit; same queue as the bans, so it never crowds one out of order.
     public void logVpnHit(VpnScanHit hit) {
         if (hit == null || !webhook.isConfigured()) {
             return;
         }
 
-        enqueue(vpnScanLine(hit));
+        enqueue(vpnCheck(hit.name(), hit.timesJoined(), hit.verdict(), hit.uuid(), hit.ip()));
     }
 
-    // A lock or a free as one line.
-    public void logLock(LockEvent event) {
+    // A lock, a locked account's join or a free.
+    public void logLock(PlayerLock.Event event) {
         if (event == null || !webhook.isConfigured()) {
             return;
         }
 
-        enqueue(lockLine(event));
+        enqueue(lockMessage(event));
     }
 
     // The console test's verdict, so the test proves the channel too.
@@ -122,7 +124,7 @@ public final class BanLog {
             return;
         }
 
-        enqueue(vpnScanTestLine(verdict));
+        enqueue("VPN check (test): " + code(verdict.ip()) + "\n**Triggered:** " + triggered(verdict));
     }
 
     // True while a webhook is set - whether or not it is currently healthy.
@@ -147,7 +149,7 @@ public final class BanLog {
         List<List<BanReport>> chunks = chunk(reports);
 
         for (int index = 0; index < chunks.size(); index++) {
-            enqueue(importSummary(chunks.get(index), index + 1, chunks.size(), epochSeconds()));
+            enqueue(importSummary(chunks.get(index), index + 1, chunks.size()));
         }
     }
 
@@ -200,265 +202,182 @@ public final class BanLog {
         return status.toString();
     }
 
-    // 'banlog test': a sample entry so an admin can check the channel is wired up.
+    // 'banlog test': a sample entry in the real layout, so an admin can check the channel is wired up.
     public boolean publishTest() {
         if (!webhook.isConfigured()) {
             return false;
         }
 
-        enqueue(payload(
-                new BanReport(
-                        BanReport.Kind.IMPORT,
-                        "ban log test",
-                        List.of("nobody"),
-                        List.of("(test entry, nothing was banned)"),
-                        List.of()
-                ),
-                epochSeconds()
-        ));
+        enqueue(banMessage(new BanReport(
+                BanReport.Kind.BAN,
+                "nobody (ban log test, nothing was banned)",
+                List.of(),
+                List.of(),
+                List.of(),
+                BanOrigin.now("the console", BanOrigin.HUB),
+                null
+        )));
 
         return true;
     }
 
-    private void enqueue(String payload) {
+    private void enqueue(String content) {
         while (pending.size() >= MAX_QUEUE) {
             pending.poll();
             dropped++;
         }
 
-        pending.add(payload);
+        pending.add(new DiscordJson.Obj()
+                .raw("allowed_mentions", NO_MENTIONS)
+                .str("content", DiscordFormat.truncate(content, MAX_MESSAGE))
+                .toString());
     }
 
-    // One action as one embed: its story, then every name, account and address it covered.
-    private static String payload(BanReport report, long timestampSeconds) {
-        DiscordJson.Arr fields = new DiscordJson.Arr();
+    // "<Admin> banned <name> with the **reason:** <reason>", then the server, the accounts and the addresses.
+    private static String banMessage(BanReport report) {
+        BanOrigin origin = report.origin();
+        String actor = actor(origin == null ? BanOrigin.UNKNOWN_ADMIN : origin.actor());
+        String subject = coloredName(subject(report));
 
-        addStoryFields(fields, report);
+        String headline = switch (report.kind()) {
+            case BAN, WORD_FILTER -> actor + " banned " + subject + " with the **reason:** " + reason(report);
+            case UNBAN -> actor + " unbanned " + subject;
+            case IMPORT -> "An old ban was imported: " + subject;
+        };
 
-        fields.add(field("Names (" + report.names().size() + ")", nameList(report.names()), false));
-        fields.add(field("UUIDs (" + report.uuids().size() + ")", codeList(report.uuids()), false));
-        fields.add(field("IPs (" + report.ips().size() + ")", codeList(report.ips()), false));
-        fields.add(field(BLANK_FIELD_NAME, "Logged " + DiscordFormat.relativeTimestamp(timestampSeconds), false));
-
-        DiscordJson.Obj embed = new DiscordJson.Obj()
-                .str("title", title(report))
-                .num("color", color(report.kind()))
-                .raw("fields", fields.toString());
-
-        return embedMessage(embed);
+        return headline
+                + "\n**Server:** " + server(origin)
+                + "\n**uuid:** " + codes(report.uuids())
+                + "\n**ip:** " + codes(report.ips());
     }
 
-    // A line, not an embed: the scan decides nothing, and the line says so itself.
-    private static String vpnScanLine(VpnScanHit hit) {
-        return lineMessage("🔍 **VPN scan** · **" + DiscordFormat.playerName(hit.name())
-                + "** (`" + hit.uuid() + "`) from `" + hit.ip() + "` — **"
-                + hit.verdict().flags() + "** · "
-                + DiscordFormat.escapeMarkdown(hit.verdict().network())
-                + " · account: " + account(hit)
-                + " · log only, nothing was done");
-    }
-
-    // The console test's line, marked as a test.
-    private static String vpnScanTestLine(VpnVerdict verdict) {
-        return lineMessage("🔍 **VPN scan test** · `" + verdict.ip() + "` — **"
-                + verdict.flags() + "** · "
-                + DiscordFormat.escapeMarkdown(verdict.network())
-                + (verdict.flagged()
-                ? " · a join from here is written here"
-                : " · a join from here writes nothing")
-                + " · log only, nothing was done");
-    }
-
-    // The lock line carries the UUID in a code span: it is what the admin pastes into Discord's /free.
-    private static String lockLine(LockEvent event) {
-        if (event.kind() == LockEvent.Kind.LOCKED) {
-            return lineMessage("🔒 **Locked** · **" + DiscordFormat.playerName(event.name())
-                    + "** (`" + event.uuid() + "`) from `" + event.ip() + "` — **"
-                    + (event.verdict() == null ? "VPN" : event.verdict().flags()) + "**"
-                    + (event.verdict() == null ? "" : " · " + DiscordFormat.escapeMarkdown(event.verdict().network()))
-                    + " · first join · can watch and /s only · free with `/free " + event.uuid() + "`");
+    // "VPN check: <name> joined first time" for a lock, "... joined 3 times" for a locked account back; a free says who.
+    private static String lockMessage(PlayerLock.Event event) {
+        if (event.kind() == PlayerLock.Event.Kind.FREED) {
+            return "VPN check: " + coloredName(event.name()) + " was freed by " + DiscordFormat.escapeMarkdown(event.actor())
+                    + "\n**uuid:** " + code(event.uuid())
+                    + "\n**ip:** " + code(event.ip());
         }
 
-        return lineMessage("🔓 **Freed** · **" + DiscordFormat.playerName(event.name())
-                + "** (`" + event.uuid() + "`) · by " + DiscordFormat.escapeMarkdown(event.actor())
-                + " · verified from now on");
+        return vpnCheck(event.name(), event.joins(), event.verdict(), event.uuid(), event.ip());
     }
 
-    // "first seen 3 months ago, played 12 h 3 min, 41 joins".
-    private static String account(VpnScanHit hit) {
-        if (hit.unknownAccount()) {
-            return "not stored yet, " + hit.joins();
+    private static String vpnCheck(String name, int joins, VpnVerdict verdict, String uuid, String ip) {
+        return "VPN check: " + coloredName(name) + " joined " + (joins <= 1 ? "first time" : joins + " times")
+                + "\n**Triggered:** " + triggered(verdict)
+                + "\n**uuid:** " + code(uuid)
+                + "\n**ip:** " + code(ip);
+    }
+
+    // What each source said, then where the address is: "vpnapi: vpn / ip-api: proxy **|** AS9009 M247 Europe SRL (RO)".
+    private static String triggered(VpnVerdict verdict) {
+        if (verdict == null) {
+            return "no verdict **|** unknown";
         }
 
-        return "first seen " + DiscordFormat.relativeTimestamp(hit.firstSeenMillis() / 1000L)
-                + ", played " + hit.playtime()
-                + ", " + hit.joins();
+        return DiscordFormat.escapeMarkdown(verdict.flags()) + " **|** " + DiscordFormat.escapeMarkdown(verdict.network());
     }
 
-    // A batch of imported old bans collapsed into one embed, so a long history does not flood the channel.
-    private static String importSummary(List<BanReport> reports, int part, int parts, long timestampSeconds) {
-        StringBuilder lines = new StringBuilder();
-
-        for (BanReport report : reports) {
-            lines.append("• ")
-                    .append(DiscordFormat.playerName(report.seedLabel()))
-                    .append(" — ")
-                    .append(report.uuids().size())
-                    .append(report.uuids().size() == 1 ? " account, " : " accounts, ")
-                    .append(report.ips().size())
-                    .append(report.ips().size() == 1 ? " IP" : " IPs")
-                    .append('\n');
-        }
-
-        DiscordJson.Arr fields = new DiscordJson.Arr();
-        fields.add(field(
-                "Bans (" + reports.size() + ")",
-                DiscordFormat.truncate(lines.toString().trim(), MAX_FIELD_VALUE),
-                false
-        ));
-        fields.add(field(BLANK_FIELD_NAME, "Logged " + DiscordFormat.relativeTimestamp(timestampSeconds), false));
-
-        String suffix = parts > 1 ? " (" + part + "/" + parts + ")" : "";
-
-        DiscordJson.Obj embed = new DiscordJson.Obj()
-                .str("title", "📥 Existing bans imported" + suffix)
-                .str(
-                        "description",
-                        "Bans that predate the ban cascade, now widened to the "
-                                + "accounts and addresses linked to them."
-                )
-                .num("color", COLOR_IMPORT)
-                .raw("fields", fields.toString());
-
-        return embedMessage(embed);
-    }
-
-    // Why the ban happened: the word filter's evidence, then who decided it, where, and the console time.
-    private static void addStoryFields(DiscordJson.Arr fields, BanReport report) {
+    // No reason is asked for yet except by the word filter, whose reason is the word and where it stood.
+    private static String reason(BanReport report) {
         WordFilterHit hit = report.wordFilterHit();
 
-        if (hit != null) {
-            fields.add(field("Word", codeSpan(hit.word()), true));
-            fields.add(field("Found in", hit.source().label(), true));
-
-            fields.add(field(
-                    hit.source() == WordFilterHit.Source.CHAT ? "Message" : "Name",
-                    DiscordFormat.playerText(hit.text()),
-                    false
-            ));
+        if (hit == null) {
+            return "none given";
         }
 
-        BanOrigin origin = report.origin();
+        String word = "banned word \"" + DiscordFormat.escapeMarkdown(hit.word()) + "\"";
 
-        if (origin == null) {
-            return;
+        return hit.source() == WordFilterHit.Source.CHAT
+                ? word + " in the chat message: " + DiscordFormat.playerText(hit.text())
+                : word + " in the player name";
+    }
+
+    // What was acted on; an address ban is named after the first account it hit, when there is one.
+    private static String subject(BanReport report) {
+        String seed = report.seedLabel();
+
+        if (report.ips().contains(seed) && !report.names().isEmpty()) {
+            return report.names().get(0);
         }
 
-        fields.add(field("Banned by", DiscordFormat.playerName(origin.actor()), true));
-        fields.add(field("Server", origin.server(), true));
-        fields.add(field("Console time", codeSpan(origin.consoleTime()), false));
+        return seed;
     }
 
-    // A backslash renders literally inside a code span, so a backtick is replaced rather than escaped.
-    private static String codeSpan(String value) {
-        String cleaned = value == null ? "" : value.replace('`', '\'').trim();
+    // An admin's name as it is; "the console" or "an admin" start the sentence with a capital.
+    private static String actor(String actor) {
+        String name = actor == null || actor.isBlank() ? BanOrigin.UNKNOWN_ADMIN : actor;
 
-        return cleaned.isEmpty() ? "—" : "`" + cleaned + "`";
-    }
-
-    private static String title(BanReport report) {
-        String subject = DiscordFormat.playerName(report.seedLabel());
-
-        return switch (report.kind()) {
-            case BAN -> "🔨 Ban — " + subject;
-            case WORD_FILTER -> "🤖 Word filter ban — " + subject;
-            case UNBAN -> "♻️ Unban — " + subject;
-            case IMPORT -> "📥 Imported ban — " + subject;
-        };
-    }
-
-    private static long color(BanReport.Kind kind) {
-        return switch (kind) {
-            case BAN -> COLOR_BAN;
-            case WORD_FILTER -> COLOR_WORD_FILTER;
-            case UNBAN -> COLOR_UNBAN;
-            case IMPORT -> COLOR_IMPORT;
-        };
-    }
-
-    // Names are escaped, not code-spanned: a name may hold a backtick that would end the span.
-    private static String nameList(List<String> names) {
-        if (names.isEmpty()) {
-            return "—";
+        if (PHRASE_ACTORS.contains(name)) {
+            name = Character.toUpperCase(name.charAt(0)) + name.substring(1);
         }
 
-        StringBuilder text = new StringBuilder();
-        int listed = 0;
+        return DiscordFormat.escapeMarkdown(name);
+    }
 
-        for (String name : names) {
-            String line = DiscordFormat.playerName(name) + "\n";
+    // "hub" or "port-6568"; a ban with no origin is a vanilla one, and those happen on the hub.
+    private static String server(BanOrigin origin) {
+        // BanOrigin.matchServer writes "match server on port <n>".
+        String matchServer = "match server on port ";
 
-            if (text.length() + line.length() > MAX_FIELD_VALUE - 24) {
-                break;
-            }
-
-            text.append(line);
-            listed++;
+        if (origin == null || origin.server() == null || BanOrigin.HUB.equals(origin.server())) {
+            return "hub";
         }
 
-        return withRemainder(text, listed, names.size());
+        return origin.server().startsWith(matchServer)
+                ? "port-" + origin.server().substring(matchServer.length())
+                : DiscordFormat.escapeMarkdown(origin.server());
+    }
+
+    // The name with its colour tags, as players see it typed: markdown escaped, no masked link, one line.
+    private static String coloredName(String raw) {
+        String name = raw == null ? "" : raw.replaceAll("\\p{Cntrl}", " ").replaceAll("\\s+", " ").trim();
+        name = MessageIdFilter.strip(name);
+
+        if (name.isEmpty()) {
+            return "(unnamed)";
+        }
+
+        name = DiscordFormat.truncate(name, MAX_NAME_LENGTH);
+        return DiscordFormat.escapeMarkdown(name).replace("](", "]\\(");
     }
 
     // UUIDs and addresses are server- or network-issued, so neither can carry a backtick.
-    private static String codeList(List<String> values) {
+    private static String code(String value) {
+        return value == null || value.isBlank() ? "—" : "`" + value + "`";
+    }
+
+    private static String codes(List<String> values) {
         if (values.isEmpty()) {
             return "—";
         }
 
-        StringBuilder text = new StringBuilder();
-        int listed = 0;
+        int listed = Math.min(values.size(), MAX_LISTED);
+        List<String> shown = new ArrayList<>(listed);
 
-        for (String value : values) {
-            String line = "`" + value + "`\n";
-
-            if (text.length() + line.length() > MAX_FIELD_VALUE - 24) {
-                break;
-            }
-
-            text.append(line);
-            listed++;
+        for (int index = 0; index < listed; index++) {
+            shown.add(code(values.get(index)));
         }
 
-        return withRemainder(text, listed, values.size());
+        String text = String.join(", ", shown);
+        return values.size() > listed ? text + " + " + (values.size() - listed) + " more" : text;
     }
 
-    private static String withRemainder(StringBuilder text, int listed, int total) {
-        if (listed < total) {
-            text.append("+ ").append(total - listed).append(" more");
+    // A batch of imported old bans in one message, so a long history does not flood the channel.
+    private static String importSummary(List<BanReport> reports, int part, int parts) {
+        StringBuilder text = new StringBuilder("Old bans imported")
+                .append(parts > 1 ? " (" + part + "/" + parts + ")" : "")
+                .append(": ").append(reports.size());
+
+        for (BanReport report : reports) {
+            text.append("\n").append(coloredName(subject(report)))
+                    .append(" — ").append(report.uuids().size())
+                    .append(report.uuids().size() == 1 ? " account, " : " accounts, ")
+                    .append(report.ips().size())
+                    .append(report.ips().size() == 1 ? " IP" : " IPs");
         }
 
-        return text.toString().trim();
-    }
-
-    private static DiscordJson.Obj field(String name, String value, boolean inline) {
-        return new DiscordJson.Obj()
-                .str("name", name)
-                .str("value", value)
-                .raw("inline", Boolean.toString(inline));
-    }
-
-    private static String embedMessage(DiscordJson.Obj embed) {
-        return new DiscordJson.Obj()
-                .raw("allowed_mentions", NO_MENTIONS)
-                .raw("embeds", new DiscordJson.Arr().add(embed).toString())
-                .toString();
-    }
-
-    private static String lineMessage(String content) {
-        return new DiscordJson.Obj()
-                .raw("allowed_mentions", NO_MENTIONS)
-                .str("content", content)
-                .toString();
+        return text.toString();
     }
 
     private static List<List<BanReport>> chunk(List<BanReport> reports) {
@@ -469,10 +388,6 @@ public final class BanLog {
         }
 
         return chunks;
-    }
-
-    private static long epochSeconds() {
-        return System.currentTimeMillis() / 1000L;
     }
 
     private static boolean isWebhookUrl(String url) {

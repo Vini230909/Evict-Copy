@@ -1,6 +1,5 @@
-package Extinction.moderation.lock;
-
-import Extinction.moderation.ban.BanList;
+// The hub's locked and verified accounts as a file the match servers read back, like the ban list.
+package Extinction;
 
 import Extinction.core.util.PluginLog;
 
@@ -16,28 +15,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * The hub's locked and verified accounts as a file the duel workers can read.
- *
- * <p>Same arrangement as {@link BanList}: the hub decides, writes the file,
- * and a worker two directories below reads it back so a locked player who
- * {@code /s}-hops into a match is just as locked there. Plain lines rather
- * than properties, for the same reason - a UUID ends in {@code ==}.
- *
- * <pre>
- * locked   &lt;uuid&gt; &lt;since-millis&gt; &lt;ip&gt; &lt;reason&gt; &lt;name&gt;
- * verified &lt;uuid&gt; &lt;since-millis&gt; &lt;name&gt;
- * </pre>
- *
- * <p>Tab-separated; the name comes last because it is the one field that may
- * hold spaces. Tabs and line breaks inside a name are turned into spaces.
- */
+// Tab-separated lines: "locked <uuid> <since> <ip> <reason> <name>" / "verified <uuid> <since> <name>".
+// The name comes last because it is the one field that may hold spaces; a UUID ends in "==", so no properties file.
 public final class LockList {
 
-    /** Where the hub keeps it. */
+    // Where the hub keeps it.
     public static final File HUB_FILE = new File("config/evict-locks.txt");
 
-    /** Where a worker finds the hub's copy. */
+    // Where a worker, two directories below, finds the hub's copy.
     public static final File WORKER_VIEW_FILE =
             new File("../../config/evict-locks.txt");
 
@@ -48,7 +33,7 @@ public final class LockList {
     private LockList() {
     }
 
-    /** One locked account: who, from where, since when, and why. */
+    // One locked account: who, from where, since when, and why.
     public record Entry(
             String uuid,
             String name,
@@ -58,11 +43,11 @@ public final class LockList {
     ) {
     }
 
-    /** One freed account: never locked again. */
+    // One freed account: never locked again.
     public record Verified(String uuid, String name, long sinceMillis) {
     }
 
-    /** A lock list read off disk. */
+    // A lock list read off disk.
     public record Snapshot(Map<String, Entry> locked, Map<String, Verified> verified) {
 
         public static Snapshot empty() {
@@ -70,7 +55,7 @@ public final class LockList {
         }
     }
 
-    /** Rewrites the whole file through a temp file, so a reader never sees half of it. */
+    // Rewrites the whole file through a temp file, so a reader never sees half of it.
     public static void write(
             File file,
             Collection<Entry> locked,
@@ -130,7 +115,7 @@ public final class LockList {
         }
     }
 
-    /** Reads a file; a missing or unreadable one is an empty list. */
+    // Reads a file; a missing or unreadable one is an empty list.
     public static Snapshot read(File file) {
         if (file == null || !file.exists()) {
             return Snapshot.empty();
@@ -181,6 +166,7 @@ public final class LockList {
         }
     }
 
+    // Tabs and line breaks inside a field are turned into spaces.
     private static String clean(String text) {
         return text == null ? "" : text.replaceAll("[\\t\\r\\n]+", " ").trim();
     }

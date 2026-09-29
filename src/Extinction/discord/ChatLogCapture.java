@@ -202,7 +202,7 @@ public final class ChatLogCapture {
 
     private String name(Player player) {
         String name = DiscordFormat.playerName(
-                Extinction.moderation.lock.PlayerLock.stripPrefix(player.name)
+                Extinction.PlayerLock.stripPrefix(player.name)
         );
 
         return locked.test(player) ? "🔒 " + name : name;

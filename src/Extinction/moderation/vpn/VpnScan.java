@@ -1,6 +1,6 @@
 package Extinction.moderation.vpn;
 
-import Extinction.moderation.lock.LockGate;
+import Extinction.LockGate;
 
 import arc.util.Time;
 import mindustry.Vars;

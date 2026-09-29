@@ -1,29 +1,18 @@
-package Extinction.commands;
+// /free: an admin frees a locked account through a picker and a confirmation, like /ban.
+package Extinction;
 
-import arc.util.CommandHandler;
 import arc.util.Strings;
 import mindustry.gen.Call;
 import mindustry.gen.Player;
 import mindustry.ui.Menus;
-import Extinction.moderation.lock.LockList;
-import Extinction.moderation.lock.PlayerLock;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
-/**
- * /free: admin-only, frees a locked account. Same UX as /ban: no argument
- * opens a picker of the locked accounts (there are never many), a name
- * narrows them, one match goes straight to the confirmation, and nothing
- * happens without that confirmation.
- *
- * <p>Hub only in effect: the hub owns the lock list. On a match server the
- * command answers with where to go instead.
- */
-public final class FreeCommands {
+// Hub only in effect: the hub owns the lock list, and a free on a match server answers with where to go.
+public final class FreeMenu {
 
     private static final int PICKER_MENU_COLUMNS = 2;
     private static final int MAX_PICKER_ENTRIES = 20;
@@ -33,25 +22,16 @@ public final class FreeCommands {
     private final int pickerMenuId;
     private final int confirmMenuId;
 
-    /** Admin UUID -> ordered entries shown in their picker. */
+    // Admin UUID -> ordered entries shown in their picker.
     private final Map<String, List<LockList.Entry>> pickerByAdminUuid = new HashMap<>();
 
-    /** Admin UUID -> the entry their confirmation menu is about. */
+    // Admin UUID -> the entry their confirmation menu is about.
     private final Map<String, LockList.Entry> confirmByAdminUuid = new HashMap<>();
 
-    public FreeCommands(PlayerLock lock) {
+    public FreeMenu(PlayerLock lock) {
         this.lock = lock;
         this.pickerMenuId = Menus.registerMenu(this::handlePicker);
         this.confirmMenuId = Menus.registerMenu(this::handleConfirm);
-    }
-
-    public void registerClientCommands(CommandHandler handler) {
-        handler.<Player>register(
-                "free",
-                "[player...]",
-                "Admin only: free a locked account. No name opens a picker of the locked ones.",
-                this::handleFree
-        );
     }
 
     public void handlePlayerLeave(Player player) {
@@ -61,7 +41,8 @@ public final class FreeCommands {
         }
     }
 
-    private void handleFree(String[] args, Player player) {
+    // No name opens a picker of the locked accounts; a name narrows them; one match goes straight to the confirmation.
+    public void handleFree(String[] args, Player player) {
         if (player == null) {
             return;
         }
@@ -85,17 +66,7 @@ public final class FreeCommands {
             return;
         }
 
-        List<LockList.Entry> matches = new ArrayList<>();
-        String needle = query.toLowerCase(Locale.ROOT);
-
-        for (LockList.Entry entry : entries) {
-            if (
-                    entry.uuid().equals(query)
-                            || Strings.stripColors(entry.name()).toLowerCase(Locale.ROOT).contains(needle)
-            ) {
-                matches.add(entry);
-            }
-        }
+        List<LockList.Entry> matches = lock.matching(query);
 
         if (matches.isEmpty()) {
             player.sendMessage("[scarlet]No locked account matches '" + query + "'.[]");

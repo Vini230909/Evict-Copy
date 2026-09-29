@@ -9,9 +9,7 @@ import Extinction.core.io.Secrets;
 import Extinction.discord.ChatLogReporter;
 import Extinction.discord.DiscordModCommands;
 import Extinction.moderation.ban.BanManager;
-import Extinction.moderation.lock.PlayerLock;
 import Extinction.moderation.vpn.VpnScan;
-import Extinction.discord.DiscordStatusReporter;
 
 import arc.util.CommandHandler;
 import arc.util.Log;
@@ -38,9 +36,6 @@ public final class ConsoleCommands {
     private final EvictTerrainGenerator terrain;
     private final TeamManager teamManager;
     private final PlayerDataManager playerDataManager;
-
-    /** Null on a duel worker, which never reports to Discord. */
-    private final DiscordStatusReporter discordStatusReporter;
 
     /** Null on a duel worker: only the hub decides who is banned. */
     private final BanManager banManager;
@@ -69,7 +64,6 @@ public final class ConsoleCommands {
             EvictTerrainGenerator terrain,
             TeamManager teamManager,
             PlayerDataManager playerDataManager,
-            DiscordStatusReporter discordStatusReporter,
             BanManager banManager,
             VpnScan vpnScan,
             PlayerLock playerLock,
@@ -82,7 +76,6 @@ public final class ConsoleCommands {
         this.terrain = terrain;
         this.teamManager = teamManager;
         this.playerDataManager = playerDataManager;
-        this.discordStatusReporter = discordStatusReporter;
         this.banManager = banManager;
         this.vpnScan = vpnScan;
         this.playerLock = playerLock;
@@ -112,11 +105,6 @@ public final class ConsoleCommands {
                 .description("Add unit-cap capacity to every core.")
                 .run(ctx -> addCoreCap(ctx.raw()));
 
-        commands.command("discordstatus").console()
-                .args("url/off/test:string?")
-                .description("Discord webhook for the live status message.")
-                .run(ctx -> handleDiscordCommand(ctx.str("url/off/test", "").trim()));
-
         commands.command("discordcommands").console()
                 .args("action:string?", "value:text?")
                 .description("Discord /ban and /unban: setup, role <name>, reload, off.")
@@ -137,11 +125,6 @@ public final class ConsoleCommands {
                         ctx.str("action", "").trim(),
                         ctx.str("value", "").trim()
                 ));
-
-        commands.command("free").console()
-                .args("target:text?")
-                .description("Free a locked account by name or UUID; no argument lists the locked ones.")
-                .run(ctx -> handleFreeCommand(ctx.str("target", "").trim()));
 
         commands.installConsole(handler);
     }
@@ -167,40 +150,6 @@ public final class ConsoleCommands {
                 Log.info("[EvictMapGenerator] Automatic generation is now @.", runtime.autoGenerate ? "ON" : "OFF");
             }
             default -> Log.err("[EvictMapGenerator] Use: oregen [gen [seed] | seed <n/random> | auto on/off]");
-        }
-    }
-
-    /**
-     * discordstatus: no argument reports the current wiring, a URL adopts a new
-     * webhook, 'off' takes the message offline and stops, 'test' forces an
-     * immediate refresh.
-     */
-    private void handleDiscordCommand(String argument) {
-        if (discordStatusReporter == null) {
-            Log.err("[EvictMapGenerator] Discord status reporting only runs on the hub.");
-            return;
-        }
-
-        switch (argument.toLowerCase()) {
-            case "" -> Log.info(
-                    "[EvictMapGenerator] Discord status: @",
-                    discordStatusReporter.statusLine()
-            );
-            case "off" -> {
-                discordStatusReporter.disable();
-                Log.info("[EvictMapGenerator] Discord status reporting is off; the message now reads Offline.");
-            }
-            case "test" -> {
-                discordStatusReporter.publishNow();
-                Log.info("[EvictMapGenerator] Discord status update requested.");
-            }
-            default -> {
-                if (discordStatusReporter.configure(argument)) {
-                    Log.info("[EvictMapGenerator] Discord webhook set. A fresh status message is being posted.");
-                } else {
-                    Log.err("[EvictMapGenerator] That is not a Discord webhook URL. Copy it from Channel Settings > Integrations > Webhooks.");
-                }
-            }
         }
     }
 
@@ -474,12 +423,14 @@ public final class ConsoleCommands {
             case "lock" -> {
                 switch (ip.toLowerCase()) {
                     case "on" -> {
-                        settings.setVpnLockEnabled(true);
+                        Config.vpnLock = true;
+                        Config.save();
                         Log.info("[EvictMapGenerator] Lock on: an account's first join through a VPN, proxy or hosting range is held on the Fallen team until an admin frees it ('free', /free, Discord /free).");
                     }
                     case "off" -> {
-                        settings.setVpnLockEnabled(false);
-                        Log.info("[EvictMapGenerator] Lock off: joins are only written down again. Accounts already locked stay locked until freed.");
+                        Config.vpnLock = false;
+                        Config.save();
+                        Log.info("[EvictMapGenerator] Lock off: new accounts are not looked up or locked. Accounts already locked stay locked until freed.");
                     }
                     default -> Log.info("[EvictMapGenerator] @ Usage: vpn lock on/off", lockStatusLine());
                 }
@@ -523,81 +474,11 @@ public final class ConsoleCommands {
             return "  Lock: decided on the hub.";
         }
 
-        return "  Lock: " + (settings.vpnLockEnabled()
+        return "  Lock: " + (Config.vpnLock
                 ? "on - a first join through a VPN is held for an admin"
-                : "off - log only")
+                : "off - new accounts are not looked up")
                 + "; " + playerLock.lockedCount() + " locked, "
                 + playerLock.verifiedCount() + " verified ('free' lists and frees)";
-    }
-
-    /**
-     * free: frees a locked account from the console - by UUID, or by a
-     * part of the name when it matches exactly one. No argument lists them.
-     */
-    private void handleFreeCommand(String target) {
-        if (playerLock == null) {
-            Log.err("[EvictMapGenerator] Locks are freed on the hub.");
-            return;
-        }
-
-        java.util.List<Extinction.moderation.lock.LockList.Entry> entries = playerLock.lockedEntries();
-
-        if (target.isEmpty()) {
-            if (entries.isEmpty()) {
-                Log.info("[EvictMapGenerator] No account is locked.");
-                return;
-            }
-
-            Log.info("[EvictMapGenerator] @ locked account(s):", entries.size());
-
-            for (Extinction.moderation.lock.LockList.Entry entry : entries) {
-                Log.info(
-                        "[EvictMapGenerator]   @ (@) from @ - @",
-                        arc.util.Strings.stripColors(entry.name()),
-                        entry.uuid(),
-                        entry.ip(),
-                        entry.reason()
-                );
-            }
-
-            return;
-        }
-
-        java.util.List<Extinction.moderation.lock.LockList.Entry> matches = new java.util.ArrayList<>();
-        String needle = target.toLowerCase(java.util.Locale.ROOT);
-
-        for (Extinction.moderation.lock.LockList.Entry entry : entries) {
-            if (
-                    entry.uuid().equals(target)
-                            || arc.util.Strings.stripColors(entry.name())
-                            .toLowerCase(java.util.Locale.ROOT).contains(needle)
-            ) {
-                matches.add(entry);
-            }
-        }
-
-        if (matches.isEmpty()) {
-            Log.err("[EvictMapGenerator] No locked account matches '@'. 'free' lists them.", target);
-            return;
-        }
-
-        if (matches.size() > 1) {
-            Log.err("[EvictMapGenerator] '@' matches @ locked accounts - give the UUID:", target, matches.size());
-
-            for (Extinction.moderation.lock.LockList.Entry entry : matches) {
-                Log.info("[EvictMapGenerator]   @ (@)", arc.util.Strings.stripColors(entry.name()), entry.uuid());
-            }
-
-            return;
-        }
-
-        PlayerLock.FreeResult result = playerLock.free(matches.get(0).uuid(), "the console");
-
-        if (result.freed()) {
-            Log.info("[EvictMapGenerator] @", result.line());
-        } else {
-            Log.err("[EvictMapGenerator] @", result.line());
-        }
     }
 
     /**

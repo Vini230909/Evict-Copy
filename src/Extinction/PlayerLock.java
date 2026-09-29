@@ -1,8 +1,14 @@
-package Extinction.moderation.lock;
+// The lock: who is locked, and what a locked account can and cannot do - on the hub and every match server.
+package Extinction;
 
+import Extinction.core.util.PluginLog;
 import Extinction.moderation.ban.BanScreen;
 import Extinction.moderation.vpn.VpnVerdict;
 
+import arc.func.Cons;
+import arc.struct.Seq;
+import arc.util.CommandHandler;
+import arc.util.Strings;
 import mindustry.Vars;
 import mindustry.content.StatusEffects;
 import mindustry.gen.Call;
@@ -12,71 +18,69 @@ import mindustry.gen.Player;
 import mindustry.gen.Unit;
 import mindustry.net.Administration.ActionType;
 import mindustry.type.StatusEffect;
-import Extinction.core.util.PluginLog;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/**
- * The lock: what a locked account can and cannot do, and who is locked.
- *
- * <p>A locked player is on the Fallen team and can look around and read the
- * chat, use {@code /s} to watch a match - and nothing else. Every chat line
- * and every other command comes back as the reminder of how to get freed;
- * every build plan, block, unit or turret interaction is refused by an
- * action filter; the unit flies at a tenth of its speed. The lock stays with
- * the account across joins and restarts until an admin frees it, and a freed
- * account is verified: never locked again.
- *
- * <p>Enforcement runs on the hub and on every match server alike, off the
- * same list - the hub writes {@code config/evict-locks.txt}, a worker reads
- * it back every few seconds (the ban list's arrangement), so a locked player
- * who {@code /s}-hops into a match cannot talk there either. Deciding who is
- * locked is the hub's alone ({@link LockGate}); a worker never locks or frees.
- *
- * <p>The slow flight is four vanilla status effects stacked - {@code slow}
- * (0.4), {@code freezing} (0.6), {@code tarred} (0.6) and {@code sapped}
- * (0.7), 0.1 together - plus {@code disarmed}. Not a status effect of the
- * plugin's own, because clients install nothing and a status they do not
- * have would break their unit sync; the vanilla ones travel in it. They show
- * as icons on the unit, which is the honest side effect of the choice.
- */
+// The hub decides and writes LockList.HUB_FILE; a worker only follows it. Why the slow flight is vanilla statuses: GAMEPLAY.md.
 public final class PlayerLock {
 
-    /** What a locked player may still type. Everything else is the reminder. */
+    // What a locked player may still type. Everything else is the reminder.
     static final Set<String> ALLOWED_COMMANDS = Set.of("s", "spectate", "sync");
 
-    /**
-     * Put in front of a locked player's name while they are locked - the
-     * padlock from the game's own icon font, in red - so everyone in the
-     * player list and over the unit sees who is locked. The name is synced
-     * to every client like any name change. Taken off again when they are
-     * freed, and stripped wherever the plain name is wanted.
-     */
+    // The game's own padlock glyph in red, in front of a locked player's name; synced to every client like any name.
     public static final String NAME_PREFIX = "[scarlet]" + Iconc.lock + "[] ";
 
-    /** A worker re-reads the hub's list this often. */
+    // A worker re-reads the hub's list this often.
     private static final long WORKER_SYNC_MILLIS = 5_000L;
 
-    /** The status effects are refreshed this often, and last a bit longer. */
+    // The status effects are refreshed this often, and last a bit longer.
     private static final int STATUS_REFRESH_TICKS = 60;
     private static final float STATUS_DURATION_TICKS = 5f * 60f;
 
+    // One lock event for the ban log: verdict and joins are set for a lock or a locked account's join, the actor for a free.
+    public record Event(Kind kind, String name, String uuid, String ip, VpnVerdict verdict, int joins, String actor) {
+
+        public enum Kind {
+            LOCKED,
+            JOINED,
+            FREED
+        }
+
+        public static Event locked(String name, String uuid, String ip, VpnVerdict verdict, int joins) {
+            return new Event(Kind.LOCKED, name, uuid, ip, verdict, joins, "");
+        }
+
+        public static Event joined(String name, String uuid, String ip, VpnVerdict verdict, int joins) {
+            return new Event(Kind.JOINED, name, uuid, ip, verdict, joins, "");
+        }
+
+        public static Event freed(String name, String uuid, String ip, String actor) {
+            return new Event(Kind.FREED, name, uuid, ip, null, 0, actor);
+        }
+    }
+
+    // What freeing an account came to, as a line for whoever asked.
+    public record FreeResult(boolean freed, String line) {
+    }
+
+    // True on the hub, which owns the list; false on a worker.
     private final boolean hub;
     private final Supplier<String> appealUrl;
 
-    /** Hub: gives a freed player their team and hex, if they are online. */
+    // Hub: gives a freed player their team and hex, if they are online.
     private final Consumer<Player> onFreed;
 
-    /** Hub: the ban log line. */
-    private final Consumer<LockEvent> log;
+    // Hub: the ban log line.
+    private final Consumer<Event> log;
 
     private final Map<String, LockList.Entry> locked = new LinkedHashMap<>();
     private final Map<String, LockList.Verified> verified = new LinkedHashMap<>();
@@ -86,27 +90,17 @@ public final class PlayerLock {
     private long lastModifiedMillis = Long.MIN_VALUE;
     private int ticks;
 
-    /** Resolved lazily: content is not something to touch in a field initialiser. */
+    // Resolved lazily: content is not something to touch in a field initialiser.
     private StatusEffect[] slowing;
 
-    /**
-     * @param hub      true on the hub, which owns the list; false on a worker
-     * @param onFreed  hub: what to do with a freed player who is online
-     * @param log      hub: where lock and free events are written up
-     */
-    public PlayerLock(
-            boolean hub,
-            Supplier<String> appealUrl,
-            Consumer<Player> onFreed,
-            Consumer<LockEvent> log
-    ) {
+    public PlayerLock(boolean hub, Supplier<String> appealUrl, Consumer<Player> onFreed, Consumer<Event> log) {
         this.hub = hub;
         this.appealUrl = appealUrl;
         this.onFreed = onFreed;
         this.log = log;
     }
 
-    /** Both roles: loads the list and arms the chat, action and command gates. */
+    // Both roles: loads the list and arms the chat, action and command gates.
     public void install() {
         if (installed) {
             return;
@@ -142,7 +136,7 @@ public final class PlayerLock {
         );
 
         Vars.netServer.clientCommands =
-                new LockCommandGate(Vars.netServer.clientCommands, this);
+                new CommandGate(Vars.netServer.clientCommands, this);
 
         PluginLog.info(
                 "Player lock armed (@): @ locked account(s), @ verified.",
@@ -152,7 +146,7 @@ public final class PlayerLock {
         );
     }
 
-    /** Every tick. A worker follows the hub's file; both keep the slow flight up. */
+    // Every tick. A worker follows the hub's file; both keep the slow flight up.
     public void update() {
         if (!installed) {
             return;
@@ -203,18 +197,32 @@ public final class PlayerLock {
         return verified.size();
     }
 
-    /** Every locked account, newest first. */
+    // Every locked account, newest first.
     public List<LockList.Entry> lockedEntries() {
         List<LockList.Entry> entries = new ArrayList<>(locked.values());
         entries.sort(Comparator.comparingLong(LockList.Entry::sinceMillis).reversed());
         return entries;
     }
 
-    /**
-     * Hub: locks an account. The player, if online, is told; the caller has
-     * already parked them on the Fallen team.
-     */
-    public void lock(String uuid, String name, String ip, VpnVerdict verdict) {
+    // The locked accounts whose UUID is the query or whose plain name contains it, newest first.
+    public List<LockList.Entry> matching(String query) {
+        List<LockList.Entry> matches = new ArrayList<>();
+        String needle = query.toLowerCase(Locale.ROOT);
+
+        for (LockList.Entry entry : lockedEntries()) {
+            if (
+                    entry.uuid().equals(query)
+                            || Strings.stripColors(entry.name()).toLowerCase(Locale.ROOT).contains(needle)
+            ) {
+                matches.add(entry);
+            }
+        }
+
+        return matches;
+    }
+
+    // Hub: locks an account. The player, if online, is told; the caller has already parked them on Fallen.
+    public void lock(String uuid, String name, String ip, VpnVerdict verdict, int joins) {
         if (!hub || uuid == null || uuid.isBlank()) {
             return;
         }
@@ -232,14 +240,14 @@ public final class PlayerLock {
 
         PluginLog.info(
                 "Locked @ (@) from @: new account through @. Free with 'free', /free or Discord /free.",
-                arc.util.Strings.stripColors(plain),
+                Strings.stripColors(plain),
                 uuid,
                 ip,
                 verdict == null ? "a VPN" : verdict.flags()
         );
 
         if (log != null) {
-            log.accept(LockEvent.locked(plain, uuid, ip, verdict));
+            log.accept(Event.locked(plain, uuid, ip, verdict, joins));
         }
 
         Player online = find(uuid);
@@ -249,25 +257,33 @@ public final class PlayerLock {
         }
     }
 
-    /** What freeing an account came to, as a line for whoever asked. */
-    public record FreeResult(boolean freed, String line) {
+    // Hub: a locked account joined again and stays locked - written up every time, with what its address looks like now.
+    public void noteJoin(String uuid, String name, String ip, VpnVerdict verdict, int joins) {
+        if (!hub || uuid == null || uuid.isBlank()) {
+            return;
+        }
+
+        String plain = stripPrefix(name);
+
+        PluginLog.info(
+                "Locked account joined: @ (@) from @: @. Still locked - free with 'free', /free or Discord /free.",
+                Strings.stripColors(plain),
+                uuid,
+                ip,
+                verdict == null ? "no verdict" : verdict.flags()
+        );
+
+        if (log != null) {
+            log.accept(Event.joined(plain, uuid, ip, verdict, joins));
+        }
     }
 
-    /**
-     * Hub: frees an account and marks it verified - an admin looked and
-     * decided. Works on an account that is online (they get their team at
-     * once) and on one that has left.
-     */
+    // Hub: an admin looked and decided - the account is freed and verified, online or not.
     public FreeResult free(String uuid, String actor) {
         return free(uuid, actor, true);
     }
 
-    /**
-     * Hub: frees an account. {@code verify} false is the automatic free - a
-     * locked account came back from a clean address - which lifts the lock
-     * but does not vouch for the account: it is scanned like any other from
-     * then on.
-     */
+    // Hub: verify false is the automatic free (back from a clean address); the account is a known one after it, not verified.
     public FreeResult free(String uuid, String actor, boolean verify) {
         if (!hub) {
             return new FreeResult(false, "Locks are freed on the hub - use /free there, or Discord's /free.");
@@ -289,13 +305,13 @@ public final class PlayerLock {
 
         save();
 
-        String plainName = arc.util.Strings.stripColors(entry.name());
+        String plainName = Strings.stripColors(entry.name());
         String who = actor == null || actor.isBlank() ? "an admin" : actor;
 
         PluginLog.info("Freed @ (@) - by @.", plainName, uuid, who);
 
         if (log != null) {
-            log.accept(LockEvent.freed(entry.name(), uuid, who));
+            log.accept(Event.freed(entry.name(), uuid, entry.ip(), who));
         }
 
         Player online = find(uuid);
@@ -316,7 +332,7 @@ public final class PlayerLock {
         return new FreeResult(true, plainName + " (" + uuid + ") was freed.");
     }
 
-    /** The name without the lock's padlock, whichever way round it arrived. */
+    // The name without the lock's padlock, whichever way round it arrived.
     public static String stripPrefix(String name) {
         if (name == null) {
             return "";
@@ -340,10 +356,7 @@ public final class PlayerLock {
         player.name = stripPrefix(player.name);
     }
 
-    /**
-     * A locked player arrived (either role): the reminder as a chat line and
-     * as a dialog, and the slow flight from the first second.
-     */
+    // A locked player arrived (either role): the reminder as a chat line and a dialog, and the slow flight at once.
     public void handlePlayerJoin(Player player) {
         if (player == null || !isLocked(player.uuid())) {
             return;
@@ -352,7 +365,7 @@ public final class PlayerLock {
         announce(player);
     }
 
-    /** The reminder, as one chat line. Sent on every refused message or command. */
+    // The reminder, as one chat line. Sent on every refused message or command.
     public void remind(Player player) {
         if (player == null) {
             return;
@@ -418,6 +431,7 @@ public final class PlayerLock {
         }
     }
 
+    // slow 0.4 x freezing 0.6 x tarred 0.6 x sapped 0.7 = a tenth of the speed, plus disarmed.
     private StatusEffect[] slowing() {
         if (slowing == null) {
             slowing = new StatusEffect[]{
@@ -443,7 +457,7 @@ public final class PlayerLock {
         verified.putAll(snapshot.verified());
     }
 
-    /** Worker: follows the hub's file by its modification time. */
+    // Worker: follows the hub's file by its modification time.
     private void sync(boolean force) {
         long now = System.currentTimeMillis();
 
@@ -465,5 +479,89 @@ public final class PlayerLock {
 
     private static Player find(String uuid) {
         return Groups.player.find(player -> player != null && uuid.equals(player.uuid()));
+    }
+
+    // Stands in front of netServer.clientCommands, the one place every command passes, whoever registered it.
+    // Everything is delegated; only handleMessage looks at who is asking first.
+    private static final class CommandGate extends CommandHandler {
+
+        private final CommandHandler delegate;
+        private final PlayerLock lock;
+
+        CommandGate(CommandHandler delegate, PlayerLock lock) {
+            super(delegate.getPrefix());
+            this.delegate = delegate;
+            this.lock = lock;
+        }
+
+        // A refused command answers valid, so the text is neither treated as chat nor followed by "unknown command".
+        @Override
+        public CommandResponse handleMessage(String message, Object params) {
+            if (
+                    params instanceof Player player
+                            && message != null
+                            && message.startsWith(delegate.getPrefix())
+                            && lock.isLocked(player.uuid())
+                            && !ALLOWED_COMMANDS.contains(commandName(message))
+            ) {
+                lock.remind(player);
+                return new CommandResponse(ResponseType.valid, null, message);
+            }
+
+            return delegate.handleMessage(message, params);
+        }
+
+        @Override
+        public CommandResponse handleMessage(String message) {
+            return delegate.handleMessage(message);
+        }
+
+        @Override
+        public void setPrefix(String prefix) {
+            super.setPrefix(prefix);
+            delegate.setPrefix(prefix);
+        }
+
+        @Override
+        public String getPrefix() {
+            return delegate.getPrefix();
+        }
+
+        @Override
+        public void removeCommand(String text) {
+            delegate.removeCommand(text);
+        }
+
+        @Override
+        public <T> Command register(String text, String description, CommandRunner<T> runner) {
+            return delegate.register(text, description, runner);
+        }
+
+        @Override
+        public <T> Command register(String text, String params, String description, CommandRunner<T> runner) {
+            return delegate.register(text, params, description, runner);
+        }
+
+        @Override
+        public Command register(String text, String description, Cons<String[]> runner) {
+            return delegate.register(text, description, runner);
+        }
+
+        @Override
+        public Command register(String text, String params, String description, Cons<String[]> runner) {
+            return delegate.register(text, params, description, runner);
+        }
+
+        @Override
+        public Seq<Command> getCommandList() {
+            return delegate.getCommandList();
+        }
+
+        // "/play foo" -> "play", lower-case.
+        private String commandName(String message) {
+            String rest = message.substring(delegate.getPrefix().length()).trim();
+            int space = rest.indexOf(' ');
+            return (space < 0 ? rest : rest.substring(0, space)).toLowerCase();
+        }
     }
 }

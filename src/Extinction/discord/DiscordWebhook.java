@@ -107,7 +107,7 @@ public final class DiscordWebhook {
         return lastSuccessMillis;
     }
 
-    String messageId() {
+    public String messageId() {
         return messageId;
     }
 
@@ -128,7 +128,7 @@ public final class DiscordWebhook {
      * message. Returns quietly when a send is already running, when the webhook
      * has been rejected, or while a rate-limit backoff is in effect.
      */
-    void publish(String body) {
+    public void publish(String body) {
         send(body, true);
     }
 
@@ -177,7 +177,7 @@ public final class DiscordWebhook {
      * Failure here is not worth reporting loudly - the server is stopping
      * either way.
      */
-    void publishBlocking(String body, Duration timeout) {
+    public void publishBlocking(String body, Duration timeout) {
         if (!isConfigured() || broken) {
             return;
         }

@@ -18,6 +18,14 @@ public final class Config {
     // Whether the banned-word filter bans automatically. Copied into every worker.
     public static boolean wordFilter = true;
 
+    // Whether an account's first join through a VPN is locked until an admin frees it. Decided on the hub alone.
+    public static boolean vpnLock = true;
+
+    // Discord webhook the live status message is kept on (blank = off), and the message it edits.
+    // The id is cleared whenever the URL changes: an id only means anything in its own channel.
+    public static String discordWebhookUrl = "";
+    public static String discordMessageId = "";
+
     // Discord webhook the ban log posts to (blank = off). Staff-only channel: entries carry IPs.
     public static String discordBanLogWebhookUrl = "";
 
@@ -46,6 +54,9 @@ public final class Config {
         Properties file = PropertiesFile.load(FILE);
 
         wordFilter = PropertiesFile.getBool(file, "moderation.wordFilter", wordFilter);
+        vpnLock = PropertiesFile.getBool(file, "moderation.vpnLock", vpnLock);
+        discordWebhookUrl = PropertiesFile.getString(file, "discord.webhook.url", discordWebhookUrl).trim();
+        discordMessageId = PropertiesFile.getString(file, "discord.message.id", discordMessageId).trim();
         discordBanLogWebhookUrl = PropertiesFile.getString(file, "discord.banlog.webhook.url", discordBanLogWebhookUrl).trim();
 
         duelServerIp = PropertiesFile.getString(file, "duel.server.ip", duelServerIp).trim();
@@ -83,6 +94,9 @@ public final class Config {
         Properties file = PropertiesFile.load(FILE);
 
         file.setProperty("moderation.wordFilter", Boolean.toString(wordFilter));
+        file.setProperty("moderation.vpnLock", Boolean.toString(vpnLock));
+        file.setProperty("discord.webhook.url", discordWebhookUrl);
+        file.setProperty("discord.message.id", discordMessageId);
         file.setProperty("discord.banlog.webhook.url", discordBanLogWebhookUrl);
 
         file.setProperty("duel.server.ip", duelServerIp);
