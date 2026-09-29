@@ -103,8 +103,8 @@ public class EvictMapPlugin extends Plugin {
      * is the only difference between the roles: the hub queues lines for
      * Discord directly, a worker appends them to its chat.log.
      */
-    private final Extinction.discord.ChatLogCapture chatLogCapture =
-            new Extinction.discord.ChatLogCapture(
+    private final ChatLogCapture chatLogCapture =
+            new ChatLogCapture(
                     duelWorker ? chatLogFile::append : chatLogReporter::hubLine
             );
 
@@ -551,13 +551,13 @@ public class EvictMapPlugin extends Plugin {
             }
         });
 
-        // After the join/leave handlers above: by the time the mirror's join
-        // listener runs, a name the word filter banned is already kicked and
-        // stays out of the mirror.
-        chatLogCapture.installEvents();
+        // After plugin joins: a name already banned stays out of the mirror.
+        Events.on(mindustry.game.EventType.PlayerChatEvent.class, e -> chatLogCapture.handleRawMessage(e.player, e.message));
+        Events.on(PlayerJoin.class, e -> chatLogCapture.handleJoin(e.player));
+        Events.on(PlayerLeave.class, e -> chatLogCapture.handleLeave(e.player));
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.22. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.23. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
