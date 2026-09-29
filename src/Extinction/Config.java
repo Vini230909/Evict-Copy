@@ -35,6 +35,11 @@ public final class Config {
     // Discord webhook the ban log posts to (blank = off). Staff-only channel: entries carry IPs.
     public static String discordBanLogWebhookUrl = "";
 
+    // Discord server the /ban, /unban and /free commands answer in (blank = off), and the role allowed to use them
+    // (blank = Discord's Administrator permission only). The bot token lives in the secrets file, never here.
+    public static String discordCommandGuild = "";
+    public static String discordCommandRole = "";
+
     // Match servers: the ip players are sent to (blank = /play off), first port, pool size,
     // the map a worker hosts and the server jar it runs. Workers get the ip blanked.
     public static String duelServerIp = "";
@@ -66,6 +71,8 @@ public final class Config {
         discordWebhookUrl = PropertiesFile.getString(file, "discord.webhook.url", discordWebhookUrl).trim();
         discordMessageId = PropertiesFile.getString(file, "discord.message.id", discordMessageId).trim();
         discordBanLogWebhookUrl = PropertiesFile.getString(file, "discord.banlog.webhook.url", discordBanLogWebhookUrl).trim();
+        discordCommandGuild = PropertiesFile.getString(file, "discord.commands.guild", discordCommandGuild).trim();
+        discordCommandRole = PropertiesFile.getString(file, "discord.commands.role", discordCommandRole).trim();
 
         duelServerIp = PropertiesFile.getString(file, "duel.server.ip", duelServerIp).trim();
         duelServerPort = range("Duel base port", PropertiesFile.getInt(file, "duel.server.port", duelServerPort), 1, 65535, duelServerPort);
@@ -108,6 +115,8 @@ public final class Config {
         file.setProperty("discord.webhook.url", discordWebhookUrl);
         file.setProperty("discord.message.id", discordMessageId);
         file.setProperty("discord.banlog.webhook.url", discordBanLogWebhookUrl);
+        file.setProperty("discord.commands.guild", discordCommandGuild);
+        file.setProperty("discord.commands.role", discordCommandRole);
 
         file.setProperty("duel.server.ip", duelServerIp);
         file.setProperty("duel.server.port", Integer.toString(duelServerPort));

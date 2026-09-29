@@ -94,22 +94,6 @@ public final class EvictSettings {
     private double unitBuildSpeedMultiplier = DEFAULT_UNIT_BUILD_SPEED_MULTIPLIER;
 
     /**
-     * Discord server and role the {@code /ban} and {@code /unban} slash
-     * commands answer in. A blank server id means the commands are off; a blank
-     * role means only a member holding Discord's own Administrator permission
-     * may use them, so they are never open to everyone by accident. The bot
-     * token is not here - it is a credential and lives in the secrets file
-     * (see {@code core.io.Secrets}), and this file is rewritten by the plugin.
-     */
-    private String discordCommandGuild = "";
-    private String discordCommandRole = "";
-
-    private static final String DISCORD_COMMAND_GUILD_KEY =
-            "discord.commands.guild";
-    private static final String DISCORD_COMMAND_ROLE_KEY =
-            "discord.commands.role";
-
-    /**
      * Discord chat mirror: one channel id for the hub's chat and one per
      * worker port, keyed by that port. A missing entry simply means that
      * server's chat is not mirrored. Staff-only channels - they carry
@@ -262,18 +246,6 @@ public final class EvictSettings {
                 );
             }
 
-            discordCommandGuild =
-                    readString(
-                            properties,
-                            DISCORD_COMMAND_GUILD_KEY,
-                            discordCommandGuild
-                    ).trim();
-            discordCommandRole =
-                    readString(
-                            properties,
-                            DISCORD_COMMAND_ROLE_KEY,
-                            discordCommandRole
-                    ).trim();
             readChatLogSettings(properties);
             vpnScanEnabled = readBoolean(
                     properties,
@@ -343,23 +315,6 @@ public final class EvictSettings {
         return bannedBlockNames.isEmpty()
                 ? "none"
                 : String.join(", ", bannedBlockNames);
-    }
-
-    /** Discord server the /ban and /unban commands run in; blank means off. */
-    public String discordCommandGuild() {
-        return discordCommandGuild;
-    }
-
-    /** Role allowed to use them; blank falls back to Discord's Administrator. */
-    public String discordCommandRole() {
-        return discordCommandRole;
-    }
-
-    /** Wires the moderation commands to a Discord server and role. */
-    public void setDiscordCommands(String guildId, String roleId) {
-        discordCommandGuild = guildId == null ? "" : guildId.trim();
-        discordCommandRole = roleId == null ? "" : roleId.trim();
-        save();
     }
 
     /** The chat mirror's hub channel id; blank when the hub is not mirrored. */
@@ -881,8 +836,6 @@ public final class EvictSettings {
                 "rules.unitBuildSpeedMultiplier",
                 Double.toString(unitBuildSpeedMultiplier)
         );
-        properties.setProperty(DISCORD_COMMAND_GUILD_KEY, discordCommandGuild);
-        properties.setProperty(DISCORD_COMMAND_ROLE_KEY, discordCommandRole);
         properties.setProperty(CHAT_LOG_HUB_KEY, chatLogHubChannel);
 
         for (Map.Entry<Integer, String> entry : chatLogPortChannels.entrySet()) {

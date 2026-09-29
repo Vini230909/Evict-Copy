@@ -1,4 +1,8 @@
-package Extinction.discord;
+// The REST half of Discord's slash commands: registering them, listing servers and roles, and answering one.
+package Extinction;
+
+import Extinction.discord.DiscordFormat;
+import Extinction.discord.DiscordJson;
 
 import arc.util.serialization.Jval;
 
@@ -10,54 +14,35 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * The REST half of the slash commands: registering them, and answering one.
- *
- * <p>Answering is a two-step exchange, and deliberately so. Discord drops an
- * interaction that is not acknowledged within three seconds, and the work here
- * has to be handed to the game's main thread and waited for - a hitching server
- * would lose the command and leave the admin looking at "the application did
- * not respond". So the acknowledgement goes out first, on its own, and the real
- * answer edits it afterwards.
- *
- * <p>Every reply is <em>ephemeral</em> ({@code flags: 64}): only the admin who
- * ran the command sees it. A ban is announced in the game and written up in the
- * ban log; the channel does not need a second copy, and an ephemeral reply
- * leaves no record for anyone who should not be reading one.
- *
- * <p>Blocking, so the caller runs it off the main thread.
- */
-final class DiscordCommandApi {
+// Answering is two steps: Discord drops an interaction not acknowledged within 3 s, so the ack goes first, the answer
+// edits it. Replies are ephemeral - only the admin sees them. Blocking: the caller runs it off the main thread.
+final class DiscordApi {
 
     private static final String API = "https://discord.com/api/v10";
 
     private static final Duration TIMEOUT = Duration.ofSeconds(15);
 
-    /** Interaction callback type 5: "thinking", to be edited into the answer. */
+    // Interaction callback type 5: "thinking", to be edited into the answer.
     private static final int DEFERRED_REPLY = 5;
 
-    /** Only the caller sees the reply. */
+    // Only the caller sees the reply.
     private static final int EPHEMERAL = 64;
 
-    /** Application command type 1 (CHAT_INPUT) with one string option (3). */
+    // Application command type 1 (CHAT_INPUT) with one string option (3).
     private static final int CHAT_INPUT = 1;
     private static final int STRING_OPTION = 3;
 
-    /**
-     * BAN_MEMBERS. Hides the commands from members without it, which is a
-     * convenience rather than a guarantee - the plugin checks the role itself
-     * (see {@link SlashInteraction}).
-     */
+    // BAN_MEMBERS: hides the commands from members without it - a convenience; DiscordModeration checks the role itself.
     private static final long BAN_MEMBERS = 1L << 2;
 
     private static final String ARGUMENT_DESCRIPTION =
             "The player's UUID, or an IP address.";
 
-    /** A Discord server or role the bot can see: the id, and a readable name. */
+    // A Discord server or role the bot can see: the id, and a readable name.
     record Named(String id, String name) {
     }
 
-    /** What one listing found, or why it found nothing. */
+    // What one listing found, or why it found nothing.
     record Listing(String error, List<Named> items) {
     }
 
@@ -66,15 +51,11 @@ final class DiscordCommandApi {
     private volatile String token = "";
     private volatile String applicationId = "";
 
-    DiscordCommandApi(HttpClient client) {
+    DiscordApi(HttpClient client) {
         this.client = client;
     }
 
-    /**
-     * A <em>changed</em> token invalidates the cached application id, which was
-     * resolved with the old one. Re-setting the same token leaves the cache
-     * alone, so re-reading the secrets file costs nothing.
-     */
+    // A changed token drops the cached application id resolved with the old one; the same token again changes nothing.
     void setToken(String newToken) {
         String cleaned = newToken == null ? "" : newToken.trim();
 
@@ -90,15 +71,8 @@ final class DiscordCommandApi {
         return !applicationId.isEmpty();
     }
 
-    /**
-     * Declares {@code /ban} and {@code /unban} in one Discord server, replacing
-     * whatever was there before.
-     *
-     * <p>Guild commands rather than global ones: a guild command is usable the
-     * moment this returns, where a global one takes up to an hour to appear.
-     *
-     * @return an empty string on success, otherwise what went wrong
-     */
+    // Declares the commands in one Discord server, replacing what was there; a guild command works at once, a global
+    // one takes up to an hour. Empty on success, otherwise what went wrong.
     String registerCommands(String guildId) {
         if (token.isEmpty()) {
             return "no bot token is loaded";
@@ -133,24 +107,12 @@ final class DiscordCommandApi {
         }
     }
 
-    /**
-     * The Discord servers the bot is a member of.
-     *
-     * <p>Setup asks Discord rather than the admin: the bot is already in the
-     * server (it mirrors chat there), so the id it needs is something it can
-     * look up. One server means nothing to type at all.
-     */
+    // The Discord servers the bot is in: setup asks Discord rather than the admin.
     Listing guilds() {
         return list(API + "/users/@me/guilds", false, "");
     }
 
-    /**
-     * The roles of one Discord server, so an admin can pick one by name
-     * instead of turning on Developer Mode to copy an id.
-     *
-     * <p>{@code @everyone} (its id is the server's own) and bot-managed roles
-     * are left out: neither can be handed to a member of staff.
-     */
+    // One Discord server's roles, to pick one by name; @everyone and bot-managed roles are left out.
     Listing roles(String guildId) {
         return list(API + "/guilds/" + guildId + "/roles", true, guildId);
     }
@@ -202,11 +164,7 @@ final class DiscordCommandApi {
         }
     }
 
-    /**
-     * Tells Discord the command was received, before doing anything with it.
-     * Ephemeral from the start: the flag is fixed when the reply is created,
-     * not when it is edited.
-     */
+    // Tells Discord the command arrived, before anything is done; ephemeral from the start, the flag cannot change later.
     void acknowledge(String interactionId, String interactionToken) {
         String body = new DiscordJson.Obj()
                 .num("type", DEFERRED_REPLY)
@@ -216,8 +174,7 @@ final class DiscordCommandApi {
                 .toString();
 
         try {
-            // Interaction endpoints authenticate through the token in the URL,
-            // so the bot token stays out of this request entirely.
+            // Interaction endpoints authenticate through the token in the URL; the bot token stays out of it.
             send(
                     "POST",
                     API + "/interactions/" + interactionId + "/"
@@ -230,7 +187,7 @@ final class DiscordCommandApi {
         }
     }
 
-    /** Fills in the acknowledged reply with the answer. */
+    // Fills in the acknowledged reply with the answer.
     void reply(String interactionToken, String content) {
         String application = resolveApplicationId();
 
@@ -256,10 +213,7 @@ final class DiscordCommandApi {
         }
     }
 
-    /**
-     * A bot's application id is its own user id, so it comes free from the
-     * token rather than having to be copied out of the developer portal.
-     */
+    // A bot's application id is its own user id, so it comes free from the token.
     private String resolveApplicationId() {
         String cached = applicationId;
 
@@ -314,7 +268,7 @@ final class DiscordCommandApi {
         );
     }
 
-    /** The three commands, exactly as Discord should show them. */
+    // The three commands, exactly as Discord should show them.
     private static String definitions() {
         return new DiscordJson.Arr()
                 .add(definition(

@@ -5,9 +5,7 @@ import Extinction.gen.*;
 import Extinction.data.*;
 import Extinction.round.*;
 import Extinction.core.cmd.Commands;
-import Extinction.core.io.Secrets;
 import Extinction.discord.ChatLogReporter;
-import Extinction.discord.DiscordModCommands;
 import Extinction.moderation.vpn.VpnScan;
 
 import arc.util.CommandHandler;
@@ -46,7 +44,7 @@ public final class ConsoleCommands {
     private final ChatLogReporter chatLogReporter;
 
     /** Null on a duel worker: only the hub answers Discord's /ban. */
-    private final DiscordModCommands discordModCommands;
+    private final DiscordModeration discordModCommands;
 
     private final LongConsumer generate;
 
@@ -63,7 +61,7 @@ public final class ConsoleCommands {
             VpnScan vpnScan,
             PlayerLock playerLock,
             ChatLogReporter chatLogReporter,
-            DiscordModCommands discordModCommands,
+            DiscordModeration discordModCommands,
             LongConsumer generate
     ) {
         this.runtime = runtime;
@@ -93,14 +91,6 @@ public final class ConsoleCommands {
                 .args("additional-per-core:int")
                 .description("Add unit-cap capacity to every core.")
                 .run(ctx -> addCoreCap(ctx.raw()));
-
-        commands.command("discordcommands").console()
-                .args("action:string?", "value:text?")
-                .description("Discord /ban and /unban: setup, role <name>, reload, off.")
-                .run(ctx -> handleDiscordCommandsCommand(
-                        ctx.str("action", "").trim(),
-                        ctx.str("value", "").trim()
-                ));
 
         commands.command("chatlog").console()
                 .args("target:string?", "value:string?")
@@ -139,82 +129,6 @@ public final class ConsoleCommands {
                 Log.info("[EvictMapGenerator] Automatic generation is now @.", runtime.autoGenerate ? "ON" : "OFF");
             }
             default -> Log.err("[EvictMapGenerator] Use: oregen [gen [seed] | seed <n/random> | auto on/off]");
-        }
-    }
-
-    /**
-     * discordcommands: the wiring for Discord's /ban and /unban. No argument
-     * prints the checklist; a server id (with an optional role id) wires them
-     * up and registers the commands; 'reload' re-reads the token file after a
-     * rotation; 'off' stops answering.
-     *
-     * <p>Like the chat mirror, this never takes the bot token: typing it here
-     * would write it into the server log and the start script's screen log
-     * permanently. It lives in the secrets file.
-     */
-    private void handleDiscordCommandsCommand(String action, String value) {
-        if (discordModCommands == null) {
-            Log.err("[EvictMapGenerator] The Discord commands only run on the hub.");
-            return;
-        }
-
-        switch (action.toLowerCase()) {
-            case "" -> {
-                Log.info("[EvictMapGenerator] Discord /ban and /unban:");
-
-                for (String line : discordModCommands.statusLines()) {
-                    Log.info("[EvictMapGenerator]   @", line);
-                }
-
-                if (!discordModCommands.isConfigured()) {
-                    Log.info("[EvictMapGenerator] Run 'discordcommands setup' - it finds the Discord server itself, no ids to copy. ('chatlog setup <server-id>' already does this too.)");
-                }
-            }
-            case "setup" -> {
-                Log.info("[EvictMapGenerator] Setting the Discord commands up; this takes a few seconds...");
-                discordModCommands.setup(this::logDiscordCommandLines);
-            }
-            case "role" -> {
-                if (value.isEmpty()) {
-                    Log.err("[EvictMapGenerator] Use: discordcommands role <role name or id> ('discordcommands setup' lists the names).");
-                } else {
-                    discordModCommands.setRole(value, this::logDiscordCommandLines);
-                }
-            }
-            case "off" -> {
-                discordModCommands.disable();
-                Log.info("[EvictMapGenerator] Discord /ban and /unban are off. The commands stay visible in Discord until Discord drops them; this server simply refuses them.");
-            }
-            case "reload" -> {
-                if (discordModCommands.reload()) {
-                    Log.info("[EvictMapGenerator] Bot token re-read; reconnecting to Discord.");
-                } else {
-                    Log.err("[EvictMapGenerator] @ is not set in @. Add it there, then run this again.", Secrets.DISCORD_CHAT_BOT_TOKEN, Secrets.path());
-                }
-            }
-            case "token" -> Log.err(
-                    "[EvictMapGenerator] The token is never typed here - it would be written to the server log. Set @ in @ and run 'discordcommands reload'.",
-                    Secrets.DISCORD_CHAT_BOT_TOKEN,
-                    Secrets.path()
-            );
-            default -> {
-                // A bare server id still works, for the case setup cannot
-                // settle by itself: several Discord servers with the same bot.
-                if (!action.chars().allMatch(Character::isDigit)) {
-                    Log.err("[EvictMapGenerator] Usage: discordcommands [setup | role <name> | reload | off]");
-                    return;
-                }
-
-                discordModCommands.configure(action, value);
-                Log.info("[EvictMapGenerator] Discord commands wired to server @. Run 'discordcommands' to check the connection.", action);
-            }
-        }
-    }
-
-    /** Setup and role changes answer asynchronously; print what they found. */
-    private void logDiscordCommandLines(java.util.List<String> lines) {
-        for (String line : lines) {
-            Log.info("[EvictMapGenerator] @", line);
         }
     }
 

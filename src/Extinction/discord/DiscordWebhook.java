@@ -69,7 +69,7 @@ public final class DiscordWebhook {
         this.client = sharedClient;
     }
 
-    static HttpClient newClient() {
+    public static HttpClient newClient() {
         ThreadFactory threads = runnable -> {
             Thread thread = new Thread(runnable, "evict-discord");
             thread.setDaemon(true);

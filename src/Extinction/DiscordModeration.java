@@ -1,10 +1,13 @@
-package Extinction.discord;
+// Discord's /ban, /unban and /free, for staff who are not at the console: the bot answers them over the gateway.
+package Extinction;
+
+import Extinction.core.io.Secrets;
+import Extinction.core.util.PluginLog;
+import Extinction.discord.DiscordFormat;
+import Extinction.discord.DiscordWebhook;
 
 import arc.Core;
 import arc.util.serialization.Jval;
-import Extinction.core.io.Secrets;
-import Extinction.core.util.PluginLog;
-import Extinction.gen.EvictSettings;
 
 import java.net.http.HttpClient;
 import java.util.ArrayList;
@@ -17,58 +20,153 @@ import java.util.function.BinaryOperator;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/**
- * {@code /ban}, {@code /unban} and {@code /free} as Discord slash commands,
- * for staff who are not at the console.
- *
- * <p>Hub only, like every other moderation path: the hub is the single writer
- * of bans, and the commands go through exactly the same {@code Bans.Request} and
- * {@code banPlayerIP} an admin's own ban does. Nothing is decided here - the
- * ban is widened, kicked, synced to the match servers, announced in chat and
- * written up in the ban log because it took the ordinary route, not because
- * this class arranged any of it.
- *
- * <p>Two permission layers, and the second is the one that matters. Discord's
- * own {@code default_member_permissions} hides the commands from members
- * without BAN_MEMBERS, but a Discord server admin can re-open them to everyone
- * in Server Settings without the game server ever hearing about it. So every
- * interaction is checked here as well, against the server id and the role in
- * the settings file.
- *
- * <p>Threading: the gateway hands interactions over on its own thread, this
- * class does the HTTP on a worker thread, and the ban itself is posted to the
- * main thread and waited for - the admin store and Mindustry's events belong to
- * the game loop.
- */
-public final class DiscordModCommands {
+// Hub only, and nothing is decided here: a ban takes the ordinary route, so it is widened, synced and logged like any other.
+// Discord's gating decides who sees the commands; allowed() decides who may use them, since a Discord admin can undo the first.
+public final class DiscordModeration {
 
-    /** How long the game gets to answer before the reply gives up on it. */
+    // How long the game gets to answer before the reply gives up on it.
     private static final long MAIN_THREAD_TIMEOUT_SECONDS = 10L;
 
     private static final String COMMAND_BAN = "ban";
     private static final String COMMAND_UNBAN = "unban";
     private static final String COMMAND_FREE = "free";
 
-    private final EvictSettings settings;
+    // One slash command as Discord delivered it, reduced to what the plugin acts on. Crosses from the gateway's thread.
+    private record Interaction(
+            String id,
+            String token,
+            String guildId,
+            String command,
+            String argument,
+            List<String> roles,
+            boolean administrator,
+            String actor
+    ) {
 
-    /** (target, actor) - the reply line. Run on the main thread. */
+        // Interaction type 2 - an application (slash) command was used.
+        private static final int APPLICATION_COMMAND = 2;
+
+        // Discord's ADMINISTRATOR permission bit.
+        private static final long ADMINISTRATOR = 1L << 3;
+
+        // The single option every command takes.
+        private static final String ARGUMENT = "target";
+
+        // Shown when Discord sends no usable name for the member.
+        private static final String UNKNOWN_ACTOR = "someone on Discord";
+
+        // Null when it is not a slash command run by a member of a Discord server: those have no roles to check.
+        static Interaction parse(Jval payload) {
+            if (payload == null
+                    || !payload.isObject()
+                    || payload.getInt("type", -1) != APPLICATION_COMMAND) {
+                return null;
+            }
+
+            Jval data = payload.get("data");
+            Jval member = payload.get("member");
+
+            if (data == null || !data.isObject() || member == null || !member.isObject()) {
+                return null;
+            }
+
+            String id = payload.getString("id", "");
+            String token = payload.getString("token", "");
+            String command = data.getString("name", "");
+
+            if (id.isEmpty() || token.isEmpty() || command.isEmpty()) {
+                return null;
+            }
+
+            return new Interaction(
+                    id,
+                    token,
+                    payload.getString("guild_id", ""),
+                    command,
+                    argument(data),
+                    roles(member),
+                    (permissions(member.getString("permissions", "0")) & ADMINISTRATOR) != 0L,
+                    actor(member)
+            );
+        }
+
+        private static String argument(Jval data) {
+            Jval options = data.get("options");
+
+            if (options == null || !options.isArray()) {
+                return "";
+            }
+
+            for (Jval option : options.asArray()) {
+                if (option != null
+                        && option.isObject()
+                        && ARGUMENT.equals(option.getString("name", ""))) {
+                    return option.getString("value", "");
+                }
+            }
+
+            return "";
+        }
+
+        private static List<String> roles(Jval member) {
+            Jval list = member.get("roles");
+
+            if (list == null || !list.isArray()) {
+                return List.of();
+            }
+
+            List<String> roles = new ArrayList<>();
+
+            for (Jval role : list.asArray()) {
+                if (role != null && role.isString()) {
+                    roles.add(role.asString());
+                }
+            }
+
+            return List.copyOf(roles);
+        }
+
+        // The name the ban log shows, so a ban made from Discord traces back to a person like any other.
+        private static String actor(Jval member) {
+            Jval user = member.get("user");
+
+            if (user == null || !user.isObject()) {
+                return UNKNOWN_ACTOR;
+            }
+
+            String name = user.getString("global_name", "");
+
+            if (name == null || name.isBlank()) {
+                name = user.getString("username", "");
+            }
+
+            return name == null || name.isBlank() ? UNKNOWN_ACTOR : name;
+        }
+
+        // Discord sends the permission bitfield as a decimal string.
+        private static long permissions(String raw) {
+            try {
+                return Long.parseLong(raw == null ? "0" : raw.trim());
+            } catch (NumberFormatException exception) {
+                return 0L;
+            }
+        }
+    }
+
+    // (target, actor) - the reply line. Run on the main thread.
     private final BinaryOperator<String> ban;
     private final BinaryOperator<String> unban;
     private final BinaryOperator<String> free;
 
-    /**
-     * Separate clients on purpose: the gateway holds one connection open for
-     * the life of the server, and a blocking REST call must never end up
-     * queued behind it on the same executor.
-     */
+    // Separate clients: the gateway holds one connection open for good, and a REST call must never queue behind it.
     private final HttpClient socketClient = DiscordWebhook.newClient();
     private final HttpClient restClient = DiscordWebhook.newClient();
 
-    private final DiscordCommandApi api = new DiscordCommandApi(restClient);
+    private final DiscordApi api = new DiscordApi(restClient);
     private final DiscordGateway gateway =
             new DiscordGateway(socketClient, this::onInteraction);
 
-    /** One command at a time; two admins banning at once is not a race here. */
+    // One command at a time; two admins banning at once is not a race here.
     private final ExecutorService worker =
             Executors.newSingleThreadExecutor(runnable -> {
                 Thread thread = new Thread(runnable, "evict-discord-command");
@@ -79,44 +177,28 @@ public final class DiscordModCommands {
     private volatile String token = "";
     private volatile String lastRegistration = "";
 
-    public DiscordModCommands(
-            EvictSettings settings,
+    public DiscordModeration(
             BinaryOperator<String> ban,
             BinaryOperator<String> unban,
             BinaryOperator<String> free
     ) {
-        this.settings = settings;
         this.ban = ban;
         this.unban = unban;
         this.free = free;
     }
 
-    /**
-     * Hub-only: reads the token and connects if a Discord server has been
-     * wired up.
-     *
-     * <p>The token is read even when nothing else is configured, so the
-     * console's checklist tells the truth on a server that has not been set up
-     * yet - reporting a token that is sitting in the file as missing sends an
-     * admin looking for the wrong problem.
-     */
+    // Hub-only: reads the token even when nothing is wired yet, so the checklist never calls a present token missing.
     public void start() {
         loadToken();
 
-        if (settings.discordCommandGuild().isBlank()) {
+        if (Config.discordCommandGuild.isBlank()) {
             return;
         }
 
         connect(true);
     }
 
-    /**
-     * Sets up everything that can be worked out without the admin: which
-     * Discord server the bot is in, registering the commands, connecting, and
-     * listing the roles by name so a role can be chosen without Developer Mode.
-     *
-     * <p>Runs off the main thread and reports in one go.
-     */
+    // Sets up what needs no admin: the Discord server, the commands, the connection, the role names. Off the main thread.
     public void setup(Consumer<List<String>> report) {
         worker.execute(() -> {
             List<String> lines = new ArrayList<>();
@@ -143,7 +225,7 @@ public final class DiscordModCommands {
 
         api.setToken(token);
 
-        String guild = settings.discordCommandGuild();
+        String guild = Config.discordCommandGuild;
 
         if (guild.isBlank()) {
             guild = detectGuild(lines);
@@ -154,10 +236,10 @@ public final class DiscordModCommands {
         }
 
         String found = guild;
-        String role = settings.discordCommandRole();
+        String role = Config.discordCommandRole;
 
         Core.app.post(() -> {
-            settings.setDiscordCommands(found, role);
+            wire(found, role);
             gateway.connect(token);
         });
 
@@ -182,14 +264,9 @@ public final class DiscordModCommands {
         listRoles(lines);
     }
 
-    /**
-     * Asks Discord which server the bot is in, instead of asking the admin for
-     * an id they would have to go and copy.
-     *
-     * @return the server id, or an empty string when it could not be settled
-     */
+    // Asks Discord which server the bot is in instead of the admin; empty when that could not be settled.
     private String detectGuild(List<String> lines) {
-        DiscordCommandApi.Listing found = api.guilds();
+        DiscordApi.Listing found = api.guilds();
 
         if (!found.error().isBlank()) {
             lines.add("Could not ask Discord which servers the bot is in: "
@@ -207,7 +284,7 @@ public final class DiscordModCommands {
             lines.add("The bot is in several Discord servers, so pick the one "
                     + "the commands belong in:");
 
-            for (DiscordCommandApi.Named guild : found.items()) {
+            for (DiscordApi.Named guild : found.items()) {
                 lines.add("  " + guild.name() + " - 'discordcommands "
                         + guild.id() + "'");
             }
@@ -215,16 +292,15 @@ public final class DiscordModCommands {
             return "";
         }
 
-        DiscordCommandApi.Named only = found.items().get(0);
+        DiscordApi.Named only = found.items().get(0);
         lines.add("Discord server: " + only.name() + " (" + only.id() + ").");
 
         return only.id();
     }
 
-    /** Prints the roles by name, so one can be chosen without an id. */
+    // Prints the roles by name, so one can be chosen without an id.
     private void listRoles(List<String> lines) {
-        DiscordCommandApi.Listing roles =
-                api.roles(settings.discordCommandGuild());
+        DiscordApi.Listing roles = api.roles(Config.discordCommandGuild);
 
         if (!roles.error().isBlank() || roles.items().isEmpty()) {
             lines.add("Set one with 'discordcommands role <role name or id>'.");
@@ -233,25 +309,19 @@ public final class DiscordModCommands {
 
         lines.add("Pick one with 'discordcommands role <name>':");
 
-        for (DiscordCommandApi.Named role : roles.items()) {
+        for (DiscordApi.Named role : roles.items()) {
             lines.add("  " + role.name());
         }
     }
 
-    /**
-     * Sets the role allowed to use the commands, by name or by id - a name so
-     * that nobody has to turn on Developer Mode for one setting.
-     */
+    // Sets the role allowed to use the commands, by name or id - a name, so nobody needs Developer Mode for one setting.
     public void setRole(String nameOrId, Consumer<List<String>> report) {
         worker.execute(() -> {
             List<String> lines = new ArrayList<>();
             String resolved = resolveRole(nameOrId, lines);
 
             if (!resolved.isEmpty()) {
-                Core.app.post(() -> settings.setDiscordCommands(
-                        settings.discordCommandGuild(),
-                        resolved
-                ));
+                Core.app.post(() -> wire(Config.discordCommandGuild, resolved));
             }
 
             Core.app.post(() -> report.accept(lines));
@@ -266,7 +336,7 @@ public final class DiscordModCommands {
             return "";
         }
 
-        String guild = settings.discordCommandGuild();
+        String guild = Config.discordCommandGuild;
 
         if (guild.isBlank()) {
             lines.add("No Discord server is set yet. Run 'discordcommands setup' first.");
@@ -275,10 +345,10 @@ public final class DiscordModCommands {
 
         api.setToken(token);
 
-        DiscordCommandApi.Listing roles = api.roles(guild);
+        DiscordApi.Listing roles = api.roles(guild);
 
         if (roles.error().isBlank()) {
-            for (DiscordCommandApi.Named role : roles.items()) {
+            for (DiscordApi.Named role : roles.items()) {
                 if (role.id().equals(wanted)
                         || role.name().equalsIgnoreCase(wanted)) {
                     lines.add("Only " + role.name()
@@ -291,8 +361,7 @@ public final class DiscordModCommands {
             return "";
         }
 
-        // The roles could not be listed (a missing permission, a network
-        // hiccup); a plain id is still usable on its own.
+        // The roles could not be listed (a missing permission, a network hiccup); a plain id still works on its own.
         if (wanted.chars().allMatch(Character::isDigit)) {
             lines.add("Role set to " + wanted + " (Discord's role list was "
                     + "unavailable: " + roles.error() + ").");
@@ -303,40 +372,31 @@ public final class DiscordModCommands {
         return "";
     }
 
-    /**
-     * Points the commands at a Discord server and, optionally, the role allowed
-     * to use them. A blank role falls back to Discord's own Administrator
-     * permission, so the commands are never open to everyone by accident.
-     */
+    // Points the commands at a Discord server and optionally a role; no role means Discord's Administrator permission.
     public void configure(String guildId, String roleId) {
-        settings.setDiscordCommands(guildId, roleId);
+        wire(guildId, roleId);
         connect(true);
     }
 
-    /** Stops answering commands. The registered commands stay in Discord. */
+    // Stops answering commands. The registered commands stay in Discord.
     public void disable() {
-        settings.setDiscordCommands("", "");
+        wire("", "");
         gateway.disconnect();
         token = "";
         lastRegistration = "";
     }
 
-    /**
-     * Re-reads the secrets file and reconnects - how a rotated token heals a
-     * connection Discord rejected, without a restart.
-     *
-     * @return true when the file now holds a token
-     */
+    // Re-reads the secrets file and reconnects - how a rotated token heals without a restart. True when a token is there.
     public boolean reload() {
         connect(false);
         return !token.isBlank();
     }
 
     public boolean isConfigured() {
-        return !settings.discordCommandGuild().isBlank();
+        return !Config.discordCommandGuild.isBlank();
     }
 
-    /** The wiring checklist for the console. */
+    // The wiring checklist for the console.
     public List<String> statusLines() {
         List<String> lines = new ArrayList<>();
 
@@ -345,13 +405,13 @@ public final class DiscordModCommands {
                 + Secrets.path() + ", then 'discordcommands reload'"
                 : "loaded from " + Secrets.path()));
 
-        String guild = settings.discordCommandGuild();
+        String guild = Config.discordCommandGuild;
 
         lines.add("Discord server: " + (guild.isBlank()
                 ? "NOT SET - 'discordcommands <server-id> [role-id]'"
                 : guild));
 
-        String role = settings.discordCommandRole();
+        String role = Config.discordCommandRole;
 
         lines.add("allowed role: " + (role.isBlank()
                 ? "none set - only members with Discord's Administrator "
@@ -381,12 +441,14 @@ public final class DiscordModCommands {
                 : " - last error: " + gateway.lastError());
     }
 
-    /**
-     * Reads the token, registers the commands and opens the gateway.
-     *
-     * @param quiet true on startup, where a server that has simply not been set
-     *              up should not complain about it every boot
-     */
+    // The Discord server and role, stored at once.
+    private static void wire(String guildId, String roleId) {
+        Config.discordCommandGuild = guildId == null ? "" : guildId.trim();
+        Config.discordCommandRole = roleId == null ? "" : roleId.trim();
+        Config.save();
+    }
+
+    // Reads the token, registers the commands and opens the gateway; quiet on startup, where not set up is no complaint.
     private void connect(boolean quiet) {
         loadToken();
 
@@ -406,7 +468,7 @@ public final class DiscordModCommands {
 
         api.setToken(token);
 
-        String guild = settings.discordCommandGuild();
+        String guild = Config.discordCommandGuild;
 
         if (guild.isBlank()) {
             gateway.disconnect();
@@ -417,11 +479,7 @@ public final class DiscordModCommands {
         gateway.connect(token);
     }
 
-    /**
-     * Re-reads the shared bot token from the secrets file. Kept apart from
-     * connecting so the console can report on a token that is present long
-     * before anything is wired up to use it.
-     */
+    // Re-reads the shared bot token, apart from connecting, so the console can report a token long before it is used.
     private void loadToken() {
         Secrets.reload();
         token = Secrets.get(Secrets.DISCORD_CHAT_BOT_TOKEN);
@@ -439,9 +497,9 @@ public final class DiscordModCommands {
         }
     }
 
-    /** Gateway thread: hand the work on and get out of the way. */
+    // Gateway thread: hand the work on and get out of the way.
     private void onInteraction(Jval payload) {
-        SlashInteraction interaction = SlashInteraction.parse(payload);
+        Interaction interaction = Interaction.parse(payload);
 
         if (interaction == null) {
             return;
@@ -450,7 +508,7 @@ public final class DiscordModCommands {
         worker.execute(() -> run(interaction));
     }
 
-    private void run(SlashInteraction interaction) {
+    private void run(Interaction interaction) {
         api.acknowledge(interaction.id(), interaction.token());
 
         if (!allowed(interaction)) {
@@ -477,28 +535,20 @@ public final class DiscordModCommands {
         answer(interaction, reply);
     }
 
-    /**
-     * The reply is escaped rather than trusted: it carries a player name, and
-     * a name is whatever the player typed - a stray {@code **} would otherwise
-     * bold the rest of the line.
-     */
-    private void answer(SlashInteraction interaction, String reply) {
+    // Escaped, not trusted: the reply carries a player's name, and a stray ** would bold the rest of the line.
+    private void answer(Interaction interaction, String reply) {
         api.reply(interaction.token(), DiscordFormat.escapeMarkdown(reply));
     }
 
-    /**
-     * Discord's own gating decides who sees the commands; this decides who may
-     * actually use them. Both, because the first can be undone in Discord's UI
-     * by anyone who administers that server.
-     */
-    private boolean allowed(SlashInteraction interaction) {
-        String guild = settings.discordCommandGuild();
+    // The configured Discord server, and its role - or Discord's Administrator permission when no role is set.
+    private boolean allowed(Interaction interaction) {
+        String guild = Config.discordCommandGuild;
 
         if (guild.isBlank() || !guild.equals(interaction.guildId())) {
             return false;
         }
 
-        String role = settings.discordCommandRole();
+        String role = Config.discordCommandRole;
 
         if (role.isBlank()) {
             return interaction.administrator();
@@ -507,11 +557,7 @@ public final class DiscordModCommands {
         return interaction.administrator() || interaction.roles().contains(role);
     }
 
-    /**
-     * Runs the ban on the game loop and waits for its answer. Everything it
-     * touches - the admin store, the ban events, the players it kicks - belongs
-     * to the main thread.
-     */
+    // Runs the action on the game loop and waits: the admin store, the ban events and the kicks belong to it.
     private String onMainThread(Supplier<String> action) {
         CompletableFuture<String> result = new CompletableFuture<>();
 

@@ -218,9 +218,8 @@ public class EvictMapPlugin extends Plugin {
      * and one bot answering per match server would be four answers to one
      * command.
      */
-    private final Extinction.discord.DiscordModCommands discordModCommands =
-            new Extinction.discord.DiscordModCommands(
-                    settings,
+    private final DiscordModeration discordModCommands =
+            new DiscordModeration(
                     remoteBan::ban,
                     remoteBan::unban,
                     (target, actor) -> playerLock.free(target.trim(), actor).line()
@@ -561,7 +560,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.18. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.19. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
@@ -746,7 +745,7 @@ public class EvictMapPlugin extends Plugin {
     @Override
     public void registerServerCommands(CommandHandler handler) {
         consoleCommands.register(handler);
-        Console.register(handler, matches, roundTime, playerStats, restart, duelWorker ? null : banLog, duelWorker ? null : discordStatus, duelWorker ? null : playerLock, duelWorker ? null : bans, playerDataManager);
+        Console.register(handler, matches, roundTime, playerStats, restart, duelWorker ? null : banLog, duelWorker ? null : discordStatus, duelWorker ? null : playerLock, duelWorker ? null : bans, playerDataManager, duelWorker ? null : discordModCommands);
     }
 
     /**

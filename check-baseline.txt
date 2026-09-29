@@ -1,5 +1,5 @@
-src/Extinction/EvictMapPlugin.java 979
-src/Extinction/commands/ConsoleCommands.java 551
+src/Extinction/EvictMapPlugin.java 978
+src/Extinction/commands/ConsoleCommands.java 465
 src/Extinction/core/cmd/Arg.java 46
 src/Extinction/core/cmd/ArgType.java 111
 src/Extinction/core/cmd/Command.java 132
@@ -25,17 +25,13 @@ src/Extinction/discord/ChatLogMessage.java 201
 src/Extinction/discord/ChatLogReporter.java 753
 src/Extinction/discord/ChatLogTail.java 112
 src/Extinction/discord/DiscordBotChannel.java 232
-src/Extinction/discord/DiscordCommandApi.java 372
 src/Extinction/discord/DiscordFormat.java 162
-src/Extinction/discord/DiscordGateway.java 506
 src/Extinction/discord/DiscordGuildSetup.java 303
 src/Extinction/discord/DiscordJson.java 98
-src/Extinction/discord/DiscordModCommands.java 533
 src/Extinction/discord/DiscordWebhook.java 347
-src/Extinction/discord/SlashInteraction.java 147
 src/Extinction/gen/CoreMarkerFloor.java 33
 src/Extinction/gen/EvictRuntimeState.java 40
-src/Extinction/gen/EvictSettings.java 966
+src/Extinction/gen/EvictSettings.java 919
 src/Extinction/gen/EvictTerrainGenerator.java 1498
 src/Extinction/gen/HexGrid.java 27
 src/Extinction/gen/ResourceGenerator.java 990

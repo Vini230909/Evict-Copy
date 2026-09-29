@@ -4,6 +4,7 @@ package Extinction.commands;
 import Extinction.BanLog;
 import Extinction.Bans;
 import Extinction.Config;
+import Extinction.DiscordModeration;
 import Extinction.DiscordStatus;
 import Extinction.LockList;
 import Extinction.Matches;
@@ -13,6 +14,7 @@ import Extinction.Restart;
 import Extinction.RoundTime;
 import Extinction.WordFilter;
 import Extinction.core.cmd.Commands;
+import Extinction.core.io.Secrets;
 import Extinction.core.util.PluginLog;
 import Extinction.data.PlayerDataManager;
 
@@ -27,7 +29,7 @@ public final class Console {
     private Console() {
     }
 
-    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime, PlayerStats playerStats, Restart restart, BanLog banLog, DiscordStatus discordStatus, PlayerLock lock, Bans bans, PlayerDataManager playerDataManager) {
+    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime, PlayerStats playerStats, Restart restart, BanLog banLog, DiscordStatus discordStatus, PlayerLock lock, Bans bans, PlayerDataManager playerDataManager, DiscordModeration discord) {
         Commands commands = new Commands();
 
         commands.command("matchstatus").console()
@@ -183,6 +185,71 @@ public final class Console {
                     }
                 });
 
+        // Never takes the bot token: typed here it would sit in the server log for good. discord is null on a worker.
+        commands.command("discordcommands").console()
+                .args("action:string?", "value:text?")
+                .description("Discord /ban and /unban: setup, role <name>, reload, off.")
+                .run(ctx -> {
+                    String action = ctx.str("action", "").trim();
+                    String value = ctx.str("value", "").trim();
+
+                    if (discord == null) {
+                        PluginLog.err("The Discord commands only run on the hub.");
+                        return;
+                    }
+
+                    switch (action.toLowerCase()) {
+                        case "" -> {
+                            PluginLog.info("Discord /ban and /unban:");
+
+                            for (String line : discord.statusLines()) {
+                                PluginLog.info("  @", line);
+                            }
+
+                            if (!discord.isConfigured()) {
+                                PluginLog.info("Run 'discordcommands setup' - it finds the Discord server itself, no ids to copy. ('chatlog setup <server-id>' already does this too.)");
+                            }
+                        }
+                        case "setup" -> {
+                            PluginLog.info("Setting the Discord commands up; this takes a few seconds...");
+                            discord.setup(Console::logLines);
+                        }
+                        case "role" -> {
+                            if (value.isEmpty()) {
+                                PluginLog.err("Use: discordcommands role <role name or id> ('discordcommands setup' lists the names).");
+                            } else {
+                                discord.setRole(value, Console::logLines);
+                            }
+                        }
+                        case "off" -> {
+                            discord.disable();
+                            PluginLog.info("Discord /ban and /unban are off. The commands stay visible in Discord until Discord drops them; this server simply refuses them.");
+                        }
+                        case "reload" -> {
+                            if (discord.reload()) {
+                                PluginLog.info("Bot token re-read; reconnecting to Discord.");
+                            } else {
+                                PluginLog.err("@ is not set in @. Add it there, then run this again.", Secrets.DISCORD_CHAT_BOT_TOKEN, Secrets.path());
+                            }
+                        }
+                        case "token" -> PluginLog.err(
+                                "The token is never typed here - it would be written to the server log. Set @ in @ and run 'discordcommands reload'.",
+                                Secrets.DISCORD_CHAT_BOT_TOKEN,
+                                Secrets.path()
+                        );
+                        default -> {
+                            // A bare server id still works, for when setup cannot settle it: several servers, one bot.
+                            if (!action.chars().allMatch(Character::isDigit)) {
+                                PluginLog.err("Usage: discordcommands [setup | role <name> | reload | off]");
+                                return;
+                            }
+
+                            discord.configure(action, value);
+                            PluginLog.info("Discord commands wired to server @. Run 'discordcommands' to check the connection.", action);
+                        }
+                    }
+                });
+
         // For a stored player, online or not - harassment found in the chat log after the offender left.
         // bans is null on a duel worker: only the hub decides who is banned.
         commands.command("banplayer").console()
@@ -297,6 +364,13 @@ public final class Console {
                 });
 
         commands.installConsole(handler);
+    }
+
+    // Setup and role changes answer asynchronously; print what they found.
+    private static void logLines(List<String> lines) {
+        for (String line : lines) {
+            PluginLog.info("@", line);
+        }
     }
 
     // "<ip> ports a-b (n workers, map=m)", or "not set" while /play is off.

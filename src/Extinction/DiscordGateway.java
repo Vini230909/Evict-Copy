@@ -1,7 +1,10 @@
-package Extinction.discord;
+// The plugin's one inbound Discord connection: a minimal gateway client that exists so slash commands can arrive.
+package Extinction;
+
+import Extinction.core.util.PluginLog;
+import Extinction.discord.DiscordJson;
 
 import arc.util.serialization.Jval;
-import Extinction.core.util.PluginLog;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -15,42 +18,16 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
-/**
- * The one inbound connection the plugin has to Discord: a minimal gateway
- * client that exists so slash commands can arrive.
- *
- * <p>Everything else the plugin sends to Discord is plain REST - a webhook or
- * a bot POST - because sending needs nothing more. Receiving does. Discord
- * delivers an interaction either to a public HTTPS endpoint of your own (which
- * would mean a certificate, a reverse proxy and an open port in front of a game
- * server) or over this WebSocket, which the server opens outbound like any
- * other connection. Hence the gateway.
- *
- * <p>Deliberately not a Discord library: this needs four opcodes. It identifies
- * with {@code intents: 0} - interactions are delivered regardless of intents,
- * so the bot never receives, and never has to be trusted with, the contents of
- * the Discord server it is in.
- *
- * <p>Threading: the listener callbacks arrive on the HTTP client's threads and
- * do nothing but hand the frame to {@code scheduler}. Every piece of state
- * below, and every frame sent, belongs to that single scheduler thread, so
- * there are no locks and no ordering surprises. A connection carries a
- * {@code serial}; a callback from a connection that is no longer the current
- * one is dropped, which is what stops a dying socket from tearing down its own
- * replacement.
- */
+// Not a Discord library: four opcodes, intents 0. All state and every frame belong to one scheduler thread; a
+// connection carries a serial, so a callback from a dying socket cannot tear down its replacement.
 final class DiscordGateway {
 
-    /** Used for the first connect; a resume uses the URL Discord hands back. */
+    // Used for the first connect; a resume uses the URL Discord hands back.
     private static final String DEFAULT_URL = "wss://gateway.discord.gg";
 
     private static final String QUERY = "/?v=10&encoding=json";
 
-    /**
-     * No intents at all. Interactions are pushed to the bot whatever its
-     * intents are, so this connection never asks to see messages, members or
-     * anything else in the Discord server.
-     */
+    // No intents: interactions arrive whatever the intents, so the bot never asks to see messages or members.
     private static final int INTENTS = 0;
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(20);
@@ -58,17 +35,17 @@ final class DiscordGateway {
     private static final long MIN_RECONNECT_MILLIS = 2_000L;
     private static final long MAX_RECONNECT_MILLIS = 60_000L;
 
-    /** Log a repeating reconnect failure on the first one, then rarely. */
+    // Log a repeating reconnect failure on the first one, then rarely.
     private static final int FAILURE_LOG_INTERVAL = 10;
 
     private final HttpClient client;
 
-    /** Handed the {@code d} object of every INTERACTION_CREATE dispatch. */
+    // Handed the "d" object of every INTERACTION_CREATE dispatch.
     private final Consumer<Jval> interactions;
 
     private final ScheduledExecutorService scheduler;
 
-    /** Assembled here because Discord may split one frame across callbacks. */
+    // Assembled here because Discord may split one frame across callbacks.
     private final StringBuilder frame = new StringBuilder();
 
     private volatile String token = "";
@@ -100,7 +77,7 @@ final class DiscordGateway {
         });
     }
 
-    /** Connects, or reconnects with a new token. Safe to call repeatedly. */
+    // Connects, or reconnects with a new token. Safe to call repeatedly.
     void connect(String botToken) {
         String cleaned = botToken == null ? "" : botToken.trim();
 
@@ -122,7 +99,7 @@ final class DiscordGateway {
         });
     }
 
-    /** Drops the connection and stops reconnecting. */
+    // Drops the connection and stops reconnecting.
     void disconnect() {
         running = false;
         scheduler.execute(this::teardown);
@@ -186,10 +163,7 @@ final class DiscordGateway {
         }
     }
 
-    /**
-     * Gives up on one connection and schedules the next, backing off so a
-     * server that is down, or a token that has been revoked, is not hammered.
-     */
+    // Gives up on one connection and schedules the next, backing off so a dead server or revoked token is not hammered.
     private void failed(int connection, String reason) {
         if (connection != serial || down) {
             return;
@@ -266,8 +240,7 @@ final class DiscordGateway {
             case 1 -> sendHeartbeat();
             case 7 -> failed(connection, "Discord asked for a reconnect");
             case 9 -> {
-                // An invalidated session cannot be trusted to resume; start
-                // over rather than guess at Discord's "resumable" flag.
+                // An invalidated session cannot be trusted to resume; start over rather than guess at "resumable".
                 sessionId = "";
                 failed(connection, "Discord invalidated the session");
             }
@@ -313,8 +286,7 @@ final class DiscordGateway {
                 }
             }
             default -> {
-                // Nothing else is subscribed to; with no intents, nothing else
-                // arrives either.
+                // Nothing else is subscribed to; with no intents, nothing else arrives either.
             }
         }
     }
@@ -348,8 +320,7 @@ final class DiscordGateway {
     private void startHeartbeat(long interval) {
         cancelHeartbeat();
 
-        // Discord asks for a random first delay so every bot on a shard does
-        // not beat in lockstep.
+        // Discord asks for a random first delay so every bot on a shard does not beat in lockstep.
         long first = (long) (interval * Math.random());
 
         heartbeat = scheduler.scheduleAtFixedRate(
@@ -367,11 +338,7 @@ final class DiscordGateway {
         }
     }
 
-    /**
-     * A beat that was never acknowledged means the connection is a zombie: it
-     * still looks open, but nothing is getting through. Dropping it is the only
-     * way to find out.
-     */
+    // A beat never acknowledged means a zombie connection: open-looking, nothing getting through. Dropping it tells.
     private void beat() {
         if (!acknowledged) {
             failed(serial, "the gateway stopped answering heartbeats");
@@ -388,11 +355,7 @@ final class DiscordGateway {
                 + "}");
     }
 
-    /**
-     * Frames are chained rather than sent outright: a WebSocket may not be
-     * handed a second message before the first has gone out, and a heartbeat
-     * can fall due while an identify is still being written.
-     */
+    // Frames are chained: a WebSocket takes no second message before the first is out, and a heartbeat may fall due mid-identify.
     private void send(String json) {
         WebSocket target = socket;
 
@@ -412,7 +375,7 @@ final class DiscordGateway {
                 });
     }
 
-    /** Listener for one connection; every callback is tagged with its serial. */
+    // Listener for one connection; every callback is tagged with its serial.
     private final class Frames implements WebSocket.Listener {
 
         private final int connection;
@@ -473,11 +436,7 @@ final class DiscordGateway {
         }
     }
 
-    /**
-     * Names the close codes an admin can actually do something about. The rest
-     * are printed as-is; Discord documents them, and guessing at wording for
-     * codes that never occur in practice helps nobody.
-     */
+    // Names the close codes an admin can act on; the rest are printed as they come.
     private static String explain(int status, String reason) {
         String detail = reason == null || reason.isBlank() ? "" : " " + reason;
 
