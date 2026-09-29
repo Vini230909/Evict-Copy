@@ -145,9 +145,8 @@ public class EvictMapPlugin extends Plugin {
      * accounts only. It writes no line of its own: the lock's lines (locked,
      * locked account joined, freed) are the only ones.
      */
-    private final Extinction.moderation.vpn.VpnScan vpnScan =
-            new Extinction.moderation.vpn.VpnScan(
-                    settings,
+    private final VpnScan vpnScan =
+            new VpnScan(
                     banLog::logVpnHit,
                     banLog::logVpnTest,
                     banLog::isConfigured,
@@ -243,8 +242,6 @@ public class EvictMapPlugin extends Plugin {
                     terrainGenerator,
                     teamManager,
                     playerDataManager,
-                    duelWorker ? null : vpnScan,
-                    duelWorker ? null : playerLock,
                     duelWorker ? null : chatLogReporter,
                     duelWorker ? null : discordModCommands,
                     // oregen gen regenerates the live map in place with no fresh snapshot,
@@ -560,7 +557,7 @@ public class EvictMapPlugin extends Plugin {
         chatLogCapture.installEvents();
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.20. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.21. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
@@ -745,7 +742,7 @@ public class EvictMapPlugin extends Plugin {
     @Override
     public void registerServerCommands(CommandHandler handler) {
         consoleCommands.register(handler);
-        Console.register(handler, matches, roundTime, playerStats, restart, duelWorker ? null : banLog, duelWorker ? null : discordStatus, duelWorker ? null : playerLock, duelWorker ? null : bans, playerDataManager, duelWorker ? null : discordModCommands);
+        Console.register(handler, matches, roundTime, playerStats, restart, duelWorker ? null : banLog, duelWorker ? null : discordStatus, duelWorker ? null : playerLock, duelWorker ? null : bans, playerDataManager, duelWorker ? null : discordModCommands, duelWorker ? null : vpnScan);
     }
 
     /**

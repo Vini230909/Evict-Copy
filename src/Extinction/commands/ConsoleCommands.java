@@ -6,7 +6,6 @@ import Extinction.data.*;
 import Extinction.round.*;
 import Extinction.core.cmd.Commands;
 import Extinction.discord.ChatLogReporter;
-import Extinction.moderation.vpn.VpnScan;
 
 import arc.util.CommandHandler;
 import arc.util.Log;
@@ -34,12 +33,6 @@ public final class ConsoleCommands {
     private final TeamManager teamManager;
     private final PlayerDataManager playerDataManager;
 
-    /** Null on a duel worker: the hub looks every join up, log only. */
-    private final VpnScan vpnScan;
-
-    /** Null on a duel worker: the hub owns the lock list. */
-    private final PlayerLock playerLock;
-
     /** Null on a duel worker: the hub relays worker chat into Discord. */
     private final ChatLogReporter chatLogReporter;
 
@@ -58,8 +51,6 @@ public final class ConsoleCommands {
             EvictTerrainGenerator terrain,
             TeamManager teamManager,
             PlayerDataManager playerDataManager,
-            VpnScan vpnScan,
-            PlayerLock playerLock,
             ChatLogReporter chatLogReporter,
             DiscordModeration discordModCommands,
             LongConsumer generate
@@ -69,8 +60,6 @@ public final class ConsoleCommands {
         this.terrain = terrain;
         this.teamManager = teamManager;
         this.playerDataManager = playerDataManager;
-        this.vpnScan = vpnScan;
-        this.playerLock = playerLock;
         this.chatLogReporter = chatLogReporter;
         this.discordModCommands = discordModCommands;
         this.generate = generate;
@@ -96,14 +85,6 @@ public final class ConsoleCommands {
                 .args("target:string?", "value:string?")
                 .description("Discord chat mirror: status, setup <server-id>, hub/<port> + channel id, reload, off, test.")
                 .run(ctx -> handleChatLogCommand(ctx.raw()));
-
-        commands.command("vpn").console()
-                .args("action:string?", "value:string?")
-                .description("VPN scan: status, on/off, lock on/off, reload the key, test <ip>.")
-                .run(ctx -> handleVpnScanCommand(
-                        ctx.str("action", "").trim(),
-                        ctx.str("value", "").trim()
-                ));
 
         commands.installConsole(handler);
     }
@@ -300,88 +281,6 @@ public final class ConsoleCommands {
                     chatLogReporter.tokenPath()
             );
         }
-    }
-
-    /**
-     * vpn: the log-only VPN scan. Status is the whole checklist - key,
-     * where hits go, today's spending against the daily allowance - because
-     * "is it working" has four different answers and the console should give
-     * the right one. 'test' spends one lookup, which is the point: it proves
-     * the key.
-     */
-    private void handleVpnScanCommand(String action, String ip) {
-        if (vpnScan == null) {
-            Log.err("[EvictMapGenerator] The VPN scan runs on the hub only.");
-            return;
-        }
-
-        switch (action.toLowerCase()) {
-            case "" -> {
-                for (String line : vpnScan.statusLines()) {
-                    Log.info("[EvictMapGenerator] @", line);
-                }
-
-                Log.info("[EvictMapGenerator] @", lockStatusLine());
-            }
-            case "lock" -> {
-                switch (ip.toLowerCase()) {
-                    case "on" -> {
-                        Config.vpnLock = true;
-                        Config.save();
-                        Log.info("[EvictMapGenerator] Lock on: an account's first join through a VPN, proxy or hosting range is held on the Fallen team until an admin frees it ('free', /free, Discord /free).");
-                    }
-                    case "off" -> {
-                        Config.vpnLock = false;
-                        Config.save();
-                        Log.info("[EvictMapGenerator] Lock off: new accounts are not looked up or locked. Accounts already locked stay locked until freed.");
-                    }
-                    default -> Log.info("[EvictMapGenerator] @ Usage: vpn lock on/off", lockStatusLine());
-                }
-            }
-            case "on" -> {
-                settings.setVpnScanEnabled(true);
-
-                if (vpnScan.hasKey()) {
-                    Log.info("[EvictMapGenerator] VPN scan on, log only (vpnapi + ip-api): a join through a VPN, proxy or hosting range is written to the console and the ban log. Nothing is blocked.");
-                } else {
-                    Log.info("[EvictMapGenerator] VPN scan on, log only, with ip-api only - add @=... to @ and run 'vpn reload' for vpnapi.io as the second opinion. Nothing is blocked.", Extinction.core.io.Secrets.VPNAPI_KEY, Extinction.core.io.Secrets.path());
-                }
-            }
-            case "off" -> {
-                settings.setVpnScanEnabled(false);
-                Log.info("[EvictMapGenerator] VPN scan off. Joins are not looked up until it is switched back on.");
-            }
-            case "reload" -> {
-                if (vpnScan.reloadKey()) {
-                    Log.info("[EvictMapGenerator] VPN scan: API key loaded from @. 'vpn test <ip>' proves it.", Extinction.core.io.Secrets.path());
-                } else {
-                    Log.warn("[EvictMapGenerator] VPN scan: @ is still not set in @ - scanning with ip-api only.", Extinction.core.io.Secrets.VPNAPI_KEY, Extinction.core.io.Secrets.path());
-                }
-            }
-            case "test" -> {
-                if (ip.isBlank()) {
-                    Log.err("[EvictMapGenerator] Give an address to try: vpn test <ip>");
-                    return;
-                }
-
-                vpnScan.test(ip, line -> Log.info("[EvictMapGenerator] VPN scan test - @", line));
-            }
-            default -> Log.err(
-                    "[EvictMapGenerator] Usage: vpn [on/off/lock on/off/reload/test <ip>]"
-            );
-        }
-    }
-
-    private String lockStatusLine() {
-        if (playerLock == null) {
-            return "  Lock: decided on the hub.";
-        }
-
-        return "  Lock: " + (Config.vpnLock
-                ? "on - a first join through a VPN is held for an admin"
-                : "off - new accounts are not looked up")
-                + "; " + playerLock.lockedCount() + " locked, "
-                + playerLock.verifiedCount() + " verified ('free' lists and frees)";
     }
 
     private void generateTerrain(String[] args) {

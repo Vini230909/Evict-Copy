@@ -111,13 +111,6 @@ public final class EvictSettings {
     private static final String CHAT_LOG_PORT_SUFFIX = ".channel";
 
     /**
-     * Whether the hub looks up every join's address for a VPN and writes the
-     * hits to the ban log. Log only - it decides nothing. Lands in worker
-     * folders with the rest of this file but is read by the hub alone.
-     */
-    private boolean vpnScanEnabled = true;
-
-    /**
      * Internal block ids players may not build (e.g. {@code router}). Stored as
      * names rather than {@code Block} objects so this class stays free of
      * Mindustry content; {@link EvictRules} resolves them at round start. Carried
@@ -247,11 +240,6 @@ public final class EvictSettings {
             }
 
             readChatLogSettings(properties);
-            vpnScanEnabled = readBoolean(
-                    properties,
-                    "moderation.vpnScan",
-                    vpnScanEnabled
-            );
 
             setBannedBlockNamesWithoutSaving(
                     splitBannedBlockNames(
@@ -391,20 +379,6 @@ public final class EvictSettings {
                 // A hand-edited key that is not a port; leave it alone.
             }
         }
-    }
-
-    /** True while the hub writes VPN joins to the ban log. */
-    public boolean vpnScanEnabled() {
-        return vpnScanEnabled;
-    }
-
-    public void setVpnScanEnabled(boolean enabled) {
-        if (vpnScanEnabled == enabled) {
-            return;
-        }
-
-        vpnScanEnabled = enabled;
-        save();
     }
 
     public void setWaterSettings(
@@ -845,10 +819,6 @@ public final class EvictSettings {
             );
         }
 
-        properties.setProperty(
-                "moderation.vpnScan",
-                Boolean.toString(vpnScanEnabled)
-        );
         properties.setProperty(
                 "rules.bannedBlocks",
                 String.join(",", bannedBlockNames)

@@ -6,8 +6,6 @@ import Extinction.core.util.PluginLog;
 import Extinction.discord.DiscordFormat;
 import Extinction.discord.DiscordJson;
 import Extinction.discord.DiscordWebhook;
-import Extinction.moderation.vpn.VpnScanHit;
-import Extinction.moderation.vpn.VpnVerdict;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -98,7 +96,7 @@ public final class BanLog {
     }
 
     // One VPN scan hit; same queue as the bans, so it never crowds one out of order.
-    public void logVpnHit(VpnScanHit hit) {
+    public void logVpnHit(VpnVerdict.Hit hit) {
         if (hit == null || !webhook.isConfigured()) {
             return;
         }

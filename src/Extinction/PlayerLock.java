@@ -2,7 +2,6 @@
 package Extinction;
 
 import Extinction.core.util.PluginLog;
-import Extinction.moderation.vpn.VpnVerdict;
 
 import arc.func.Cons;
 import arc.struct.Seq;

@@ -1,9 +1,6 @@
 // Hub only: at the door, a join is onboarded, locked, or held until its VPN verdict is in.
 package Extinction;
 
-import Extinction.moderation.vpn.VpnScan;
-import Extinction.moderation.vpn.VpnVerdict;
-
 import arc.util.Strings;
 import arc.util.Time;
 import mindustry.Vars;

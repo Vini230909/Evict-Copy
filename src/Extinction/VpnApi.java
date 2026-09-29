@@ -1,7 +1,9 @@
-package Extinction.moderation.vpn;
+// vpnapi.io, one of the VPN scan's two sources: GET https://vpnapi.io/api/<ip>?key=<key>.
+package Extinction;
+
+import Extinction.core.io.Secrets;
 
 import arc.util.serialization.Jval;
-import Extinction.core.io.Secrets;
 
 import java.net.URI;
 import java.net.URLEncoder;
@@ -13,19 +15,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
-/**
- * vpnapi.io: {@code GET https://vpnapi.io/api/<ip>?key=<key>}.
- *
- * <p>Answers with four flags - {@code vpn}, {@code proxy}, {@code tor} and
- * {@code relay} (Apple's iCloud Private Relay) - plus the network. Needs a
- * key, read from the secrets file and never logged; the request URL carries
- * it, so the URL is not logged either. Free tier: 1000 lookups a day.
- */
-public final class VpnApiClient implements IpLookupSource {
+// Flags vpn, proxy, tor and relay (Apple's iCloud Private Relay), plus the network. Needs the key from the secrets file,
+// never logged - the request URL carries it, so neither is the URL. Free tier: 1000 lookups a day.
+public final class VpnApi implements VpnSources.Source {
 
     private static final String ENDPOINT = "https://vpnapi.io/api/";
 
-    private final HttpClient client = LookupHttp.newClient("evict-vpnapi");
+    private final HttpClient client = VpnSources.newClient("evict-vpnapi");
 
     private volatile String key = "";
 
@@ -68,12 +64,12 @@ public final class VpnApiClient implements IpLookupSource {
     }
 
     @Override
-    public void lookup(String ip, Consumer<IpLookupResult> callback) {
+    public void lookup(String ip, Consumer<VpnSources.Result> callback) {
         String currentKey = key;
 
         if (currentKey.isEmpty()) {
-            LookupHttp.deliver(callback, IpLookupResult.failed(
-                    IpLookupResult.Failure.NOT_READY,
+            VpnSources.deliver(callback, VpnSources.Result.failed(
+                    VpnSources.Result.Failure.NOT_READY,
                     "no API key loaded"
             ));
             return;
@@ -87,13 +83,13 @@ public final class VpnApiClient implements IpLookupSource {
                             ENDPOINT + ip + "?key="
                                     + URLEncoder.encode(currentKey, StandardCharsets.UTF_8)
                     ))
-                    .timeout(LookupHttp.REQUEST_TIMEOUT)
+                    .timeout(VpnSources.REQUEST_TIMEOUT)
                     .header("Accept", "application/json")
                     .GET()
                     .build();
         } catch (Exception exception) {
-            LookupHttp.deliver(callback, IpLookupResult.failed(
-                    IpLookupResult.Failure.INVALID_ADDRESS,
+            VpnSources.deliver(callback, VpnSources.Result.failed(
+                    VpnSources.Result.Failure.INVALID_ADDRESS,
                     "not a usable address: " + ip
             ));
             return;
@@ -102,55 +98,52 @@ public final class VpnApiClient implements IpLookupSource {
         try {
             client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
                     .whenComplete((response, error) -> {
-                        IpLookupResult result = error != null
-                                ? IpLookupResult.failed(
-                                IpLookupResult.Failure.UNREACHABLE,
-                                LookupHttp.rootMessage(error)
+                        VpnSources.Result result = error != null
+                                ? VpnSources.Result.failed(
+                                VpnSources.Result.Failure.UNREACHABLE,
+                                VpnSources.rootMessage(error)
                         )
                                 : parse(response.statusCode(), response.body());
 
-                        LookupHttp.deliver(callback, result);
+                        VpnSources.deliver(callback, result);
                     });
         } catch (Exception exception) {
-            LookupHttp.deliver(callback, IpLookupResult.failed(
-                    IpLookupResult.Failure.UNREACHABLE,
-                    LookupHttp.rootMessage(exception)
+            VpnSources.deliver(callback, VpnSources.Result.failed(
+                    VpnSources.Result.Failure.UNREACHABLE,
+                    VpnSources.rootMessage(exception)
             ));
         }
     }
 
-    /**
-     * Turns one response into a result. Package-private and pure so the
-     * mapping can be read (and tried) without a network.
-     */
-    static IpLookupResult parse(int status, String body) {
+    // One response as a result; pure, so the mapping can be read and tried without a network.
+    static VpnSources.Result parse(int status, String body) {
         String text = body == null ? "" : body;
 
         if (status == 401 || status == 403) {
-            return IpLookupResult.failed(
-                    IpLookupResult.Failure.KEY_REJECTED,
-                    "HTTP " + status + " " + LookupHttp.serviceMessage(text)
+            return VpnSources.Result.failed(
+                    VpnSources.Result.Failure.KEY_REJECTED,
+                    "HTTP " + status + " " + VpnSources.serviceMessage(text)
             );
         }
 
         if (status == 429) {
-            return IpLookupResult.failed(
-                    IpLookupResult.Failure.QUOTA,
-                    "HTTP 429 " + LookupHttp.serviceMessage(text)
+            return VpnSources.Result.failed(
+                    VpnSources.Result.Failure.QUOTA,
+                    "HTTP 429 " + VpnSources.serviceMessage(text)
             );
         }
 
         if (status == 400 || status == 404 || status == 422) {
-            return IpLookupResult.failed(
-                    IpLookupResult.Failure.INVALID_ADDRESS,
-                    "HTTP " + status + " " + LookupHttp.serviceMessage(text)
+            return VpnSources.Result.failed(
+                    VpnSources.Result.Failure.INVALID_ADDRESS,
+                    "HTTP " + status + " " + VpnSources.serviceMessage(text)
             );
         }
 
         if (status < 200 || status >= 300) {
-            return IpLookupResult.failed(
-                    IpLookupResult.Failure.UNREACHABLE,
-                    "HTTP " + status + " " + LookupHttp.serviceMessage(text)
+            return VpnSources.Result.failed(
+                    VpnSources.Result.Failure.UNREACHABLE,
+                    "HTTP " + status + " " + VpnSources.serviceMessage(text)
             );
         }
 
@@ -159,21 +152,20 @@ public final class VpnApiClient implements IpLookupSource {
         try {
             root = Jval.read(text);
         } catch (Exception exception) {
-            return IpLookupResult.failed(IpLookupResult.Failure.UNREADABLE, "unreadable reply");
+            return VpnSources.Result.failed(VpnSources.Result.Failure.UNREADABLE, "unreadable reply");
         }
 
         if (root == null || !root.isObject()) {
-            return IpLookupResult.failed(IpLookupResult.Failure.UNREADABLE, "unreadable reply");
+            return VpnSources.Result.failed(VpnSources.Result.Failure.UNREADABLE, "unreadable reply");
         }
 
         Jval security = root.get("security");
 
         if (security == null || !security.isObject()) {
-            // A 200 without a verdict is how the service reports a private or
-            // reserved address: the body carries only a message.
+            // A 200 without a verdict is how the service reports a private or reserved address.
             String message = root.getString("message", "");
-            return IpLookupResult.failed(
-                    IpLookupResult.Failure.INVALID_ADDRESS,
+            return VpnSources.Result.failed(
+                    VpnSources.Result.Failure.INVALID_ADDRESS,
                     message == null || message.isEmpty() ? "no verdict in the reply" : message
             );
         }
@@ -189,11 +181,11 @@ public final class VpnApiClient implements IpLookupSource {
         Jval network = root.get("network");
         Jval location = root.get("location");
 
-        return IpLookupResult.of(new IpLookupResult.Answer(
+        return VpnSources.Result.of(new VpnSources.Result.Answer(
                 List.copyOf(flags),
-                LookupHttp.string(network, "autonomous_system_number"),
-                LookupHttp.string(network, "autonomous_system_organization"),
-                LookupHttp.string(location, "country_code")
+                VpnSources.string(network, "autonomous_system_number"),
+                VpnSources.string(network, "autonomous_system_organization"),
+                VpnSources.string(location, "country_code")
         ));
     }
 }

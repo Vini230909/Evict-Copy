@@ -1,15 +1,14 @@
-package Extinction.moderation.vpn;
+// The VPN scan: looks an address up at both sources, remembers the verdict for a day, and hands it to whoever asked.
+package Extinction;
 
-import Extinction.LockGate;
+import Extinction.core.io.Secrets;
+import Extinction.core.util.PluginLog;
+import Extinction.data.PlayerDataManager;
 
 import arc.util.Time;
 import mindustry.Vars;
 import mindustry.gen.Player;
 import mindustry.net.Administration;
-import Extinction.core.io.Secrets;
-import Extinction.core.util.PluginLog;
-import Extinction.data.PlayerDataManager;
-import Extinction.gen.EvictSettings;
 
 import java.io.File;
 import java.net.InetAddress;
@@ -25,79 +24,42 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
-/**
- * Looks up the address of every join and says, in the console and the ban
- * log, when it is a VPN, a proxy, a Tor exit or a data-centre range. Nothing
- * else - it is a measurement, not a rule.
- *
- * <p>The bans a player evades with a fresh account and a VPN are the one
- * pattern the ban cascade cannot see: the account is new and the address is
- * new, so nothing links them to the ban. Before anything is done about that,
- * this writes down for a week who actually arrives through a VPN - the
- * evaders, and every regular who simply likes their privacy - with the
- * account's age next to each verdict, so the rule that follows (lock the new
- * ones, let the known ones through) is drawn from what happened on this
- * server, not guessed. Until that rule exists this class blocks, kicks and
- * locks nobody, and says so on every line it writes.
- *
- * <p>Two sources, asked side by side ({@link IpLookupSource}): no single
- * database knows every VPN - the first address that slipped through was a
- * proxy in a hosting range that vpnapi.io lists as clean and ip-api.com
- * flags twice over. A hit is a hit from any source, and the line says which.
- *
- * <p>Hub only: everyone arrives at the hub first, and a match server's
- * unrostered joiner is a spectator anyway.
- *
- * <p>Cost control, because the services count requests: one lookup per
- * <em>address</em>, the combined verdict remembered for a day in a file; a
- * cap per source and per day, a per-minute cap where the service has one;
- * a pause when a service says its allowance is spent; a ceiling on lookups
- * in flight so a join flood cannot queue a hundred requests. Every one of
- * those fails open - a join that cannot be looked up is a join that is not
- * written down, never a join that is refused.
- *
- * <p>Every piece of state here belongs to the main thread: joins arrive on
- * it and every source hands its answer back on it.
- */
+// Hub only; it decides nothing - LockGate does. Cost control (one lookup per address, caps, pauses, a ceiling in flight)
+// all fails open: a join that cannot be looked up is let in. All state is main-thread only (see GAMEPLAY.md, VPN scan).
 public final class VpnScan {
 
     private static final String CACHE_FILE = "config/evict-vpn-cache.properties";
 
-    /** How long a verdict is trusted before the address is asked about again. */
+    // How long a verdict is trusted before the address is asked about again.
     private static final long CACHE_TTL_MILLIS = 24L * 60L * 60L * 1000L;
 
-    /** Lookups waiting for an answer (over all sources) before further joins are skipped. */
+    // Lookups waiting for an answer (over all sources) before further joins are skipped.
     private static final int MAX_IN_FLIGHT = 50;
 
-    /** Failures of the "service unreachable" kind are logged at most this often, per source. */
-    private static final long FAILURE_LOG_MILLIS = 60L * 1000L;
-
-    /** How long a hit waits for the account's database row before it is written without it. */
+    // How long a hit waits for the account's database row before it is written without it.
     private static final float PROFILE_WAIT_TICKS = 5f * 60f;
 
-    /** An address literal; a hostname would make {@link InetAddress} resolve it. */
+    // An address literal; a hostname would make InetAddress resolve it.
     private static final Pattern ADDRESS_LITERAL = Pattern.compile("^[0-9a-fA-F.:%]+$");
 
-    private final EvictSettings settings;
+    // Where a hit goes besides the console - the ban log.
+    private final Consumer<VpnVerdict.Hit> log;
 
-    /** Where a hit goes besides the console - the ban log. */
-    private final Consumer<VpnScanHit> log;
-
-    /** Where the console test's verdict goes - the same ban log, marked as a test. */
+    // Where the console test's verdict goes - the same ban log, marked as a test.
     private final Consumer<VpnVerdict> testLog;
 
-    /** Whether that log is wired, for the status line. */
+    // Whether that log is wired, for the status line.
     private final BooleanSupplier logConfigured;
 
-    /** The plugin database's row for an account, delivered on the main thread. */
+    // The plugin database's row for an account, delivered on the main thread.
     private final BiConsumer<String, Consumer<PlayerDataManager.PlayerInfo>> profiles;
 
-    private final VpnVerdictCache cache =
-            new VpnVerdictCache(new File(CACHE_FILE), CACHE_TTL_MILLIS);
+    private final VpnVerdict.Cache cache =
+            new VpnVerdict.Cache(new File(CACHE_FILE), CACHE_TTL_MILLIS);
 
-    /** Created in {@link #start}, so a worker never opens HTTP clients for it. */
-    private VpnApiClient vpnapi;
-    private final List<SourceState> sources = new ArrayList<>();
+    // Created in start(), so a worker never opens HTTP clients for it.
+    private VpnApi vpnapi;
+    private final List<VpnSources.State> sources = new ArrayList<>();
 
     private boolean started;
 
@@ -109,73 +71,22 @@ public final class VpnScan {
 
     private int inFlight;
 
-    /**
-     * Addresses with a lookup in flight, and who is waiting for it. The
-     * connection prefetch and the join that follows it ask about the same
-     * address seconds apart; the second asker joins the first request
-     * instead of spending another.
-     */
+    // Addresses with a lookup in flight, and who waits for it: the prefetch and the join share one request.
     private final Map<String, List<Consumer<VpnVerdict>>> waitingByIp = new LinkedHashMap<>();
 
-    /** One source's spending and health. Main thread only, like everything here. */
-    private static final class SourceState {
-
-        final IpLookupSource source;
-        int requestsToday;
-        int requestsThisMinute;
-        long minuteStartMillis;
-        long pausedUntilMillis;
-        boolean keyRejected;
-        String lastError = "";
-        long lastFailureLogMillis;
-
-        SourceState(IpLookupSource source) {
-            this.source = source;
-        }
-
-        /** True when a lookup may be sent now; counts it when it may. */
-        boolean take(long now) {
-            if (keyRejected || !source.ready() || now < pausedUntilMillis) {
-                return false;
-            }
-
-            if (requestsToday >= source.dailyCap()) {
-                return false;
-            }
-
-            if (source.minuteCap() > 0) {
-                if (now - minuteStartMillis >= 60_000L) {
-                    minuteStartMillis = now;
-                    requestsThisMinute = 0;
-                }
-
-                if (requestsThisMinute >= source.minuteCap()) {
-                    return false;
-                }
-
-                requestsThisMinute++;
-            }
-
-            requestsToday++;
-            return true;
-        }
-    }
-
     public VpnScan(
-            EvictSettings settings,
-            Consumer<VpnScanHit> log,
+            Consumer<VpnVerdict.Hit> log,
             Consumer<VpnVerdict> testLog,
             BooleanSupplier logConfigured,
             BiConsumer<String, Consumer<PlayerDataManager.PlayerInfo>> profiles
     ) {
-        this.settings = settings;
         this.log = log;
         this.testLog = testLog;
         this.logConfigured = logConfigured;
         this.profiles = profiles;
     }
 
-    /** Hub-only startup: reads the key and the remembered verdicts. */
+    // Hub-only startup: reads the key and the remembered verdicts.
     public void start() {
         if (started) {
             return;
@@ -186,7 +97,7 @@ public final class VpnScan {
         loadKey();
         cache.load();
 
-        if (!settings.vpnScanEnabled()) {
+        if (!Config.vpnScan) {
             PluginLog.info("VPN scan is off ('vpn on' starts it).");
             return;
         }
@@ -206,7 +117,7 @@ public final class VpnScan {
         );
     }
 
-    /** Re-reads the secrets file; true when a vpnapi key is now loaded. */
+    // Re-reads the secrets file; true when a vpnapi key is now loaded.
     public boolean reloadKey() {
         if (vpnapi == null) {
             openSources();
@@ -220,15 +131,9 @@ public final class VpnScan {
         return vpnapi != null && vpnapi.ready();
     }
 
-    /**
-     * A connection just opened: start the lookup now, while the client is
-     * still downloading the world, so the verdict is in the cache by the time
-     * the join event fires and the lock gate never has to hold anyone. Costs
-     * nothing extra - the join would have asked about the same address, and
-     * asks the same request instead.
-     */
+    // A connection just opened: start the lookup now, while the client downloads the world, so the gate never waits.
     public void prefetch(String ip) {
-        if (!started || !settings.vpnScanEnabled() || ip == null || ip.isBlank() || isLocal(ip)) {
+        if (!started || !Config.vpnScan || ip == null || ip.isBlank() || isLocal(ip)) {
             return;
         }
 
@@ -247,15 +152,8 @@ public final class VpnScan {
         });
     }
 
-    /**
-     * One join. Writes a hit down - and hands the verdict to {@code decision}
-     * when there is one to hand: the {@link LockGate} decides on it. The
-     * decision is called exactly once, with null when nothing could be
-     * learned (scan off, local address, no source to ask, every source
-     * failed), so a caller holding a player for the answer is never left
-     * holding. When the decision returns true it has written the join up
-     * itself (the lock's own line) and the scan's hit line is left out.
-     */
+    // One join: the decision (LockGate) gets the verdict exactly once - null when nothing could be learned - and
+    // returns true when it wrote the join up itself; otherwise a hit is written here.
     public void handlePlayerJoin(Player player, Function<VpnVerdict, Boolean> decision) {
         if (player == null) {
             return;
@@ -263,7 +161,7 @@ public final class VpnScan {
 
         String ip = player.con == null ? "" : player.con.address;
 
-        if (!started || !settings.vpnScanEnabled() || ip == null || ip.isBlank() || isLocal(ip)) {
+        if (!started || !Config.vpnScan || ip == null || ip.isBlank() || isLocal(ip)) {
             decide(decision, null);
             return;
         }
@@ -302,7 +200,7 @@ public final class VpnScan {
         }
     }
 
-    /** Runs the decision, if any; true when it took the join over. */
+    // Runs the decision, if any; true when it took the join over.
     private static boolean decide(Function<VpnVerdict, Boolean> decision, VpnVerdict verdict) {
         if (decision == null) {
             return false;
@@ -316,12 +214,8 @@ public final class VpnScan {
         }
     }
 
-    /**
-     * Console test: looks one address up right now at every source (it counts
-     * against the day), says what each one answered and what a join from it
-     * would do, and posts the verdict into the ban log marked as a test - so
-     * one command proves the keys and the channel both.
-     */
+    // Console test: one address at every source right now (it counts against the day), each answer printed, and the
+    // verdict posted into the ban log marked as a test - so one command proves the keys and the channel both.
     public void test(String ip, Consumer<String> out) {
         if (vpnapi == null) {
             openSources();
@@ -365,18 +259,18 @@ public final class VpnScan {
         }
     }
 
-    /** The console checklist. */
+    // The console checklist.
     public List<String> statusLines() {
         rollDay();
         List<String> lines = new ArrayList<>();
 
         lines.add(
-                "VPN scan: " + (settings.vpnScanEnabled()
+                "VPN scan: " + (Config.vpnScan
                         ? "on, log only - nothing is blocked, kicked or locked"
                         : "off ('vpn on' starts it)")
         );
 
-        for (SourceState state : sources) {
+        for (VpnSources.State state : sources) {
             StringBuilder line = new StringBuilder("  ")
                     .append(state.source.name()).append(": ");
 
@@ -429,14 +323,9 @@ public final class VpnScan {
         return lines;
     }
 
-    /**
-     * True when every source that can be asked today has had its say in this
-     * verdict. A verdict remembered from before a source existed - or from a
-     * day the vpnapi key was missing - is not worth trusting for another day
-     * when the missing source could answer now.
-     */
+    // True when every source that can be asked today had its say; a verdict missing one is not trusted for another day.
     private boolean complete(VpnVerdict verdict) {
-        for (SourceState state : sources) {
+        for (VpnSources.State state : sources) {
             if (
                     state.source.ready()
                             && !state.keyRejected
@@ -450,17 +339,17 @@ public final class VpnScan {
     }
 
     private void openSources() {
-        vpnapi = new VpnApiClient();
+        vpnapi = new VpnApi();
         sources.clear();
-        sources.add(new SourceState(vpnapi));
-        sources.add(new SourceState(new IpApiClient()));
+        sources.add(new VpnSources.State(vpnapi));
+        sources.add(new VpnSources.State(new IpApi()));
     }
 
     private void loadKey() {
         Secrets.reload();
         vpnapi.setKey(Secrets.get(Secrets.VPNAPI_KEY));
 
-        for (SourceState state : sources) {
+        for (VpnSources.State state : sources) {
             state.keyRejected = false;
         }
     }
@@ -468,7 +357,7 @@ public final class VpnScan {
     private String sourceNames() {
         List<String> names = new ArrayList<>(sources.size());
 
-        for (SourceState state : sources) {
+        for (VpnSources.State state : sources) {
             if (state.source.ready()) {
                 names.add(state.source.name());
             }
@@ -477,18 +366,13 @@ public final class VpnScan {
         return String.join(" + ", names);
     }
 
-    /**
-     * Asks every source that can be asked and hands the combined verdict to
-     * {@code done} once the last answer is in - null when no source answered.
-     * Returns false, without calling {@code done}, when no source could be
-     * asked at all.
-     */
+    // Asks every source that can be asked; done gets the combined verdict - null when none answered. False, without
+    // calling done, when no source could be asked at all.
     private boolean lookup(String ip, Consumer<VpnVerdict> done) {
         List<Consumer<VpnVerdict>> waiting = waitingByIp.get(ip);
 
         if (waiting != null) {
-            // Already being asked about - the prefetch, or another join from
-            // the same address a moment ago. One request, every asker told.
+            // Already being asked about - the prefetch, or another join a moment ago. One request, every asker told.
             waiting.add(done);
             return true;
         }
@@ -499,9 +383,9 @@ public final class VpnScan {
             return false;
         }
 
-        List<SourceState> asked = new ArrayList<>(sources.size());
+        List<VpnSources.State> asked = new ArrayList<>(sources.size());
 
-        for (SourceState state : sources) {
+        for (VpnSources.State state : sources) {
             if (state.take(now)) {
                 asked.add(state);
             }
@@ -515,11 +399,11 @@ public final class VpnScan {
         askers.add(done);
         waitingByIp.put(ip, askers);
 
-        Map<String, IpLookupResult> answers = new LinkedHashMap<>();
+        Map<String, VpnSources.Result> answers = new LinkedHashMap<>();
         int[] pending = {asked.size()};
         inFlight += asked.size();
 
-        for (SourceState state : asked) {
+        for (VpnSources.State state : asked) {
             state.source.lookup(ip, result -> {
                 inFlight--;
                 rollDay();
@@ -528,12 +412,12 @@ public final class VpnScan {
                 if (result.ok()) {
                     state.lastError = "";
                 } else {
-                    noteFailure(state, ip, result);
+                    VpnSources.noteFailure(state, ip, result);
                 }
 
                 if (--pending[0] == 0) {
                     waitingByIp.remove(ip);
-                    VpnVerdict verdict = combine(ip, answers);
+                    VpnVerdict verdict = VpnSources.combine(ip, answers);
 
                     for (Consumer<VpnVerdict> asker : askers) {
                         try {
@@ -549,55 +433,8 @@ public final class VpnScan {
         return true;
     }
 
-    /** The verdict from whatever answered; null when nothing did. */
-    private static VpnVerdict combine(String ip, Map<String, IpLookupResult> answers) {
-        Map<String, List<String>> flags = new LinkedHashMap<>();
-        String asn = "";
-        String organisation = "";
-        String countryCode = "";
-
-        for (Map.Entry<String, IpLookupResult> entry : answers.entrySet()) {
-            IpLookupResult result = entry.getValue();
-
-            if (!result.ok()) {
-                continue;
-            }
-
-            flags.put(entry.getKey(), result.answer().flags());
-
-            if (asn.isEmpty()) {
-                asn = result.answer().asn();
-            }
-
-            if (organisation.isEmpty()) {
-                organisation = result.answer().organisation();
-            }
-
-            if (countryCode.isEmpty()) {
-                countryCode = result.answer().countryCode();
-            }
-        }
-
-        if (flags.isEmpty()) {
-            return null;
-        }
-
-        return new VpnVerdict(
-                ip,
-                flags,
-                asn,
-                organisation,
-                countryCode,
-                System.currentTimeMillis()
-        );
-    }
-
-    /**
-     * Writes a flagged join down. Every join, also the tenth of the same
-     * account from the same address: the server sees a couple of hundred joins
-     * a day at most, and a player who keeps reconnecting is itself something
-     * worth seeing.
-     */
+    // Writes a flagged join down - every one, also the tenth of the same account: a player who keeps reconnecting is
+    // itself worth seeing.
     private void report(
             String name,
             String uuid,
@@ -614,9 +451,7 @@ public final class VpnScan {
 
         int joins = timesJoined(uuid);
 
-        // Written exactly once: by the database's answer, or by the fallback
-        // below if that answer never comes. The line matters more than the
-        // account's age on it.
+        // Written exactly once: by the database's answer, or by the fallback if it never comes.
         boolean[] written = new boolean[1];
 
         Consumer<PlayerDataManager.PlayerInfo> write = profile -> {
@@ -626,7 +461,7 @@ public final class VpnScan {
 
             written[0] = true;
 
-            VpnScanHit hit = new VpnScanHit(
+            VpnVerdict.Hit hit = new VpnVerdict.Hit(
                     name,
                     uuid,
                     ip,
@@ -654,54 +489,6 @@ public final class VpnScan {
         }
     }
 
-    private static void noteFailure(SourceState state, String ip, IpLookupResult result) {
-        state.lastError = result.message();
-        long now = System.currentTimeMillis();
-        String source = state.source.name();
-
-        switch (result.failure()) {
-            case QUOTA -> {
-                state.pausedUntilMillis = now + state.source.quotaPauseMillis();
-                PluginLog.warn(
-                        "VPN scan: @ says its allowance is spent (@). Not asking it for @ s.",
-                        source,
-                        result.message(),
-                        state.source.quotaPauseMillis() / 1000L
-                );
-            }
-            case KEY_REJECTED -> {
-                state.keyRejected = true;
-                PluginLog.err(
-                        "VPN scan: @ rejected the API key (@). Not asking it until a working @ is in @ and 'vpn reload' ran.",
-                        source,
-                        result.message(),
-                        Secrets.VPNAPI_KEY,
-                        Secrets.path()
-                );
-            }
-            case INVALID_ADDRESS -> PluginLog.warn(
-                    "VPN scan: @ could not look up @: @",
-                    source,
-                    ip,
-                    result.message()
-            );
-            case NOT_READY -> {
-                // Asked while not ready cannot happen through take(); quiet.
-            }
-            default -> {
-                // A service outage would otherwise write a warning per join.
-                if (now - state.lastFailureLogMillis >= FAILURE_LOG_MILLIS) {
-                    state.lastFailureLogMillis = now;
-                    PluginLog.warn(
-                            "VPN scan: @ lookup failed (@). Its answers are missing while it keeps failing.",
-                            source,
-                            result.message()
-                    );
-                }
-            }
-        }
-    }
-
     private static int timesJoined(String uuid) {
         if (Vars.netServer == null) {
             return 0;
@@ -724,16 +511,12 @@ public final class VpnScan {
         cleanToday = 0;
         skippedToday = 0;
 
-        for (SourceState state : sources) {
+        for (VpnSources.State state : sources) {
             state.requestsToday = 0;
         }
     }
 
-    /**
-     * Loopback, LAN and link-local addresses: no service can say anything
-     * about them and a request would be wasted. Anything that is not an
-     * address literal is treated the same way rather than resolved.
-     */
+    // Loopback, LAN and link-local addresses - no service knows them - and anything not an address literal.
     static boolean isLocal(String ip) {
         if (!ADDRESS_LITERAL.matcher(ip).matches()) {
             return true;

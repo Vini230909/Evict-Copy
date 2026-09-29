@@ -18,6 +18,9 @@ public final class Config {
     // Whether the banned-word filter bans automatically. Copied into every worker.
     public static boolean wordFilter = true;
 
+    // Whether the hub's VPN scan looks addresses up at all ('vpn on/off'). Read by the hub alone.
+    public static boolean vpnScan = true;
+
     // Whether an account's first join through a VPN is locked until an admin frees it. Decided on the hub alone.
     public static boolean vpnLock = true;
 
@@ -65,6 +68,7 @@ public final class Config {
         Properties file = PropertiesFile.load(FILE);
 
         wordFilter = PropertiesFile.getBool(file, "moderation.wordFilter", wordFilter);
+        vpnScan = PropertiesFile.getBool(file, "moderation.vpnScan", vpnScan);
         vpnLock = PropertiesFile.getBool(file, "moderation.vpnLock", vpnLock);
         banAppealUrl = PropertiesFile.getString(file, "moderation.banAppealUrl", banAppealUrl).trim();
         banBackfillDone = PropertiesFile.getBool(file, "moderation.banBackfillDone", banBackfillDone);
@@ -109,6 +113,7 @@ public final class Config {
         Properties file = PropertiesFile.load(FILE);
 
         file.setProperty("moderation.wordFilter", Boolean.toString(wordFilter));
+        file.setProperty("moderation.vpnScan", Boolean.toString(vpnScan));
         file.setProperty("moderation.vpnLock", Boolean.toString(vpnLock));
         file.setProperty("moderation.banAppealUrl", banAppealUrl);
         file.setProperty("moderation.banBackfillDone", Boolean.toString(banBackfillDone));

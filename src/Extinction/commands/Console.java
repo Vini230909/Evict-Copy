@@ -12,6 +12,7 @@ import Extinction.PlayerLock;
 import Extinction.PlayerStats;
 import Extinction.Restart;
 import Extinction.RoundTime;
+import Extinction.VpnScan;
 import Extinction.WordFilter;
 import Extinction.core.cmd.Commands;
 import Extinction.core.io.Secrets;
@@ -29,7 +30,7 @@ public final class Console {
     private Console() {
     }
 
-    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime, PlayerStats playerStats, Restart restart, BanLog banLog, DiscordStatus discordStatus, PlayerLock lock, Bans bans, PlayerDataManager playerDataManager, DiscordModeration discord) {
+    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime, PlayerStats playerStats, Restart restart, BanLog banLog, DiscordStatus discordStatus, PlayerLock lock, Bans bans, PlayerDataManager playerDataManager, DiscordModeration discord, VpnScan scan) {
         Commands commands = new Commands();
 
         commands.command("matchstatus").console()
@@ -296,6 +297,77 @@ public final class Console {
                     });
                 });
 
+        // The whole checklist, because "is it working" has four answers; 'test' spends one lookup to prove the key.
+        // scan is null on a duel worker: the hub looks the addresses up.
+        commands.command("vpn").console()
+                .args("action:string?", "value:string?")
+                .description("VPN scan: status, on/off, lock on/off, reload the key, test <ip>.")
+                .run(ctx -> {
+                    String action = ctx.str("action", "").trim();
+                    String ip = ctx.str("value", "").trim();
+
+                    if (scan == null) {
+                        PluginLog.err("The VPN scan runs on the hub only.");
+                        return;
+                    }
+
+                    switch (action.toLowerCase()) {
+                        case "" -> {
+                            for (String line : scan.statusLines()) {
+                                PluginLog.info("@", line);
+                            }
+
+                            PluginLog.info("@", lockStatusLine(lock));
+                        }
+                        case "lock" -> {
+                            switch (ip.toLowerCase()) {
+                                case "on" -> {
+                                    Config.vpnLock = true;
+                                    Config.save();
+                                    PluginLog.info("Lock on: an account's first join through a VPN, proxy or hosting range is held on the Fallen team until an admin frees it ('free', /free, Discord /free).");
+                                }
+                                case "off" -> {
+                                    Config.vpnLock = false;
+                                    Config.save();
+                                    PluginLog.info("Lock off: new accounts are not looked up or locked. Accounts already locked stay locked until freed.");
+                                }
+                                default -> PluginLog.info("@ Usage: vpn lock on/off", lockStatusLine(lock));
+                            }
+                        }
+                        case "on" -> {
+                            Config.vpnScan = true;
+                            Config.save();
+
+                            if (scan.hasKey()) {
+                                PluginLog.info("VPN scan on, log only (vpnapi + ip-api): a join through a VPN, proxy or hosting range is written to the console and the ban log. Nothing is blocked.");
+                            } else {
+                                PluginLog.info("VPN scan on, log only, with ip-api only - add @=... to @ and run 'vpn reload' for vpnapi.io as the second opinion. Nothing is blocked.", Secrets.VPNAPI_KEY, Secrets.path());
+                            }
+                        }
+                        case "off" -> {
+                            Config.vpnScan = false;
+                            Config.save();
+                            PluginLog.info("VPN scan off. Joins are not looked up until it is switched back on.");
+                        }
+                        case "reload" -> {
+                            if (scan.reloadKey()) {
+                                PluginLog.info("VPN scan: API key loaded from @. 'vpn test <ip>' proves it.", Secrets.path());
+                            } else {
+                                PluginLog.warn("VPN scan: @ is still not set in @ - scanning with ip-api only.", Secrets.VPNAPI_KEY, Secrets.path());
+                            }
+                        }
+                        case "test" -> {
+                            if (ip.isBlank()) {
+                                PluginLog.err("Give an address to try: vpn test <ip>");
+                                return;
+                            }
+
+                            scan.test(ip, line -> PluginLog.info("VPN scan test - @", line));
+                        }
+                        default -> PluginLog.err("Usage: vpn [on/off/lock on/off/reload/test <ip>]");
+                    }
+                });
+
         // lock is null on a duel worker: the hub owns the lock list.
         commands.command("free").console()
                 .args("target:text?")
@@ -364,6 +436,19 @@ public final class Console {
                 });
 
         commands.installConsole(handler);
+    }
+
+    // The lock's line under the VPN checklist: on or off, and how many accounts are locked and verified.
+    private static String lockStatusLine(PlayerLock lock) {
+        if (lock == null) {
+            return "  Lock: decided on the hub.";
+        }
+
+        return "  Lock: " + (Config.vpnLock
+                ? "on - a first join through a VPN is held for an admin"
+                : "off - new accounts are not looked up")
+                + "; " + lock.lockedCount() + " locked, "
+                + lock.verifiedCount() + " verified ('free' lists and frees)";
     }
 
     // Setup and role changes answer asynchronously; print what they found.
