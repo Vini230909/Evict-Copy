@@ -1,4 +1,4 @@
-// /ban and the player list's ban button: an admin picks a player and types the reason; nothing happens without one.
+// /ban and the player list's ban button: hold the target while an admin types a reason.
 package Extinction;
 
 import Extinction.data.PlayerDataManager;
@@ -21,6 +21,8 @@ import java.util.function.Consumer;
 // Only hands the account over: the hub's Bans widens, kicks, syncs, announces and logs it; a match server bans
 // locally and forwards it (WorkerBans), because a ban that stayed on the worker is lifted by the next sync.
 public final class BanMenu {
+
+    public final BanFreeze freeze = new BanFreeze();
 
     private static final int PICKER_MENU_COLUMNS = 2;
 
@@ -99,6 +101,7 @@ public final class BanMenu {
         if (player != null) {
             pickerTargetsByAdminUuid.remove(player.uuid());
             reasonTargetByAdminUuid.remove(player.uuid());
+            freeze.close(player.uuid());
         }
     }
 
@@ -239,12 +242,14 @@ public final class BanMenu {
 
     // The reason pop-up is the confirmation too: cancelled, nobody is banned; empty, it asks again.
     private void askReason(Player admin, Target target, String warning) {
+        if (!admin.admin || admin.con == null || admin.con.kicked || !admin.isAdded()) return;
         if (target.uuid().equals(admin.uuid())) {
             admin.sendMessage("[scarlet]You cannot ban yourself.[]");
             return;
         }
 
         reasonTargetByAdminUuid.put(admin.uuid(), target);
+        if (warning.isEmpty()) freeze.begin(admin.uuid(), target.uuid());
 
         Call.textInput(
                 admin.con,
@@ -272,6 +277,7 @@ public final class BanMenu {
         }
 
         if (text == null) {
+            freeze.close(admin.uuid());
             admin.sendMessage("[lightgray]Ban cancelled - " + target.name() + "[lightgray] was not banned.[]");
             return;
         }
@@ -282,6 +288,8 @@ public final class BanMenu {
             askReason(admin, target, "[scarlet]A ban needs a reason.[]\n\n");
             return;
         }
+
+        freeze.close(admin.uuid());
 
         // Re-checked now: the flag may have been revoked while the pop-up sat open.
         if (!admin.admin || Vars.netServer == null) {

@@ -20,6 +20,11 @@ public final class ChatLogCapture {
     private final Set<String> joinedUuids = new HashSet<>();
 
     private boolean filterInstalled;
+    private java.util.function.Predicate<Player> suppressed = player -> false;
+
+    public void suppress(java.util.function.Predicate<Player> predicate) {
+        suppressed = predicate;
+    }
 
     public ChatLogCapture(Consumer<String> sink) {
         this.sink = sink;
@@ -43,7 +48,7 @@ public final class ChatLogCapture {
         // chain; clearing it here keeps it from swallowing this message.
         skipNextFilterUuids.remove(player.uuid());
 
-        if (isRegisteredCommand(message)) {
+        if (!suppressed.test(player) && isRegisteredCommand(message)) {
             skipNextFilterUuids.add(player.uuid());
             emit(name(player) + ": " + DiscordFormat.playerText(message));
         }

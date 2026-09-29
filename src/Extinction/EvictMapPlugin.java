@@ -523,6 +523,7 @@ public class EvictMapPlugin extends Plugin {
             // Both roles: a worker follows the hub's lock list, and locked
             // players are kept slow.
             playerLock.update();
+            banMenu.freeze.update();
 
             attrition.update();
             fullAssault.update();
@@ -557,7 +558,7 @@ public class EvictMapPlugin extends Plugin {
         Events.on(PlayerLeave.class, e -> chatLogCapture.handleLeave(e.player));
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.23. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.24. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
@@ -607,10 +608,9 @@ public class EvictMapPlugin extends Plugin {
 
         playerDataManager.start();
 
-        // First of all filters: the mirror is a staff channel and shows even
-        // what the word filter then drops - the announcement of the resulting
-        // ban follows right after it. Logging only, so the word filter's drop
-        // and the ranked spectator routing behave exactly as before.
+        // Freeze first; the mirror still sees ordinary word-filter hits.
+        banMenu.freeze.install();
+        chatLogCapture.suppress(banMenu.freeze::frozen);
         chatLogCapture.installChatFilter();
 
         // Before every remaining chat filter, so a hit is dropped rather than
