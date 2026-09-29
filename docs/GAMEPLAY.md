@@ -25,6 +25,7 @@ The canonical description of how the game behaves. Moved here from `CLAUDE.md` u
 - Both attrition settings persist across restarts.
 
 ## Player data (`config/evict-players.db`)
+`MatchHistory` owns the history schema, reader and one-time stats recount (move-only, 1.15.25); it uses the same player-data queue and connections.
 - Async writes on one background thread; profiles keyed by UUID; no IP addresses stored (the ban system reads Mindustry's admin store instead, which already keeps every IP per UUID). IP lookup for bans doesn't need them: console `playerinfo` resolves name/UUID via the plugin DB and prints last + all known IPs from Mindustry's built-in admin store (which already tracks every IP per UUID) — feed those to `ban ip`.
 - Stored: last name, first/last seen, one total playtime, normal + ranked match counters, ELO/peak ELO; all observed names per UUID in `player_names`. Match stats exist only for normal and ranked matches — the main-lobby FFA round has no stats (legacy `ffa_*` / `ranked_playtime_ms` columns in old databases are ignored).
 - Ranked wins/losses/played, ELO and peak ELO update only after a **Ranked** match (casual 1v1 never touches them); match rows store both players' before/after ELO.
