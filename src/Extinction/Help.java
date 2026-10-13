@@ -27,6 +27,7 @@ public final class Help {
             "invite",
             "die",
             "over",
+            "restart",
             "time",
             "play",
             "spectate",
@@ -45,6 +46,11 @@ public final class Help {
             "help",
             "votekick",
             "vote"
+    );
+
+    // Listed without their arguments: /restart's only arguments are admin words.
+    static final Set<String> UNLISTED_ARGS = Set.of(
+            "restart"
     );
 
     // One rendered row: a real command plus the alias names folded into it.
@@ -148,7 +154,7 @@ public final class Help {
         }
 
         result.append("[white] ")
-                .append(command.paramText)
+                .append(UNLISTED_ARGS.contains(command.text) ? "" : command.paramText)
                 .append("[lightgray] - ")
                 .append(command.description)
                 .append("\n");

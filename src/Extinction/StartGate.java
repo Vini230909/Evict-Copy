@@ -68,6 +68,13 @@ public final class StartGate {
         referee.hideHud();
     }
 
+    // A Training /restart's new world: the same camera settle, 5 s countdown and GO as the first start.
+    public void restart() {
+        matchStarted = false;
+        countdownStarted = false;
+        settleCamerasThenFreeze();
+    }
+
     // A duelist arrived: let the world settle their camera before the freeze.
     public void participantJoined() {
         settleCamerasThenFreeze();

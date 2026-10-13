@@ -85,6 +85,7 @@ public class EvictMapPlugin extends Plugin {
     private final RoundEnd roundEnd = new RoundEnd(teamManager, duelWorkerReferee);
 
     private final RoundTime roundTime = new RoundTime(teamManager);
+    private final TrainingRestart trainingRestart = new TrainingRestart(runtime, teamManager, duelWorkerReferee);
 
     /**
      * Hub-only Discord chat mirror (one channel for the hub, one per worker
@@ -556,7 +557,7 @@ public class EvictMapPlugin extends Plugin {
         Events.on(PlayerLeave.class, e -> chatLogCapture.handleLeave(e.player));
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.26. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.27. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
@@ -727,7 +728,7 @@ public class EvictMapPlugin extends Plugin {
         // No locked account in any /play picker (an invite is a
         // menu, which the lock's command gate cannot refuse).
         matchmaking.excludeFromPickers(player -> playerLock.isLocked(player.uuid()));
-        Extinction.commands.Player.register(handler, matchmaking, spectateMenu, duelWorkerReferee, roundEnd, roundTime, history, playerStats, leaderboard, fullAssault, inviteManager);
+        Extinction.commands.Player.register(handler, matchmaking, spectateMenu, duelWorkerReferee, roundEnd, roundTime, history, playerStats, leaderboard, fullAssault, inviteManager, trainingRestart);
 
         // On a duel worker, replace vanilla /t so a ranked match can invert it
         // for casting admins. The hub keeps vanilla /t untouched. Registering

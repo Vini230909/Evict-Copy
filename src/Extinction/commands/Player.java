@@ -12,6 +12,7 @@ import Extinction.Referee;
 import Extinction.RoundEnd;
 import Extinction.RoundTime;
 import Extinction.SpectateMenu;
+import Extinction.TrainingRestart;
 import Extinction.core.cmd.Commands;
 import Extinction.round.InviteManager;
 
@@ -33,7 +34,8 @@ public final class Player {
             PlayerStats playerStats,
             Leaderboard leaderboard,
             FullAssault fullAssault,
-            InviteManager invites
+            InviteManager invites,
+            TrainingRestart trainingRestart
     ) {
         Commands commands = new Commands();
 
@@ -64,6 +66,17 @@ public final class Player {
         commands.command("over").client()
                 .description("End an eligible round immediately.")
                 .run(ctx -> roundEnd.endEarly(ctx.sender()));
+
+        // The admin words after it are gated in TrainingRestart and kept out of /help (Help.UNLISTED_ARGS).
+        commands.command("restart").client()
+                .args("option:string?")
+                .description("Training only: start over on a new world.")
+                .run(ctx -> trainingRestart.handle(ctx.sender(), ctx.str("option", "")));
+
+        commands.command("r").client()
+                .args("option:string?")
+                .description("Alias for /restart.")
+                .run(ctx -> trainingRestart.handle(ctx.sender(), ctx.str("option", "")));
 
         commands.command("time").client()
                 .description("Show round time and your time since first joining this round.")

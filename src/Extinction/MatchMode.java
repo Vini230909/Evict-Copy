@@ -21,8 +21,8 @@ public enum MatchMode {
     // Everyone on their own team; start hexes packed closer so a full lobby fits one worker.
     FFA("ffa", "FFA", Rule.RESTORES_FALLEN_CORES, Rule.REDUCED_START_DISTANCE, Rule.ELIMINATES_WIPED_TEAMS),
 
-    // Solo practice: gated start, ends only with /die or leaving, nothing in /history.
-    TRAINING("training", "Training", Rule.SOLO),
+    // Solo practice: gated start, ends only with /die or leaving, nothing in /history; /restart starts a new world.
+    TRAINING("training", "Training", Rule.SOLO, Rule.RESTARTABLE),
 
     // Training with infinite resources and no gate: a persistent room spectators may /invite into.
     SANDBOX("sandbox", "Sandbox", Rule.UNGATED, Rule.SOLO, Rule.INFINITE_RESOURCES, Rule.ALLOWS_SPECTATOR_INVITES, Rule.NO_BLOCK_BANS),
@@ -36,7 +36,7 @@ public enum MatchMode {
     // What a mode may switch on; everything defaults to the plain competitive answer.
     private enum Rule {
         UNGATED, SOLO, RANKED, INFINITE_RESOURCES, RESTORES_FALLEN_CORES, REDUCED_START_DISTANCE,
-        ALLOWS_SPECTATOR_INVITES, ELIMINATES_WIPED_TEAMS, RESTRICTS_SPECTATOR_CHAT, NO_BLOCK_BANS, PURE
+        ALLOWS_SPECTATOR_INVITES, ELIMINATES_WIPED_TEAMS, RESTRICTS_SPECTATOR_CHAT, NO_BLOCK_BANS, PURE, RESTARTABLE
     }
 
     // The wire format shared between hub and worker (duel.properties / result.properties): stable.
@@ -107,6 +107,11 @@ public enum MatchMode {
     // Vanilla PvP on a chosen .msav instead of the generated hex map; never recorded.
     public boolean pure() {
         return rules.contains(Rule.PURE);
+    }
+
+    // The player may throw the world away for a fresh one with /restart (TrainingRestart).
+    public boolean restartable() {
+        return rules.contains(Rule.RESTARTABLE);
     }
 
     // Pure modes: how many core teams the map must have; 0 = any (Training).
