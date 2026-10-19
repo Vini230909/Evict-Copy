@@ -8,12 +8,14 @@ import Extinction.DiscordModeration;
 import Extinction.DiscordStatus;
 import Extinction.LockList;
 import Extinction.Matches;
+import Extinction.Mutes;
 import Extinction.PlayerLock;
 import Extinction.PlayerStats;
 import Extinction.Restart;
 import Extinction.RoundTime;
 import Extinction.VpnScan;
 import Extinction.WordFilter;
+import Extinction.Warnings;
 import Extinction.core.cmd.Commands;
 import Extinction.core.io.Secrets;
 import Extinction.core.util.PluginLog;
@@ -30,7 +32,7 @@ public final class Console {
     private Console() {
     }
 
-    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime, PlayerStats playerStats, Restart restart, BanLog banLog, DiscordStatus discordStatus, PlayerLock lock, Bans bans, PlayerDataManager playerDataManager, DiscordModeration discord, VpnScan scan) {
+    public static void register(CommandHandler handler, Matches matches, RoundTime roundTime, PlayerStats playerStats, Restart restart, BanLog banLog, DiscordStatus discordStatus, PlayerLock lock, Bans bans, PlayerDataManager playerDataManager, DiscordModeration discord, VpnScan scan, Mutes mutes, Warnings warnings) {
         Commands commands = new Commands();
 
         commands.command("matchstatus").console()
@@ -189,7 +191,7 @@ public final class Console {
         // Never takes the bot token: typed here it would sit in the server log for good. discord is null on a worker.
         commands.command("discordcommands").console()
                 .args("action:string?", "value:text?")
-                .description("Discord /ban and /unban: setup, role <name>, reload, off.")
+                .description("Discord /ban, /unban, /free, /mute and /unmute: setup, role <name>, reload, off.")
                 .run(ctx -> {
                     String action = ctx.str("action", "").trim();
                     String value = ctx.str("value", "").trim();
@@ -201,7 +203,7 @@ public final class Console {
 
                     switch (action.toLowerCase()) {
                         case "" -> {
-                            PluginLog.info("Discord /ban and /unban:");
+                            PluginLog.info("Discord /ban, /unban, /free, /mute and /unmute:");
 
                             for (String line : discord.statusLines()) {
                                 PluginLog.info("  @", line);
@@ -224,7 +226,7 @@ public final class Console {
                         }
                         case "off" -> {
                             discord.disable();
-                            PluginLog.info("Discord /ban and /unban are off. The commands stay visible in Discord until Discord drops them; this server simply refuses them.");
+                            PluginLog.info("Discord /ban, /unban, /free, /mute and /unmute are off. The commands stay visible in Discord until Discord drops them; this server simply refuses them.");
                         }
                         case "reload" -> {
                             if (discord.reload()) {
@@ -422,6 +424,21 @@ public final class Console {
                         PluginLog.err("@", result.line());
                     }
                 });
+
+        commands.command("mute").console()
+                .args("target:text")
+                .description("Mute a player by name or UUID.")
+                .run(ctx -> mutes.consoleMute(ctx.str("target", "").trim()));
+
+        commands.command("unmute").console()
+                .args("target:text")
+                .description("Unmute a player by name or UUID.")
+                .run(ctx -> mutes.consoleUnmute(ctx.str("target", "").trim()));
+
+        commands.command("warn").console()
+                .args("target:text")
+                .description("Warn a player by name or UUID with the console's standard reason.")
+                .run(ctx -> warnings.consoleWarn(ctx.str("target", "").trim()));
 
         commands.command("restart").console()
                 .args("action:string?")

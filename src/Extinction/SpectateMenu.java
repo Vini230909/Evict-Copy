@@ -98,7 +98,7 @@ public final class SpectateMenu {
 
         viewTargetsByViewerUuid.put(player.uuid(), targetPorts);
 
-        Call.menu(
+        Extinction.Dialogs.menu(
                 player.con,
                 viewMenuId,
                 "[accent]Spectate",
@@ -135,7 +135,7 @@ public final class SpectateMenu {
         rows.add(new String[]{"[red]Cancel"});
         viewTargetsByViewerUuid.put(player.uuid(), targetPorts);
 
-        Call.menu(
+        Extinction.Dialogs.menu(
                 player.con,
                 viewMenuId,
                 "[accent]Spectate a match",

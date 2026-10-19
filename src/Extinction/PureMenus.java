@@ -56,7 +56,7 @@ public final class PureMenus {
 
     void openModeMenu(Player player, boolean nerf) {
         nerfByUuid.put(player.uuid(), nerf);
-        Call.menu(
+        Extinction.Dialogs.menu(
                 player.con,
                 modeMenuId,
                 "[accent]Pure" + Matchmaking.nerfTitle(nerf),
@@ -113,7 +113,7 @@ public final class PureMenus {
             cancelled.run();
         }
 
-        Call.menu(
+        Extinction.Dialogs.menu(
                 player.con,
                 mapMenuId,
                 "[accent]" + mode.label() + Matchmaking.nerfTitle(nerf),

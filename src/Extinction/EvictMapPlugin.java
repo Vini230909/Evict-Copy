@@ -29,33 +29,16 @@ import Extinction.core.util.PluginLog;
 
 import java.util.HashMap;
 
-/**
- * Plugin composition root.
- * This class intentionally contains only lifecycle wiring. Game systems live
- * in focused classes such as EvictTerrainGenerator, CaptureManager,
- * TeamManager and the command registrars.
- */
+// Plugin lifecycle and direct event wiring.
 public class EvictMapPlugin extends Plugin {
 
     private static final float CONNECTED_PLAYER_SCAN_INITIAL_DELAY_TICKS = 1f;
     private static final float CONNECTED_PLAYER_SCAN_INTERVAL_TICKS = 15f;
     private static final int CONNECTED_PLAYER_SCAN_ATTEMPTS = 120;
-    /**
-     * How often the worker status files are polled. Named for the advertised
-     * player count it was written for, but that poll is now what carries every
-     * worker's chat, playtime and ban requests to the hub. The reads sit on a
-     * background thread and cover at most ten small files.
-     */
+    // Worker chat, playtime and ban requests share this background status poll.
     private static final long ADVERTISED_COUNT_REFRESH_MILLIS = 1000L;
 
-    /**
-     * When launched with -Devict.duelWorker=true this process is a spawned 1v1
-     * worker. It runs Evict normally but shuts itself down once the match is
-     * empty so the hub can free the slot.
-     *
-     * <p>Declared first: several managers below are wired differently on a
-     * worker, and a field initialiser can only read fields declared above it.
-     */
+    // Declared first because the systems below depend on the hub/worker role.
     private final boolean duelWorker =
             "true".equals(System.getProperty("evict.duelWorker"));
 
@@ -119,7 +102,6 @@ public class EvictMapPlugin extends Plugin {
     private final SpectateMenu spectateMenu = new SpectateMenu(matches, duelWorkerReferee);
 
     private final History history = new History(playerDataManager);
-    private final PlayerStats playerStats = new PlayerStats(playerDataManager);
     private final Leaderboard leaderboard = new Leaderboard(playerDataManager);
 
     /**
@@ -140,6 +122,10 @@ public class EvictMapPlugin extends Plugin {
 
     // Hub-only ban log; constructed on a worker too, but only the hub starts it.
     private final BanLog banLog = new BanLog();
+
+    private final Mutes mutes = new Mutes(!duelWorker, playerDataManager, duelWorker ? null : banLog);
+    private final Warnings warnings = new Warnings(!duelWorker, playerDataManager, duelWorker ? null : banLog);
+    private final PlayerStats playerStats = new PlayerStats(playerDataManager, mutes, warnings);
 
     /**
      * Hub-only VPN lookup, asked by the lock gate about new and locked
@@ -222,7 +208,9 @@ public class EvictMapPlugin extends Plugin {
             new DiscordModeration(
                     remoteBan::ban,
                     remoteBan::unban,
-                    (target, actor) -> playerLock.free(target.trim(), actor).line()
+                    (target, actor) -> playerLock.free(target.trim(), actor).line(),
+                    mutes::mute,
+                    mutes::unmute
             );
 
     /**
@@ -266,6 +254,7 @@ public class EvictMapPlugin extends Plugin {
         // Both roles: a banned player who comes back reads the appeal link; the ban button asks /ban's reason.
         banScreen.install();
         banMenu.install();
+        warnings.install();
 
         // Both roles: a locked account can watch and nothing else - the hub
         // decides who, every server enforces it off the hub's list. The
@@ -295,7 +284,6 @@ public class EvictMapPlugin extends Plugin {
 
             // Hub only: the hub is the single source of truth for bans. It
             // widens them, writes the list the workers read, and logs them.
-            banLog.start();
             bans.install();
 
             // Hub only: whether a new account arrives through a VPN. The lookup starts at the
@@ -394,6 +382,7 @@ public class EvictMapPlugin extends Plugin {
         });
 
         Events.on(PlayerJoin.class, event -> {
+            guarded("warning join", () -> warnings.handlePlayerJoin(event.player));
             // First: a hit bans and kicks, so there is nothing to onboard.
             if (wordFilter.checkName(event.player)) {
                 return;
@@ -526,6 +515,8 @@ public class EvictMapPlugin extends Plugin {
             // players are kept slow.
             playerLock.update();
             banMenu.freeze.update();
+            mutes.update();
+            warnings.update();
 
             attrition.update();
             fullAssault.update();
@@ -553,11 +544,14 @@ public class EvictMapPlugin extends Plugin {
 
         // After plugin joins: a name already banned stays out of the mirror.
         Events.on(mindustry.game.EventType.PlayerChatEvent.class, e -> chatLogCapture.handleRawMessage(e.player, e.message));
+        Events.on(PlayerJoin.class, e -> mutes.handlePlayerJoin(e.player));
+        Events.on(PlayerLeave.class, e -> warnings.handlePlayerLeave(e.player));
+        Events.on(PlayerLeave.class, e -> mutes.handlePlayerLeave(e.player));
         Events.on(PlayerJoin.class, e -> chatLogCapture.handleJoin(e.player));
         Events.on(PlayerLeave.class, e -> chatLogCapture.handleLeave(e.player));
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.30. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.32. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 
@@ -606,9 +600,11 @@ public class EvictMapPlugin extends Plugin {
         }
 
         playerDataManager.start();
+        if (!duelWorker) banLog.start();
 
         // Freeze first; the mirror still sees ordinary word-filter hits.
         banMenu.freeze.install();
+        mutes.install();
         chatLogCapture.suppress(banMenu.freeze::frozen);
         chatLogCapture.installChatFilter();
 
@@ -723,11 +719,11 @@ public class EvictMapPlugin extends Plugin {
 
     @Override
     public void registerClientCommands(CommandHandler handler) {
-        Extinction.commands.Admin.register(handler, banMenu, freeMenu);
+        Extinction.commands.Admin.register(handler, banMenu, freeMenu, mutes, warnings);
 
         // No locked account in any /play picker (an invite is a
         // menu, which the lock's command gate cannot refuse).
-        matchmaking.excludeFromPickers(player -> playerLock.isLocked(player.uuid()));
+        matchmaking.excludeFromPickers(player -> playerLock.isLocked(player.uuid()) || warnings.busy(player));
         Extinction.commands.Player.register(handler, matchmaking, spectateMenu, duelWorkerReferee, roundEnd, roundTime, history, playerStats, leaderboard, fullAssault, inviteManager, trainingRestart);
 
         // On a duel worker, replace vanilla /t so a ranked match can invert it
@@ -741,7 +737,7 @@ public class EvictMapPlugin extends Plugin {
     @Override
     public void registerServerCommands(CommandHandler handler) {
         consoleCommands.register(handler);
-        Console.register(handler, matches, roundTime, playerStats, restart, duelWorker ? null : banLog, duelWorker ? null : discordStatus, duelWorker ? null : playerLock, duelWorker ? null : bans, playerDataManager, duelWorker ? null : discordModCommands, duelWorker ? null : vpnScan);
+        Console.register(handler, matches, roundTime, playerStats, restart, duelWorker ? null : banLog, duelWorker ? null : discordStatus, duelWorker ? null : playerLock, duelWorker ? null : bans, playerDataManager, duelWorker ? null : discordModCommands, duelWorker ? null : vpnScan, mutes, warnings);
     }
 
     /**

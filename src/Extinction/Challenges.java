@@ -93,7 +93,7 @@ public final class Challenges {
                 new Selection(mode, targetUuids, nerf)
         );
 
-        Call.menu(
+        Extinction.Dialogs.menu(
                 player.con,
                 selectionMenuId,
                 "[accent]" + mode.label() + Matchmaking.nerfTitle(nerf),
@@ -175,7 +175,7 @@ public final class Challenges {
                         + "[accent].[]"
         );
 
-        Call.menu(
+        Extinction.Dialogs.menu(
                 opponent.con,
                 challengeMenuId,
                 "[accent]" + mode.label() + " Challenge" + Matchmaking.nerfTitle(nerf),

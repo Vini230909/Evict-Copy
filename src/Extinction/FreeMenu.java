@@ -105,7 +105,7 @@ public final class FreeMenu {
         rows.add(new String[]{"[red]Cancel"});
         pickerByAdminUuid.put(admin.uuid(), new ArrayList<>(shown));
 
-        Call.menu(
+        Extinction.Dialogs.menu(
                 admin.con,
                 pickerMenuId,
                 "[accent]Free a locked account",
@@ -134,7 +134,7 @@ public final class FreeMenu {
     private void openConfirm(Player admin, LockList.Entry entry) {
         confirmByAdminUuid.put(admin.uuid(), entry);
 
-        Call.menu(
+        Extinction.Dialogs.menu(
                 admin.con,
                 confirmMenuId,
                 "[accent]Confirm",

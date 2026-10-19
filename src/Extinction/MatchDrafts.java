@@ -214,7 +214,7 @@ public final class MatchDrafts {
                     "Pick as many players as you want, then press Done.";
         };
 
-        Call.menu(
+        Extinction.Dialogs.menu(
                 challenger.con,
                 pickMenuId,
                 title + Matchmaking.nerfTitle(draft.nerf),
@@ -380,7 +380,7 @@ public final class MatchDrafts {
             Player invitee = Matchmaking.onlinePlayerByUuid(uuid);
             draftChallengerByInviteeUuid.put(uuid, draft.challengerUuid);
 
-            Call.menu(
+            Extinction.Dialogs.menu(
                     invitee.con,
                     inviteMenuId,
                     "[accent]" + draft.mode.label() + " invite" + Matchmaking.nerfTitle(draft.nerf),

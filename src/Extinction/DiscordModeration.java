@@ -1,4 +1,4 @@
-// Discord's /ban, /unban and /free, for staff who are not at the console: the bot answers them over the gateway.
+// Discord's moderation commands, for staff who are not at the console: the bot answers them over the gateway.
 package Extinction;
 
 import Extinction.core.io.Secrets;
@@ -30,6 +30,8 @@ public final class DiscordModeration {
     private static final String COMMAND_BAN = "ban";
     private static final String COMMAND_UNBAN = "unban";
     private static final String COMMAND_FREE = "free";
+    private static final String COMMAND_MUTE = "mute";
+    private static final String COMMAND_UNMUTE = "unmute";
 
     // What /ban runs: the target, who asked, and why - the reason is required.
     public interface BanAction {
@@ -165,6 +167,8 @@ public final class DiscordModeration {
     private final BanAction ban;
     private final BinaryOperator<String> unban;
     private final BinaryOperator<String> free;
+    private final BinaryOperator<String> mute;
+    private final BinaryOperator<String> unmute;
 
     // Separate clients: the gateway holds one connection open for good, and a REST call must never queue behind it.
     private final HttpClient socketClient = DiscordWebhook.newClient();
@@ -188,11 +192,15 @@ public final class DiscordModeration {
     public DiscordModeration(
             BanAction ban,
             BinaryOperator<String> unban,
-            BinaryOperator<String> free
+            BinaryOperator<String> free,
+            BinaryOperator<String> mute,
+            BinaryOperator<String> unmute
     ) {
         this.ban = ban;
         this.unban = unban;
         this.free = free;
+        this.mute = mute;
+        this.unmute = unmute;
     }
 
     // Hub-only: reads the token even when nothing is wired yet, so the checklist never calls a present token missing.
@@ -255,7 +263,7 @@ public final class DiscordModeration {
         lastRegistration = error;
 
         if (error.isBlank()) {
-            lines.add("/ban, /unban and /free registered. They are usable in Discord now.");
+            lines.add("/ban, /unban, /free, /mute and /unmute registered. They are usable in Discord now.");
         } else {
             lines.add("The commands could not be registered: " + error);
             return;
@@ -360,7 +368,7 @@ public final class DiscordModeration {
                 if (role.id().equals(wanted)
                         || role.name().equalsIgnoreCase(wanted)) {
                     lines.add("Only " + role.name()
-                            + " may use /ban, /unban and /free from now on.");
+                            + " may use /ban, /unban, /free, /mute and /unmute from now on.");
                     return role.id();
                 }
             }
@@ -499,7 +507,7 @@ public final class DiscordModeration {
         lastRegistration = error;
 
         if (error.isBlank()) {
-            PluginLog.info("Discord commands /ban, /unban and /free registered.");
+            PluginLog.info("Discord commands /ban, /unban, /free, /mute and /unmute registered.");
         } else {
             PluginLog.err("Discord commands could not be registered: @", error);
         }
@@ -538,6 +546,8 @@ public final class DiscordModeration {
             case COMMAND_BAN -> onMainThread(() -> ban.apply(target, actor, reason));
             case COMMAND_UNBAN -> onMainThread(() -> unban.apply(target, actor));
             case COMMAND_FREE -> onMainThread(() -> free.apply(target, actor));
+            case COMMAND_MUTE -> onMainThread(() -> mute.apply(target, actor));
+            case COMMAND_UNMUTE -> onMainThread(() -> unmute.apply(target, actor));
             default -> "That command is not handled by this server.";
         };
 

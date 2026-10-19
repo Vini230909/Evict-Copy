@@ -101,7 +101,7 @@ public final class History {
         rows.add(new String[]{"[red]Cancel"});
         pickerTargetsByViewerUuid.put(player.uuid(), targetUuids);
 
-        Call.menu(
+        Extinction.Dialogs.menu(
                 player.con,
                 pickerMenuId,
                 "[orange]History",
@@ -198,7 +198,7 @@ public final class History {
                 {"Close"}
         };
 
-        Call.menu(
+        Extinction.Dialogs.menu(
                 player.con,
                 historyMenuId,
                 "[orange]History: []" + view.subjectName,

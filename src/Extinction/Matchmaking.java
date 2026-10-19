@@ -123,7 +123,7 @@ public final class Matchmaking {
         }
 
         nerfByUuid.put(player.uuid(), nerf);
-        Call.menu(
+        Extinction.Dialogs.menu(
                 player.con,
                 gameMenuId,
                 "[accent]Play" + nerfTitle(nerf),
@@ -151,7 +151,7 @@ public final class Matchmaking {
     }
 
     private void openModeMenu(Player player) {
-        Call.menu(
+        Extinction.Dialogs.menu(
                 player.con,
                 modeMenuId,
                 "[accent]Play" + nerfTitle(currentNerf(player)),
@@ -189,7 +189,7 @@ public final class Matchmaking {
             return;
         }
 
-        Call.menu(
+        Extinction.Dialogs.menu(
                 player.con,
                 teamCountMenuId,
                 "[accent]Random Teams" + nerfTitle(currentNerf(player)),

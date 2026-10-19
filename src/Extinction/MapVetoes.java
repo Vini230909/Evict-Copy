@@ -73,7 +73,7 @@ public final class MapVetoes {
         }
         rows.add(new String[]{"[lightgray]Close"});
         shownByUuid.put(player.uuid(), maps);
-        Call.menu(player.con, menuId, "[accent]Your Pure maps",
+        Extinction.Dialogs.menu(player.con, menuId, "[accent]Your Pure maps",
                 maps.isEmpty() ? "No Pure maps are available in config/maps."
                         : "Tap a map to toggle it. Scarlet maps are vetoed in every Pure match you join.",
                 rows.toArray(new String[0][]));

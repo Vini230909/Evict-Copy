@@ -10,10 +10,14 @@ import mindustry.gen.Groups;
 import mindustry.gen.Player;
 import mindustry.ui.Menus;
 
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public final class PlayerStats {
@@ -22,15 +26,21 @@ public final class PlayerStats {
 
     // A name search offers at most this many matches in the picker; a tighter name reaches the rest.
     private static final int MAX_PICKER_MATCHES = 20;
+    private static final DateTimeFormatter WARNING_TIME = DateTimeFormatter
+            .ofPattern("yyyy-MM-dd HH:mm:ss 'UTC'", Locale.ROOT).withZone(ZoneOffset.UTC);
 
     private final PlayerDataManager playerData;
+    private final Mutes mutes;
+    private final Warnings warnings;
     private final int pickerMenuId;
 
     // Viewer UUID -> ordered player UUIDs shown in their picker.
     private final Map<String, List<String>> pickerTargetsByViewerUuid = new HashMap<>();
 
-    public PlayerStats(PlayerDataManager playerData) {
+    public PlayerStats(PlayerDataManager playerData, Mutes mutes, Warnings warnings) {
         this.playerData = playerData;
+        this.mutes = mutes;
+        this.warnings = warnings;
         this.pickerMenuId = Menus.registerMenu(this::handlePicker);
     }
 
@@ -58,7 +68,7 @@ public final class PlayerStats {
             }
 
             if (matches.size() == 1) {
-                player.sendMessage(format(matches.get(0), player.admin));
+                sendInfo(player, matches.get(0));
                 return;
             }
 
@@ -127,7 +137,7 @@ public final class PlayerStats {
         rows.add(new String[]{"[red]Cancel"});
         pickerTargetsByViewerUuid.put(viewer.uuid(), targetUuids);
 
-        Call.menu(
+        Extinction.Dialogs.menu(
                 viewer.con,
                 pickerMenuId,
                 "[accent]Player info",
@@ -157,8 +167,31 @@ public final class PlayerStats {
                 return;
             }
 
-            player.sendMessage(format(info, player.admin));
+            sendInfo(player, info);
         });
+    }
+
+    // Moderation stays private to admin viewers; reasons remain in the ban log.
+    private void sendInfo(Player viewer, PlayerDataManager.PlayerInfo info) {
+        viewer.sendMessage(format(info, viewer.admin));
+        if (!viewer.admin) return;
+        List<Warnings.Summary> history = warnings.history(info.uuid());
+        StringBuilder message = new StringBuilder("[accent]Moderation for [white]")
+                .append(info.lastName().replace("[", "[[")).append("[]")
+                .append("\n[accent]Muted: [white]").append(mutes.isMuted(info.uuid()) ? "yes" : "no").append("[]")
+                .append("\n[accent]Warnings: [white]").append(history.size()).append("[]");
+        for (Warnings.Summary warning : history) {
+            String line = "\n[lightgray]" + WARNING_TIME.format(Instant.ofEpochMilli(warning.timeMillis()))
+                    + " [white]by " + warning.actor().replace("[", "[[")
+                    + "[lightgray] (" + warning.server().replace("[", "[[") + "; "
+                    + (warning.accepted() ? "accepted" : "pending") + ")[]";
+            if (message.length() + line.length() > 1_000) {
+                viewer.sendMessage(message.toString());
+                message = new StringBuilder("[accent]Warnings (continued):[]");
+            }
+            message.append(line);
+        }
+        viewer.sendMessage(message.toString());
     }
 
     // The /info text; only a server admin viewer gets the UUID (IPs stay console-only).

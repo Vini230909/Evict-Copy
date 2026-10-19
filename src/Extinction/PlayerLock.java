@@ -381,7 +381,7 @@ public final class PlayerLock {
     private void announce(Player player) {
         applyPrefix(player);
         player.sendMessage(chatNotice());
-        Call.infoMessage(player.con, dialogNotice());
+        Extinction.Dialogs.infoMessage(player.con, dialogNotice());
         applySlow(player);
     }
 

@@ -4,6 +4,8 @@ package Extinction.commands;
 import Extinction.BanMenu;
 import Extinction.FreeMenu;
 import Extinction.Js;
+import Extinction.Mutes;
+import Extinction.Warnings;
 import Extinction.core.cmd.Commands;
 import Extinction.core.text.Text;
 
@@ -14,7 +16,7 @@ public final class Admin {
     private Admin() {
     }
 
-    public static void register(CommandHandler handler, BanMenu bans, FreeMenu free) {
+    public static void register(CommandHandler handler, BanMenu bans, FreeMenu free, Mutes mutes, Warnings warnings) {
         Commands commands = new Commands();
 
         // Gated in the handler, like /js; the picker and confirmation live in BanMenu.
@@ -45,6 +47,21 @@ public final class Admin {
                 .args("player:text?")
                 .description("Admin only: free a locked account. No name opens a picker of the locked ones.")
                 .run(ctx -> free.handleFree(ctx.raw(), ctx.sender()));
+
+        commands.command("mute").client()
+                .args("player:text?")
+                .description("Admin only: mute a player. No name opens a picker.")
+                .run(ctx -> mutes.handleMute(ctx.raw(), ctx.sender()));
+
+        commands.command("unmute").client()
+                .args("player:text?")
+                .description("Admin only: unmute a player. No name opens a picker.")
+                .run(ctx -> mutes.handleUnmute(ctx.raw(), ctx.sender()));
+
+        commands.command("warn").client()
+                .args("player:text?")
+                .description("Admin only: warn a player with a reason they must acknowledge.")
+                .run(ctx -> warnings.handleWarn(ctx.raw(), ctx.sender()));
 
         commands.installClient(handler);
     }

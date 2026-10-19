@@ -37,6 +37,9 @@ public final class Help {
             "top",
             "a",
             "ban",
+            "mute",
+            "unmute",
+            "warn",
             "free",
             "js"
     );

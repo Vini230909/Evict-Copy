@@ -87,7 +87,7 @@ public final class PureRoster {
 
         gridByUuid.put(challenger.uuid(), new Grid(columns, rows));
 
-        Call.menu(
+        Extinction.Dialogs.menu(
                 challenger.con,
                 gridMenuId,
                 "[accent]" + Matchmaking.describe(draft.mode, draft.map) + Matchmaking.nerfTitle(draft.nerf),
@@ -199,7 +199,7 @@ public final class PureRoster {
         pickingColumnByUuid.put(challenger.uuid(), column);
         candidatesByUuid.put(challenger.uuid(), candidates);
 
-        Call.menu(
+        Extinction.Dialogs.menu(
                 challenger.con,
                 slotMenuId,
                 "[accent]Team " + (column + 1),

@@ -93,6 +93,10 @@ public final class BanMenu {
                 return;
             }
 
+            if (Dialogs.busy(admin)) {
+                admin.sendMessage("[scarlet]Finish your current dialog first.[]");
+                return;
+            }
             askReason(admin, new Target(packet.other.uuid(), PlayerNames.displayName(packet.other)), "");
         });
     }
@@ -217,7 +221,7 @@ public final class BanMenu {
         rows.add(new String[]{"[red]Cancel"});
         pickerTargetsByAdminUuid.put(admin.uuid(), targets);
 
-        Call.menu(
+        Extinction.Dialogs.menu(
                 admin.con,
                 pickerMenuId,
                 "[scarlet]Ban a player",
@@ -251,7 +255,7 @@ public final class BanMenu {
         reasonTargetByAdminUuid.put(admin.uuid(), target);
         if (warning.isEmpty()) freeze.begin(admin.uuid(), target.uuid());
 
-        Call.textInput(
+        Extinction.Dialogs.textInput(
                 admin.con,
                 reasonInputId,
                 "Ban " + target.name(),

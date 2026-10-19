@@ -1,4 +1,4 @@
-// The Discord ban log: one plain-text message per ban, unban, free, VPN check or ban evasion, posted to a staff-only webhook.
+// The Discord ban log: plain-text moderation actions, VPN checks and ban evasion, posted to a staff-only webhook.
 package Extinction;
 
 import Extinction.core.util.MessageIdFilter;
@@ -89,6 +89,18 @@ public final class BanLog {
         }
 
         enqueue(banMessage(report));
+    }
+
+    // Mutes and warnings use the same queue, layout and mention suppression as bans.
+    public void logModeration(String action, String name, String uuid, String actor, String server, String reason) {
+        if (!webhook.isConfigured()) {
+            return;
+        }
+
+        enqueue(actor(actor) + " " + DiscordFormat.playerText(action) + " " + coloredName(name)
+                + (reason == null || reason.isBlank() ? "" : " with the **reason:** " + DiscordFormat.playerText(reason))
+                + "\n**Server:** " + DiscordFormat.playerText(server == null || server.isBlank() ? "hub" : server)
+                + "\n**uuid:** " + code(uuid));
     }
 
     // One VPN scan hit; same queue as the bans, so it never crowds one out of order.

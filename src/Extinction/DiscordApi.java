@@ -271,7 +271,7 @@ final class DiscordApi {
         );
     }
 
-    // The three commands, exactly as Discord should show them; /ban cannot be sent without a reason.
+    // The moderation commands as Discord should show them; /ban cannot be sent without a reason.
     private static String definitions() {
         return new DiscordJson.Arr()
                 .add(definition(
@@ -290,6 +290,18 @@ final class DiscordApi {
                         "free",
                         "Free a locked account (new account that joined through a VPN).",
                         "The account's UUID, from the lock line in the ban log.",
+                        false
+                ))
+                .add(definition(
+                        "mute",
+                        "Mute a player account on the hub and match servers.",
+                        "The player's UUID, from playerinfo or the ban log.",
+                        false
+                ))
+                .add(definition(
+                        "unmute",
+                        "Let a muted player account chat again.",
+                        "The player's UUID, from playerinfo or the ban log.",
                         false
                 ))
                 .toString();
