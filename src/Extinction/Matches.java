@@ -81,6 +81,10 @@ public final class Matches {
     // Reserves a worker and, once it is hosting, redirects every rostered player to it. False at
     // once when unconfigured or all slots are busy. A Pure match names its map; null = Extinction.
     public boolean requestMatch(MatchMode mode, List<List<Player>> rosterTeams, String map) {
+        return requestMatch(mode, rosterTeams, map, false);
+    }
+
+    public boolean requestMatch(MatchMode mode, List<List<Player>> rosterTeams, String map, boolean nerf) {
         if (!isConfigured() || rosterTeams == null || rosterTeams.isEmpty()) {
             return false;
         }
@@ -94,6 +98,7 @@ public final class Matches {
         MatchSlot slot = new MatchSlot(port);
         slot.mode = mode;
         slot.map = map;
+        slot.nerf = nerf;
 
         List<List<String>> rosterUuids = new ArrayList<>();
 
@@ -373,7 +378,7 @@ public final class Matches {
 
         for (MatchSlot slot : workers.values()) {
             if (isOngoing(slot)) {
-                duels.add(new ActiveDuel(slot.port, SpectateMenu.matchLabel(slot.label, slot.mode, slot.map)));
+                duels.add(new ActiveDuel(slot.port, SpectateMenu.matchLabel(slot.label, slot.mode, slot.map, slot.nerf)));
             }
         }
 

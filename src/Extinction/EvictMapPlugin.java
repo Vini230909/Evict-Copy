@@ -557,7 +557,7 @@ public class EvictMapPlugin extends Plugin {
         Events.on(PlayerLeave.class, e -> chatLogCapture.handleLeave(e.player));
 
         Log.info(
-                "[EvictMapGenerator] Loaded. Code revision 1.15.27. Use 'help' for the commands and 'oregen' for the generator settings."
+                "[EvictMapGenerator] Loaded. Code revision 1.15.30. Use 'help' for the commands and 'oregen' for the generator settings."
         );
     }
 

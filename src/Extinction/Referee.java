@@ -57,6 +57,7 @@ public final class Referee {
 
     // The mode: its rules (gated, solo, ...) are asked of it, never compared by constant.
     private MatchMode mode = MatchMode.ONE_VS_ONE;
+    private boolean nerf;
 
     // Each inner list is one match team; FFA is N teams of one, Training/Sandbox a single team.
     private final List<List<String>> rosterTeams = new ArrayList<>();
@@ -204,6 +205,8 @@ public final class Referee {
         ) {
             welcomeSpectator(player);
         }
+
+        if (player != null && nerf) player.sendMessage(Matchmaking.nerfWarning(true).strip());
 
         // Vanilla assigns a joiner to any team; a Pure participant belongs to their roster's team.
         if (mode.pure() && player != null && isParticipant(player.uuid())) {
@@ -554,6 +557,7 @@ public final class Referee {
 
         exit.setHub(handshake.hubIp, handshake.hubPort);
         mode = handshake.mode;
+        nerf = handshake.nerf;
 
         rosterTeams.clear();
         participantUuids.clear();
@@ -575,10 +579,11 @@ public final class Referee {
         }
 
         Log.info(
-                "[EvictMapGenerator] Duel worker loaded handshake: hub=@:@ mode=@ teams=@ players=@.",
+                "[EvictMapGenerator] Duel worker loaded handshake: hub=@:@ mode=@ patch=@ teams=@ players=@.",
                 handshake.hubIp,
                 handshake.hubPort,
                 mode.id(),
+                nerf ? "nerf" : "none",
                 rosterTeams.size(),
                 String.join(",", participantUuids)
         );

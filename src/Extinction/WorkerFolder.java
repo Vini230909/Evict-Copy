@@ -106,6 +106,7 @@ public final class WorkerFolder {
         copyDirectory(new File("config/maps"), new File(workerConfig, "maps"));
 
         copyDirectory(new File("config/mods"), new File(workerConfig, "mods"));
+        Nerf.provision(workerConfig, slot.nerf);
 
         // Refreshed every spawn so the worker recognizes the hub's admins.
         writeAdminsFile(workerConfig, slot.adminUuids);

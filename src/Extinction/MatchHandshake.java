@@ -23,6 +23,7 @@ public final class MatchHandshake {
     public final String hubIp;
     public final int hubPort;
     public final MatchMode mode;
+    public final boolean nerf;
     public final String label;
 
     // Pure matches: the map the worker hosts; "" for the generated Extinction map.
@@ -39,6 +40,7 @@ public final class MatchHandshake {
             String hubIp,
             int hubPort,
             MatchMode mode,
+            boolean nerf,
             String label,
             String map,
             List<List<String>> rosterTeams,
@@ -48,6 +50,7 @@ public final class MatchHandshake {
         this.hubIp = hubIp;
         this.hubPort = hubPort;
         this.mode = mode;
+        this.nerf = nerf;
         this.label = label;
         this.map = map;
         this.rosterTeams = rosterTeams;
@@ -63,6 +66,7 @@ public final class MatchHandshake {
     ) throws IOException {
         Properties properties = new Properties();
         properties.setProperty("mode", slot.mode.id());
+        properties.setProperty("patch", slot.nerf ? "nerf" : "none");
         // The label is repeated so sibling workers can list this match in their /s hop menu.
         properties.setProperty("label", slot.label);
         properties.setProperty("map", slot.map == null ? "" : slot.map);
@@ -110,6 +114,7 @@ public final class MatchHandshake {
         String hubIp = properties.getProperty("hub.ip", "").trim();
         int hubPort = PropertiesFile.getInt(properties, "hub.port", 6567);
         MatchMode mode = MatchMode.fromId(properties.getProperty("mode", "1v1").trim());
+        boolean nerf = "nerf".equalsIgnoreCase(properties.getProperty("patch", "none").trim());
         String label = properties.getProperty("label", "").trim();
         String map = properties.getProperty("map", "").trim();
 
@@ -156,6 +161,6 @@ public final class MatchHandshake {
             }
         }
 
-        return new MatchHandshake(hubIp, hubPort, mode, label, map, rosterTeams, participantUuids, names);
+        return new MatchHandshake(hubIp, hubPort, mode, nerf, label, map, rosterTeams, participantUuids, names);
     }
 }

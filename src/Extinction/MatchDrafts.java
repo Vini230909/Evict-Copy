@@ -72,19 +72,27 @@ public final class MatchDrafts {
     }
 
     void begin(Player challenger, MatchMode mode, int teamCount) {
+        begin(challenger, mode, teamCount, false);
+    }
+
+    void begin(Player challenger, MatchMode mode, int teamCount, boolean nerf) {
         if (matchmaking.otherOnlinePlayers(challenger).isEmpty()) {
             challenger.sendMessage("[scarlet]No other players are online.[]");
             return;
         }
 
-        MatchDraft draft = new MatchDraft(mode, challenger.uuid(), teamCount);
+        MatchDraft draft = new MatchDraft(mode, challenger.uuid(), teamCount, null, nerf);
         register(challenger, draft);
         openPickMenu(challenger, draft);
     }
 
     // A Pure team draft: the rosters are filled through PureRoster's grid, the rest is the same.
     void beginPure(Player challenger, MatchMode mode) {
-        register(challenger, new MatchDraft(mode, challenger.uuid(), 0));
+        beginPure(challenger, mode, false);
+    }
+
+    void beginPure(Player challenger, MatchMode mode, boolean nerf) {
+        register(challenger, new MatchDraft(mode, challenger.uuid(), 0, null, nerf));
     }
 
     MatchDraft draftOf(Player challenger) {
@@ -114,7 +122,7 @@ public final class MatchDrafts {
                 draft.map = map;
                 sendDraftInvites(challenger, draft);
             }
-        }, () -> draftsByChallengerUuid.remove(challenger.uuid(), draft));
+        }, () -> draftsByChallengerUuid.remove(challenger.uuid(), draft), draft.nerf);
         return true;
     }
 
@@ -209,7 +217,7 @@ public final class MatchDrafts {
         Call.menu(
                 challenger.con,
                 pickMenuId,
-                title,
+                title + Matchmaking.nerfTitle(draft.nerf),
                 instruction + "\n\n" + draft.summary(),
                 rows.toArray(new String[0][])
         );
@@ -375,10 +383,11 @@ public final class MatchDrafts {
             Call.menu(
                     invitee.con,
                     inviteMenuId,
-                    "[accent]" + draft.mode.label() + " invite",
+                    "[accent]" + draft.mode.label() + " invite" + Matchmaking.nerfTitle(draft.nerf),
                     PlayerNames.displayName(challenger)
                             + "[white] invited you to a "
-                            + Matchmaking.describe(draft.mode, draft.map) + " match.\n\n" + summary,
+                            + Matchmaking.describe(draft.mode, draft.map) + " match.\n\n" + summary
+                            + Matchmaking.nerfWarning(draft.nerf),
                     new String[][]{
                             {"[green]Accept"},
                             {"[red]Decline"}
@@ -496,7 +505,7 @@ public final class MatchDrafts {
                 ? MatchMode.TEAMS
                 : draft.mode;
 
-        if (!matches.requestMatch(wireMode, rosters, draft.map)) {
+        if (!matches.requestMatch(wireMode, rosters, draft.map, draft.nerf)) {
             for (List<Player> roster : rosters) {
                 for (Player player : roster) {
                     player.sendMessage(

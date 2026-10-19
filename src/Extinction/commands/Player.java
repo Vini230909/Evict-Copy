@@ -83,13 +83,15 @@ public final class Player {
                 .run(ctx -> ctx.reply(roundTime.show(ctx.sender())));
 
         commands.command("play").client()
-                .description("Start an Extinction or Pure match.")
-                .run(ctx -> matchmaking.openGameMenu(ctx.sender()));
+                .args("option:string?")
+                .description("Start an Extinction or Pure match. Add 'nerf' for the Nerf rebalance.")
+                .run(ctx -> matchmaking.openGameMenu(ctx.sender(), ctx.str("option", "")));
 
         // Aliases are their own rows so /help folds them into their target's row.
         commands.command("p").client()
+                .args("option:string?")
                 .description("Alias for /play.")
-                .run(ctx -> matchmaking.openGameMenu(ctx.sender()));
+                .run(ctx -> matchmaking.openGameMenu(ctx.sender(), ctx.str("option", "")));
 
         commands.command("spectate").client()
                 .description("Spectate an ongoing match; while spectating, switch matches or return to the lobby.")

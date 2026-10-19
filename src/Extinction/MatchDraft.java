@@ -9,6 +9,7 @@ import java.util.Set;
 public final class MatchDraft {
     final MatchMode mode;
     final String challengerUuid;
+    final boolean nerf;
 
     // Pure matches: the map the worker hosts; null for the generated Extinction map.
     String map;
@@ -34,10 +35,15 @@ public final class MatchDraft {
 
     // A Pure team draft starts with every column in place: the challenger in the first, the rest empty.
     MatchDraft(MatchMode mode, String challengerUuid, int teamCount, String map) {
+        this(mode, challengerUuid, teamCount, map, false);
+    }
+
+    MatchDraft(MatchMode mode, String challengerUuid, int teamCount, String map, boolean nerf) {
         this.mode = mode;
         this.challengerUuid = challengerUuid;
         this.teamCount = teamCount;
         this.map = map;
+        this.nerf = nerf;
 
         List<String> firstTeam = new ArrayList<>();
         firstTeam.add(challengerUuid);

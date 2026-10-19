@@ -40,12 +40,16 @@ public final class PureRoster {
     }
 
     void begin(Player challenger, MatchMode mode) {
+        begin(challenger, mode, false);
+    }
+
+    void begin(Player challenger, MatchMode mode, boolean nerf) {
         if (matchmaking.otherOnlinePlayers(challenger).isEmpty()) {
             challenger.sendMessage("[scarlet]No other players are online.[]");
             return;
         }
 
-        matchmaking.drafts.beginPure(challenger, mode);
+        matchmaking.drafts.beginPure(challenger, mode, nerf);
         openGrid(challenger);
     }
 
@@ -86,7 +90,7 @@ public final class PureRoster {
         Call.menu(
                 challenger.con,
                 gridMenuId,
-                "[accent]" + Matchmaking.describe(draft.mode, draft.map),
+                "[accent]" + Matchmaking.describe(draft.mode, draft.map) + Matchmaking.nerfTitle(draft.nerf),
                 "Each column is one team; Team 1 is the left one.\n"
                         + "Click + to add a player, a name to remove them. Uneven teams are allowed, up to "
                         + MAX_PER_TEAM + " per team.",

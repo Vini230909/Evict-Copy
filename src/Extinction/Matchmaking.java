@@ -3,7 +3,9 @@ package Extinction;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Predicate;
 
 import mindustry.gen.Call;
@@ -43,6 +45,7 @@ public final class Matchmaking {
     private final int gameMenuId;
     private final int modeMenuId;
     private final int teamCountMenuId;
+    private final Map<String, Boolean> nerfByUuid = new HashMap<>();
 
     // Players never offered in a picker: a locked account rostered in would sit there unable to play.
     private Predicate<Player> excludedFromPickers = player -> false;
@@ -67,6 +70,7 @@ public final class Matchmaking {
             return;
         }
 
+        nerfByUuid.remove(player.uuid());
         challenges.handlePlayerLeave(player.uuid());
         drafts.handlePlayerLeave(player);
         pure.handlePlayerLeave(player);
@@ -78,8 +82,35 @@ public final class Matchmaking {
         return map == null ? mode.label() : mode.label() + " on " + map;
     }
 
+    static String describe(MatchMode mode, String map, boolean nerf) {
+        return describe(mode, map) + (nerf ? " (Nerf)" : "");
+    }
+
+    static String nerfTitle(boolean nerf) {
+        return nerf ? " [scarlet](Nerf)[]" : "";
+    }
+
+    static String nerfWarning(boolean nerf) {
+        return nerf ? "\n\n[scarlet]This match runs the Nerf rebalance:[] overdrive projectors and domes,"
+                + " T5 reconstructors, phase weavers, surge smelters, navanax, quasar and vela are changed." : "";
+    }
+
     // /play: Extinction (the generated hex map, today's modes) or Pure (vanilla PvP on a real map).
     public void openGameMenu(Player player) {
+        openGameMenu(player, false);
+    }
+
+    public void openGameMenu(Player player, String option) {
+        String word = option == null ? "" : option.trim();
+        if (!word.isEmpty() && !word.equalsIgnoreCase("none") && !word.equalsIgnoreCase("nerf")) {
+            if (player != null) player.sendMessage("[scarlet]'" + word
+                    + "' is not a /play option. Available: []none, nerf");
+            return;
+        }
+        openGameMenu(player, word.equalsIgnoreCase("nerf"));
+    }
+
+    public void openGameMenu(Player player, boolean nerf) {
         if (player == null) {
             return;
         }
@@ -91,10 +122,11 @@ public final class Matchmaking {
             return;
         }
 
+        nerfByUuid.put(player.uuid(), nerf);
         Call.menu(
                 player.con,
                 gameMenuId,
-                "[accent]Play",
+                "[accent]Play" + nerfTitle(nerf),
                 "Extinction: the generated hex map.\nPure: plain Mindustry PvP on a real map.",
                 new String[][]{
                         {"Extinction", "Pure"}
@@ -110,15 +142,19 @@ public final class Matchmaking {
         if (option == 0) {
             openModeMenu(player);
         } else if (option == 1) {
-            pure.openModeMenu(player);
+            pure.openModeMenu(player, currentNerf(player));
         }
+    }
+
+    private boolean currentNerf(Player player) {
+        return nerfByUuid.getOrDefault(player.uuid(), false);
     }
 
     private void openModeMenu(Player player) {
         Call.menu(
                 player.con,
                 modeMenuId,
-                "[accent]Play",
+                "[accent]Play" + nerfTitle(currentNerf(player)),
                 "Select a game mode.",
                 new String[][]{
                         {"Unranked", "1v1"},
@@ -136,12 +172,13 @@ public final class Matchmaking {
         }
 
         MatchMode mode = MODE_MENU_OPTIONS[option];
+        boolean nerf = currentNerf(player);
 
         switch (mode) {
-            case ONE_VS_ONE, RANKED -> challenges.openSelectionMenu(player, mode);
-            case TEAMS, FFA -> drafts.begin(player, mode, 0);
+            case ONE_VS_ONE, RANKED -> challenges.openSelectionMenu(player, mode, nerf);
+            case TEAMS, FFA -> drafts.begin(player, mode, 0, nerf);
             case RANDOM_TEAMS -> openTeamCountMenu(player);
-            case TRAINING, SANDBOX -> startSoloMatch(player, mode);
+            case TRAINING, SANDBOX -> startSoloMatch(player, mode, null, nerf);
         }
     }
 
@@ -155,7 +192,7 @@ public final class Matchmaking {
         Call.menu(
                 player.con,
                 teamCountMenuId,
-                "[accent]Random Teams",
+                "[accent]Random Teams" + nerfTitle(currentNerf(player)),
                 "How many teams should the players be shuffled into?\n"
                         + "Teams are drawn randomly once everyone accepted.",
                 new String[][]{
@@ -183,7 +220,7 @@ public final class Matchmaking {
             return;
         }
 
-        drafts.begin(player, MatchMode.RANDOM_TEAMS, teamCount);
+        drafts.begin(player, MatchMode.RANDOM_TEAMS, teamCount, currentNerf(player));
     }
 
     // Training or Sandbox: the requester is the only rostered player, nobody to pick or invite.
@@ -192,10 +229,14 @@ public final class Matchmaking {
     }
 
     void startSoloMatch(Player player, MatchMode mode, String map) {
+        startSoloMatch(player, mode, map, false);
+    }
+
+    void startSoloMatch(Player player, MatchMode mode, String map, boolean nerf) {
         List<List<Player>> rosters = new ArrayList<>();
         rosters.add(List.of(player));
 
-        if (!matches.requestMatch(mode, rosters, map)) {
+        if (!matches.requestMatch(mode, rosters, map, nerf)) {
             player.sendMessage(
                     "[scarlet]All match servers are busy right now. Try again shortly.[]"
             );

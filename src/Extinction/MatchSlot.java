@@ -20,6 +20,7 @@ public final class MatchSlot {
     public final long spawnedAtMillis = System.currentTimeMillis();
     public volatile Process process;
     public MatchMode mode = MatchMode.ONE_VS_ONE;
+    public boolean nerf;
     public String label = "?";
 
     // Pure matches: the map the worker hosts; null for the generated Extinction map.
@@ -37,7 +38,7 @@ public final class MatchSlot {
 
     // "Teams", or "Pure 2 Team PvP on Frontier" - the mode as announcements and embeds name it.
     public String modeLabel() {
-        return map == null ? mode.label() : mode.label() + " on " + map;
+        return Matchmaking.describe(mode, map, nerf);
     }
 
     public boolean alive() {

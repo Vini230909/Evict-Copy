@@ -30,6 +30,7 @@ public final class PureMenus {
 
     // Player UUID -> the maps shown, so the clicked row resolves to the map shown.
     private final Map<String, MapSelection> selectionByUuid = new HashMap<>();
+    private final Map<String, Boolean> nerfByUuid = new HashMap<>();
 
     public PureMenus(Matchmaking matchmaking) {
         this.matchmaking = matchmaking;
@@ -39,6 +40,7 @@ public final class PureMenus {
     }
 
     void handlePlayerLeave(Player player) {
+        nerfByUuid.remove(player.uuid());
         for (MapSelection selection : new ArrayList<>(selectionByUuid.values())) {
             if (selection.uuids().contains(player.uuid())) {
                 selectionByUuid.remove(selection.uuids().get(0));
@@ -49,10 +51,15 @@ public final class PureMenus {
     }
 
     void openModeMenu(Player player) {
+        openModeMenu(player, false);
+    }
+
+    void openModeMenu(Player player, boolean nerf) {
+        nerfByUuid.put(player.uuid(), nerf);
         Call.menu(
                 player.con,
                 modeMenuId,
-                "[accent]Pure",
+                "[accent]Pure" + Matchmaking.nerfTitle(nerf),
                 "Plain Mindustry PvP on a real map. Nothing is recorded.",
                 new String[][]{
                         {"Training", "2 Team PvP"},
@@ -68,17 +75,23 @@ public final class PureMenus {
         }
 
         MatchMode mode = MODE_MENU_OPTIONS[option];
+        boolean nerf = nerfByUuid.getOrDefault(player.uuid(), false);
         switch (mode) {
             case PURE_TRAINING -> openMapMenu(player, mode, List.of(player.uuid()),
-                    map -> matchmaking.startSoloMatch(player, mode, map), () -> {});
-            case PURE_1V1 -> matchmaking.challenges.openSelectionMenu(player, mode);
-            default -> roster.begin(player, mode);
+                    map -> matchmaking.startSoloMatch(player, mode, map, nerf), () -> {}, nerf);
+            case PURE_1V1 -> matchmaking.challenges.openSelectionMenu(player, mode, nerf);
+            default -> roster.begin(player, mode, nerf);
         }
     }
 
     // One map per row in the client's scrollable menu; only maps with the mode's team count.
     void openMapMenu(Player player, MatchMode mode, List<String> uuids,
                      Consumer<String> selected, Runnable cancelled) {
+        openMapMenu(player, mode, uuids, selected, cancelled, false);
+    }
+
+    void openMapMenu(Player player, MatchMode mode, List<String> uuids,
+                     Consumer<String> selected, Runnable cancelled, boolean nerf) {
         Set<String> vetoes = matchmaking.mapVetoes.combined(uuids);
         List<PureMaps.PureMap> maps = MapVetoes.ordered(mode, vetoes);
         boolean available = maps.stream().anyMatch(map -> !vetoes.contains(map.name()));
@@ -95,7 +108,7 @@ public final class PureMenus {
         selectionByUuid.remove(player.uuid());
         if (available) {
             selectionByUuid.put(player.uuid(), new MapSelection(mode, shown, List.copyOf(uuids),
-                    vetoes, selected, cancelled));
+                    vetoes, selected, cancelled, nerf));
         } else {
             cancelled.run();
         }
@@ -103,7 +116,7 @@ public final class PureMenus {
         Call.menu(
                 player.con,
                 mapMenuId,
-                "[accent]" + mode.label(),
+                "[accent]" + mode.label() + Matchmaking.nerfTitle(nerf),
                 available ? "Pick the map. Scarlet maps are vetoed by a player and cannot be selected."
                         : "[scarlet]No map is available " + (maps.isEmpty() ? "for this mode" : "after player vetoes")
                                 + ". Match cancelled.[]",
@@ -135,7 +148,8 @@ public final class PureMenus {
 
             if (selection.vetoes().contains(map) || matchmaking.mapVetoes.blocks(selection.uuids(), map)) {
                 player.sendMessage("[scarlet]That map is vetoed. Pick an available map.[]");
-                openMapMenu(player, selection.mode(), selection.uuids(), selection.selected(), selection.cancelled());
+                openMapMenu(player, selection.mode(), selection.uuids(), selection.selected(),
+                        selection.cancelled(), selection.nerf());
                 return;
             }
 
@@ -155,6 +169,6 @@ public final class PureMenus {
 
     // One open map picker: the mode and the map names shown in row order.
     private record MapSelection(MatchMode mode, List<String> shown, List<String> uuids,
-                                Set<String> vetoes, Consumer<String> selected, Runnable cancelled) {
+                                Set<String> vetoes, Consumer<String> selected, Runnable cancelled, boolean nerf) {
     }
 }

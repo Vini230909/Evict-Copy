@@ -58,6 +58,10 @@ public final class Challenges {
     }
 
     void openSelectionMenu(Player player, MatchMode mode) {
+        openSelectionMenu(player, mode, false);
+    }
+
+    void openSelectionMenu(Player player, MatchMode mode, boolean nerf) {
         List<Player> opponents = matchmaking.otherOnlinePlayers(player);
 
         if (opponents.isEmpty()) {
@@ -86,13 +90,13 @@ public final class Challenges {
         rows.add(new String[]{"[red]Cancel"});
         selectionByChallengerUuid.put(
                 player.uuid(),
-                new Selection(mode, targetUuids)
+                new Selection(mode, targetUuids, nerf)
         );
 
         Call.menu(
                 player.con,
                 selectionMenuId,
-                "[accent]" + mode.label(),
+                "[accent]" + mode.label() + Matchmaking.nerfTitle(nerf),
                 "Select a player to challenge to a " + mode.label() + ".",
                 rows.toArray(new String[0][])
         );
@@ -126,13 +130,14 @@ public final class Challenges {
         if (mode.pure()) {
             String opponentUuid = opponent.uuid();
             matchmaking.pure.openMapMenu(player, mode, List.of(player.uuid(), opponentUuid),
-                    map -> sendChallenge(player, Matchmaking.onlinePlayerByUuid(opponentUuid), mode, map), () -> {});
+                    map -> sendChallenge(player, Matchmaking.onlinePlayerByUuid(opponentUuid), mode, map,
+                            selection.nerf()), () -> {}, selection.nerf());
         } else {
-            sendChallenge(player, opponent, mode, null);
+            sendChallenge(player, opponent, mode, null, selection.nerf());
         }
     }
 
-    private void sendChallenge(Player player, Player opponent, MatchMode mode, String map) {
+    private void sendChallenge(Player player, Player opponent, MatchMode mode, String map, boolean nerf) {
         if (opponent == null) {
             player.sendMessage("[scarlet]That player is no longer online.[]");
             return;
@@ -157,7 +162,7 @@ public final class Challenges {
 
         challengeByOpponentUuid.put(
                 opponentUuid,
-                new PendingChallenge(player.uuid(), mode, serial, map)
+                new PendingChallenge(player.uuid(), mode, serial, map, nerf)
         );
         Time.run(
                 Matchmaking.PENDING_RESPONSE_TIMEOUT_TICKS,
@@ -173,10 +178,10 @@ public final class Challenges {
         Call.menu(
                 opponent.con,
                 challengeMenuId,
-                "[accent]" + mode.label() + " Challenge",
+                "[accent]" + mode.label() + " Challenge" + Matchmaking.nerfTitle(nerf),
                 PlayerNames.displayName(player)
                         + "[white] has challenged you to a "
-                        + Matchmaking.describe(mode, map) + ".",
+                        + Matchmaking.describe(mode, map) + "." + Matchmaking.nerfWarning(nerf),
                 new String[][]{
                         {"[green]Accept"},
                         {"[red]Decline"}
@@ -236,7 +241,7 @@ public final class Challenges {
         rosters.add(List.of(challenger));
         rosters.add(List.of(opponent));
 
-        if (!matches.requestMatch(mode, rosters, pending.map())) {
+        if (!matches.requestMatch(mode, rosters, pending.map(), pending.nerf())) {
             challenger.sendMessage(
                     "[scarlet]All match servers are busy right now. Try again shortly.[]"
             );
@@ -280,7 +285,7 @@ public final class Challenges {
     }
 
     // A challenger's open selection menu: the mode and the ordered opponents shown.
-    private record Selection(MatchMode mode, List<String> targetUuids) {
+    private record Selection(MatchMode mode, List<String> targetUuids, boolean nerf) {
     }
 
     // An outstanding challenge: who sent it, in which mode, and its expiry serial.
@@ -288,7 +293,8 @@ public final class Challenges {
             String challengerUuid,
             MatchMode mode,
             int serial,
-            String map
+            String map,
+            boolean nerf
     ) {
     }
 }

@@ -35,7 +35,7 @@ public final class PureMapsTest {
         Matchmaking mm = new Matchmaking(new Matches(null, ignored -> {}, null));
         MapVetoes vetoes = mm.mapVetoes;
         CommandHandler commands = new CommandHandler("/");
-        Extinction.commands.Player.register(commands, mm, null, null, null, null, null, null, null, null, null);
+        Extinction.commands.Player.register(commands, mm, null, null, null, null, null, null, null, null, null, null);
         for (int page = 1; page <= 4; page++) commands.handleMessage("/help " + page, a);
         require(a.messages.stream().anyMatch(line -> line.contains("/maps")), "help lists the maps command");
         vetoes.openMenu(a);

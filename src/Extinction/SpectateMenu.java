@@ -36,15 +36,20 @@ public final class SpectateMenu {
 
     // Both /s lists show the roster above the game family, mode and optional Pure map.
     static String matchLabel(String label, MatchMode mode, String map) {
+        return matchLabel(label, mode, map, false);
+    }
+
+    static String matchLabel(String label, MatchMode mode, String map, boolean nerf) {
         String mapName = map == null || map.isBlank() ? null : map;
-        String oldSuffix = " [lightgray](" + Matchmaking.describe(mode, mapName) + ")[]";
+        String oldSuffix = " [lightgray](" + Matchmaking.describe(mode, mapName)
+                + (nerf ? " (Nerf)" : "") + ")[]";
         if (mode != MatchMode.ONE_VS_ONE && label.endsWith(oldSuffix)) {
             label = label.substring(0, label.length() - oldSuffix.length());
         }
 
         String modeName = mode.pure() ? mode.label().substring("Pure ".length()) : mode.label();
         return label + "\n[lightgray]" + (mode.pure() ? "Pure" : "Extinction") + " • " + modeName
-                + (mapName == null ? "" : " on " + mapName.replace("[", "[[")) + "[]";
+                + (mapName == null ? "" : " on " + mapName.replace("[", "[[")) + (nerf ? " (Nerf)" : "") + "[]";
     }
 
     // On a worker /s returns a spectator to the lobby (and refuses participants); on the hub it

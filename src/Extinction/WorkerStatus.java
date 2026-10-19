@@ -211,6 +211,6 @@ public final class WorkerStatus {
     private static String siblingLabel(File dir, int port) {
         MatchHandshake handshake = MatchHandshake.read(new File(dir, MatchHandshake.FILE_NAME));
         String label = handshake.label.isEmpty() ? "Match on port " + port : handshake.label;
-        return SpectateMenu.matchLabel(label, handshake.mode, handshake.map);
+        return SpectateMenu.matchLabel(label, handshake.mode, handshake.map, handshake.nerf);
     }
 }
