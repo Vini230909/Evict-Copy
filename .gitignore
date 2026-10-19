@@ -2,6 +2,7 @@
 build/
 gradle.properties
 .tools/
+.serena/
 config/*.db
 config/*.db-shm
 config/*.db-wal
